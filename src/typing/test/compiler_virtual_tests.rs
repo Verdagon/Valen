@@ -537,7 +537,6 @@ exported func main() int {
 
 // VCOORD: enable this
 #[test]
-#[ignore]
 fn generic_interface_forwarder_with_bound() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

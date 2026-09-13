@@ -529,7 +529,6 @@ exported func main() int {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn generic_interface_forwarder_with_bound() {
     let compilation_bump = bumpalo::Bump::new();

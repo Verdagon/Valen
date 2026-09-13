@@ -826,7 +826,7 @@ where
         &placeholder_initial_knowns_from_function,
         &{
           let mut runes: Vec<IRuneS<'s>> =
-            function.params.iter().map(|p| p.full_type_rune.rune).collect();
+            function.params.iter().map(|p| p.value_type_rune.rune).collect();
           if let Some(r) = function.maybe_ret_kind_rune {
             runes.push(r.rune);
           }
