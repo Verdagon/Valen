@@ -74,7 +74,7 @@ pub struct FunctionExternT<'s, 't> {
 impl<'s, 't> FunctionExternT<'s, 't> {}
 /// Arena-allocated (see @TFITCX)
 pub struct InterfaceEdgeBlueprintT<'s, 't> {
-  pub interface: IdT<'s, 't>,
+  pub interface_template: IdT<'s, 't>,
   pub super_family_root_headers: &'t [(PrototypeT<'s, 't>, i32)],
 }
 

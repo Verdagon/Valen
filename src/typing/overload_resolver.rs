@@ -32,7 +32,9 @@ use crate::typing::rune_typing::rune_type_solver::{
   RuneTypeSolveError,
 };
 use crate::typing::templata::templata::*;
-use crate::typing::templata_compiler::{peel_all_references, IBoundArgumentsSource};
+use crate::typing::templata_compiler::{
+  get_interface_template, peel_all_references, IBoundArgumentsSource,
+};
 use crate::typing::types::types::IntT;
 use crate::typing::types::types::KindT;
 use crate::typing::types::types::*;
@@ -666,7 +668,7 @@ where
             vec![coutputs.get_outer_env_for_type(self.get_struct_template(*sr.id))]
           }
           KindT::Interface(ir) => {
-            vec![coutputs.get_outer_env_for_type(self.get_interface_template(*ir.id))]
+            vec![coutputs.get_outer_env_for_type(get_interface_template(self.typing_interner, *ir.id))]
           }
           KindT::KindPlaceholder(kp) => {
             vec![coutputs.get_outer_env_for_type(*self.get_placeholder_template(&kp.id))]
@@ -711,7 +713,7 @@ where
           for m in matching {
             match m {
               ITemplataT::Isa(&IsaTemplataT { super_kind: KindT::Interface(super_id), .. }) => {
-                let template_id = self.get_interface_template(*super_id.id);
+                let template_id = get_interface_template(self.typing_interner, *super_id.id);
                 if !seen.contains(&template_id) {
                   seen.insert(template_id);
                   collected.push(coutputs.get_outer_env_for_type(template_id));

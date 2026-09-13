@@ -733,7 +733,6 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn array_map_with_interface() {
     let compilation_bump = bumpalo::Bump::new();

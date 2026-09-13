@@ -8,6 +8,7 @@ use crate::typing::ast::citizens::*;
 use crate::typing::ast::expressions::*;
 use crate::typing::compilation::TypingPassOptions;
 use crate::typing::compiler::Compiler;
+use crate::typing::templata_compiler::get_interface_template;
 use crate::typing::env::environment::*;
 use crate::typing::env::function_environment_t::*;
 use crate::typing::env::i_env_entry::*;
@@ -522,7 +523,7 @@ where
     id: IdT<'s, 't>,
     compiler: &Compiler<'s, '_, 't>,
   ) -> &'t InterfaceDefinitionT<'s, 't> {
-    let template_id = compiler.get_interface_template(id);
+    let template_id = get_interface_template(compiler.typing_interner, id);
     self.lookup_interface_by_template_name(template_id)
   }
 

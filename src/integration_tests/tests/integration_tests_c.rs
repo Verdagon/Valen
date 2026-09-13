@@ -54,7 +54,6 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn get_or_function() {
     let compilation_bump = bumpalo::Bump::new();
@@ -144,7 +143,6 @@ exported func main() {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "blocked on interface dispatch: VM check_kind struct-implements-interface needs HinputsI edges (heap.rs:894)"]
 #[test]
 fn function_return_with_return_upcasts() {
     let compilation_bump = bumpalo::Bump::new();
@@ -370,7 +368,6 @@ fn test_extern_functions() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn test_narrowing_between_borrow_and_owning_overloads() {
     // See NMORFI for why this test is here. Before the SCCTT fix, it couldn't resolve between the two

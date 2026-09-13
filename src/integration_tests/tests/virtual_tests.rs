@@ -140,7 +140,6 @@ func main(i I) int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn owning_interface() {
     let compilation_bump = bumpalo::Bump::new();
@@ -171,7 +170,6 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn simple_override_with_param_and_bound() {
     // This is the Serenity case in ROWC.
@@ -210,7 +208,6 @@ exported func main() {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn struct_with_different_ordered_runes() {
     // This is the Firefly case in ROWC.
@@ -249,7 +246,6 @@ exported func main() {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn struct_with_less_generic_params_than_interface() {
     // This is the Raza case in ROWC.
@@ -287,7 +283,6 @@ exported func main() {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn struct_with_more_generic_params_than_interface() {
     // This is the Milano case in ROWC.
@@ -325,7 +320,6 @@ exported func main() {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn struct_repeating_generic_params_for_interface() {
     // This is the Enterprise case in ROWC.
@@ -389,7 +383,6 @@ fn imm_interface() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn mut_interface() {
     let compilation_bump = bumpalo::Bump::new();
@@ -577,7 +570,6 @@ exported func main() int {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn generic_interface_forwarder_with_drop_bound() {
     let compilation_bump = bumpalo::Bump::new();
@@ -622,7 +614,6 @@ exported func main() int {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn open_interface_constructor() {
     let compilation_bump = bumpalo::Bump::new();
@@ -663,7 +654,6 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn open_interface_constructor_multiple_methods() {
     let compilation_bump = bumpalo::Bump::new();

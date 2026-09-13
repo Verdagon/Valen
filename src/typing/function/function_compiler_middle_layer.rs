@@ -16,6 +16,7 @@ use crate::typing::env::function_environment_t::*;
 use crate::typing::hinputs_t::InstantiationBoundArgumentsT;
 use crate::typing::names::names::*;
 use crate::typing::templata::templata::*;
+use crate::typing::templata_compiler::get_interface_template;
 use crate::typing::templata_compiler::peel_all_references;
 use crate::typing::types::types::KindT;
 use crate::typing::types::types::*;
@@ -45,7 +46,7 @@ where
         // Open (non-sealed) interfaces can't have abstract methods defined outside the interface.
         // See https://github.com/ValeLang/Vale/issues/374
         if !abstract_sp.is_internal_method {
-          let interface_template = self.get_interface_template(*interface_tt.id);
+          let interface_template = get_interface_template(self.typing_interner, *interface_tt.id);
           if !coutputs.lookup_sealed(interface_template) {
             if env.id().init_steps != &interface_template.steps()[..] {
               let ranges: Vec<RangeS<'s>> =

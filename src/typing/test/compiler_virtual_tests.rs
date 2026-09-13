@@ -586,9 +586,7 @@ exported func main() int {
   compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
-#[ignore]
 fn basic_interface_anonymous_subclass() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -620,9 +618,7 @@ exported func main() int {
   compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
-#[ignore]
 fn integer_is_compatible_with_interface_anonymous_substruct() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -770,7 +766,6 @@ impl<T> IObserver<T> for MyThing;
   compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
 fn anonymous_substruct_8() {
   let parse_bump = Bump::new();

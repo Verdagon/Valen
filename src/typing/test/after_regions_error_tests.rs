@@ -84,7 +84,6 @@ Can't downcast `ISpaceship` to unrelated `Spoon`
   );
 }
 
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
 #[ignore]
 fn lambda_body_type_mismatches_anonymous_interface_return_type() {

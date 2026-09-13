@@ -1416,7 +1416,7 @@ func main(a MyStruct) {}
   let struct_def = expect_1(&structs_matching);
 
   assert!(coutputs
-    .interface_to_sub_citizen_to_edge
+    .interface_template_to_sub_citizen_to_edge
     .iter()
     .flat_map(|(_, sub_map)| sub_map.values())
     .any(|edge| {
@@ -1482,7 +1482,7 @@ func bork(self &MyStruct) {}
   let struct_def = expect_1(&structs_matching);
 
   assert!(coutputs
-    .interface_to_sub_citizen_to_edge
+    .interface_template_to_sub_citizen_to_edge
     .iter()
     .flat_map(|(_, sub_map)| sub_map.values())
     .any(|edge| {
@@ -3362,9 +3362,7 @@ exported func main() int {
   );
 }
 
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
-#[ignore]
 fn zero_method_anonymous_interface() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -5374,7 +5372,7 @@ exported func main() { moo(__pretend<MySome<int>>()); }
   let interface = coutputs.lookup_interface_by_template_name(interface_template_name);
   let my_struct = coutputs.lookup_struct_by_template_name(struct_template_name);
 
-  coutputs.lookup_impl(*my_struct.instantiated_citizen.id, *interface.instantiated_interface.id);
+  coutputs.lookup_impl(my_struct.template_name, interface.template_name);
 }
 
 // TSUGAR: deleted `report_when_imm_contains_varying_member` — ImmStructCantHaveVaryingMember validator was removed.

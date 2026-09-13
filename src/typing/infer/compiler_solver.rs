@@ -16,6 +16,7 @@ use crate::typing::citizen::impl_compiler::IsParentResult;
 use crate::typing::citizen::impl_compiler::IsntParent;
 use crate::typing::citizen::struct_compiler::ResolveFailure;
 use crate::typing::compiler::Compiler;
+use crate::typing::templata_compiler::get_interface_template;
 use crate::typing::compiler_outputs::*;
 use crate::typing::env::environment::*;
 use crate::typing::env::function_environment_t::*;
@@ -607,7 +608,7 @@ where
                                     KindT::Struct(sr) => rune_value_envs.push(
                                         state.get_outer_env_for_type(self.get_struct_template(*sr.id))),
                                     KindT::Interface(ir) => rune_value_envs.push(
-                                        state.get_outer_env_for_type(self.get_interface_template(*ir.id))),
+                                        state.get_outer_env_for_type(get_interface_template(self.typing_interner, *ir.id))),
                                     KindT::KindPlaceholder(kp) => rune_value_envs.push(
                                         state.get_outer_env_for_type(*self.get_placeholder_template(&kp.id))),
                                     _ => {}

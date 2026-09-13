@@ -1519,19 +1519,14 @@ where
       }
     }
 
-    // val (interfaceEdgeBlueprints, interfaceToSubCitizenToEdge) =
-    //   Profiler.frame(() => { edgeCompiler.compileITables(coutputs) })
     let (interface_edge_blueprints, interface_to_sub_citizen_to_edge) =
       self.compile_i_tables(&mut coutputs)?;
 
     // Deferred function compilation loop
-    // while (coutputs.peekNextDeferredFunctionBodyCompile().nonEmpty || coutputs.peekNextDeferredFunctionCompile().nonEmpty)
     while coutputs.peek_next_deferred_function_body_compile().is_some()
       || coutputs.peek_next_deferred_function_compile().is_some()
     {
-      // while (coutputs.peekNextDeferredFunctionCompile().nonEmpty)
       while coutputs.peek_next_deferred_function_compile().is_some() {
-        // val nextDeferredEvaluatingFunction = coutputs.peekNextDeferredFunctionCompile().get
         let next_deferred = coutputs.peek_next_deferred_function_compile().unwrap();
         match next_deferred {
           DeferredActionT::EvaluateFunction { function_id } => {
@@ -1551,7 +1546,6 @@ where
           _ => panic!("vcurious: unexpected deferred action variant in function-compile loop"),
         }
       }
-      // if (coutputs.peekNextDeferredFunctionBodyCompile().nonEmpty)
       if coutputs.peek_next_deferred_function_body_compile().is_some() {
         let next_deferred = coutputs.peek_next_deferred_function_body_compile().unwrap();
         match next_deferred {
@@ -1578,7 +1572,6 @@ where
             let maybe_explicit_return_coord = *maybe_explicit_return_coord;
             let instantiation_bound_params = *instantiation_bound_params;
 
-            // (nextDeferredEvaluatingFunctionBody.call)(coutputs)
             self.finish_function_maybe_deferred(
               &mut coutputs,
               full_env_snapshot,
@@ -1600,26 +1593,21 @@ where
       }
     }
 
-    // ensureDeepExports(coutputs)
     self.ensure_deep_exports(&mut coutputs)?;
 
-    // val (reachableInterfaces, reachableStructs, reachableFunctions) =
-    //   (coutputs.getAllInterfaces(), coutputs.getAllStructs(), coutputs.getAllFunctions())
     let reachable_interfaces = coutputs.get_all_interfaces();
     let reachable_structs = coutputs.get_all_structs();
     let reachable_functions = coutputs.get_all_functions();
 
-    // interfaceEdgeBlueprints.groupBy(_.interface).mapValues(vassertOne(_))
     let mut interface_to_edge_blueprints: HashMap<
       IdT<'s, 't>,
       &'t InterfaceEdgeBlueprintT<'s, 't>,
     > = HashMap::default();
     for blueprint in interface_edge_blueprints.iter() {
-      let prev = interface_to_edge_blueprints.insert(blueprint.interface, blueprint);
+      let prev = interface_to_edge_blueprints.insert(blueprint.interface_template, blueprint);
       assert!(prev.is_none(), "vassertOne: multiple blueprints for same interface");
     }
 
-    // coutputs.getInstantiationNameToFunctionBoundToRune()
     let raw_instantiation_bounds = coutputs.get_instantiation_name_to_function_bound_to_rune();
     let mut instantiation_name_to_instantiation_bounds: HashMap<
       IdT<'s, 't>,
@@ -1640,8 +1628,8 @@ where
       structs: reachable_structs,
       functions: reachable_functions.clone(),
       signature_to_aliasing_info,
-      interface_to_edge_blueprints,
-      interface_to_sub_citizen_to_edge,
+      interface_template_to_edge_blueprints: interface_to_edge_blueprints,
+      interface_template_to_sub_citizen_to_edge: interface_to_sub_citizen_to_edge,
       instantiation_name_to_instantiation_bounds,
       kind_exports: coutputs.get_kind_exports(),
       function_exports: coutputs.get_function_exports(),

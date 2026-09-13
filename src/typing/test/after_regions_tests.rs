@@ -127,7 +127,6 @@ exported func main() {
   );
 }
 
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
 #[ignore]
 fn lambda_body_type_matches_anonymous_interface_return_type() {
@@ -159,7 +158,6 @@ exported func main() {
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
 #[ignore]
 fn minimal_anonymous_interface_construction() {
@@ -652,10 +650,7 @@ exported func main() int {
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// Depends on IFunction1, and maybe Generic interface anonymous subclass
-// VCOORD: re-enable anonymous interface macro after we do the ITypeST migration
 #[test]
-#[ignore]
 fn basic_ifunction1_anonymous_subclass() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

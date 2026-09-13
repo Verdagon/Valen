@@ -9,7 +9,6 @@ use crate::testvm::von::IVonData;
 use crate::testvm::von::VonInt;
 pub struct OptTests;
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn test_empty_and_get_for_some() {
     let compilation_bump = bumpalo::Bump::new();

@@ -142,7 +142,6 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on interface dispatch: VM check_kind struct-implements-interface needs HinputsI edges (heap.rs:894)"]
 #[test]
 fn tests_upcasting_from_a_struct_to_an_interface() {
     let compilation_bump = bumpalo::Bump::new();
@@ -165,7 +164,6 @@ fn tests_upcasting_from_a_struct_to_an_interface() {
     compile.run_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn tests_upcasting_from_if() {
     let compilation_bump = bumpalo::Bump::new();
@@ -426,7 +424,6 @@ exported func main() int { bork() }
     }
 }
 
-#[ignore = "blocked on interface dispatch: VM check_kind struct-implements-interface needs HinputsI edges (heap.rs:894)"]
 #[test]
 fn tests_calling_a_virtual_function() {
     let compilation_bump = bumpalo::Bump::new();
@@ -452,7 +449,6 @@ fn tests_calling_a_virtual_function() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn tests_making_a_variable_with_a_pattern() {
     let compilation_bump = bumpalo::Bump::new();
@@ -548,7 +544,6 @@ fn tests_calling_an_abstract_function() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn template_overrides_are_stamped() {
     // See TIBANFC: Translate Impl Bound Argument Names For Case

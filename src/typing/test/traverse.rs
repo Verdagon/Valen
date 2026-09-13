@@ -252,10 +252,10 @@ where
   for f in &h.functions {
     visit_function_definition(pred, out, f);
   }
-  for blueprint in h.interface_to_edge_blueprints.values() {
+  for blueprint in h.interface_template_to_edge_blueprints.values() {
     visit_interface_edge_blueprint(pred, out, blueprint);
   }
-  for sub_to_edge in h.interface_to_sub_citizen_to_edge.values() {
+  for sub_to_edge in h.interface_template_to_sub_citizen_to_edge.values() {
     for edge in sub_to_edge.values() {
       visit_edge(pred, out, edge);
     }
@@ -410,7 +410,7 @@ fn visit_interface_edge_blueprint<'s, 't, T, F>(
   's: 't,
 {
   collect_if(pred, out, NodeRefT::InterfaceEdgeBlueprint(b));
-  visit_id(pred, out, &b.interface);
+  visit_id(pred, out, &b.interface_template);
   for (proto, _idx) in b.super_family_root_headers {
     visit_prototype(pred, out, proto);
   }

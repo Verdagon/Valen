@@ -334,18 +334,6 @@ where
     })
   }
 
-  pub fn get_interface_template(&self, id: IdT<'s, 't>) -> IdT<'s, 't> {
-    let local_name = match id.local_name {
-      INameT::Interface(i) => INameT::InterfaceTemplate(i.template),
-      _ => panic!("get_interface_template called with non-interface name"),
-    };
-    *self.typing_interner.intern_id(IdValT {
-      package_coord: id.package_coord,
-      init_steps: id.init_steps,
-      local_name,
-    })
-  }
-
   pub fn get_impl_template(interner: &TypingInterner<'s, 't>, id: IdT<'s, 't>) -> IdT<'s, 't> {
     let IdT { package_coord, init_steps, local_name, .. } = id;
     let impl_name = IImplNameT::try_from(local_name).expect("get_impl_template: not an impl name");
@@ -2002,4 +1990,25 @@ pub fn translate_sharedness(sharedness_p: SharednessP) -> SharednessT {
     SharednessP::Single => SharednessT::Single,
     SharednessP::Shared => SharednessT::Shared,
   }
+}
+
+// The interface-template id for an interface id: drops the generic args (and the placeholder
+// owners they carry) down to the bare template name. A free fn rather than a Compiler method so
+// passes without a Compiler — e.g. the instantiator — can derive the same id.
+pub fn get_interface_template<'s, 't>(
+  interner: &TypingInterner<'s, 't>,
+  id: IdT<'s, 't>,
+) -> IdT<'s, 't>
+where
+  's: 't,
+{
+  let local_name = match id.local_name {
+    INameT::Interface(i) => INameT::InterfaceTemplate(i.template),
+    _ => panic!("get_interface_template called with non-interface name"),
+  };
+  *interner.intern_id(IdValT {
+    package_coord: id.package_coord,
+    init_steps: id.init_steps,
+    local_name,
+  })
 }

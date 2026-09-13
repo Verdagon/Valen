@@ -27,6 +27,7 @@ use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::keywords::Keywords;
 use crate::compile_options::GlobalOptions;
 use crate::typing::templata::templata::ITemplataT;
+use crate::typing::templata_compiler::get_interface_template;
 use crate::typing::templata_compiler::peel_all_references;
 use crate::typing::ast::expressions::ExpressionTE;
 use crate::typing::env::function_environment_t::LocalVariable;
@@ -311,8 +312,8 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             structs: _structs_t,
             functions: _functions_t,
             signature_to_aliasing_info: _,
-            interface_to_edge_blueprints: _interface_to_edge_blueprints_t,
-            interface_to_sub_citizen_to_edge: _interface_to_sub_citizen_to_edge_t,
+            interface_template_to_edge_blueprints: _interface_to_edge_blueprints_t,
+            interface_template_to_sub_citizen_to_edge: _interface_to_sub_citizen_to_edge_t,
             instantiation_name_to_instantiation_bounds: _instantiation_name_to_function_bound_to_rune_t,
             kind_exports: kind_exports_t,
             function_exports: function_exports_t,
@@ -746,7 +747,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
     pub fn translate_override(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, abstract_func_prototype_t: &PrototypeT<'s, 't>, _abstract_func_prototype: &PrototypeI<'s, 'i>, _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>) {
         let impl_template_id = Compiler::get_impl_template(self.typing_interner, *impl_id_t);
         let edge_t = vassert_one(
-            self.hinputs.interface_to_sub_citizen_to_edge.values()
+            self.hinputs.interface_template_to_sub_citizen_to_edge.values()
                 .flat_map(|sub_to_edge| sub_to_edge.values().copied())
                 .filter(|edge| Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template_id));
         let _edge_id = edge_t.edge_id;
@@ -842,7 +843,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
 
     pub fn translate_impl_callsite(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, _impl_id_t: &IdT<'s, 't>, impl_id: &IdI<'s, 'i>, _instantiation_bounds_for_unsubstituted_impl: InstantiationBoundArgumentsI<'s, 'i>) {
         let impl_template_id = Compiler::get_impl_template(self.typing_interner, *_impl_id_t);
-        let impl_definition = vassert_one(self.hinputs.interface_to_sub_citizen_to_edge.iter().flat_map(|(_, m)| m.values()).filter(|edge| {
+        let impl_definition = vassert_one(self.hinputs.interface_template_to_sub_citizen_to_edge.iter().flat_map(|(_, m)| m.values()).filter(|edge| {
             Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template_id
         }));
 
@@ -905,8 +906,10 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 KindT::Interface(ir) => ir.id,
                 other => panic!("abstract func virtual param is not an interface: {:?}", other),
             };
+        let interface_template_id =
+            get_interface_template(self.typing_interner, *typed_interface_id);
         let index_in_edge =
-            self.hinputs.interface_to_edge_blueprints.get(&typed_interface_id)
+            self.hinputs.interface_template_to_edge_blueprints.get(&interface_template_id)
                 .expect("vassertSome: interface_to_edge_blueprints for abstract func")
                 .super_family_root_headers.iter()
                 .position(|(header_proto, _)| header_proto.id == desired_abstract_prototype_t.id)
@@ -1585,8 +1588,13 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                         KindT::Interface(ir) => ir.id,
                         other => panic!("InterfaceFunctionCall virtual param is not an interface: {:?}", other),
                     };
+                // The blueprint map is keyed by interface template: an externally-declared abstract
+                // method's virtual param carries the method's own placeholder, not the interface's,
+                // so we must drop to the template before looking up.
+                let interface_template_id =
+                    get_interface_template(self.typing_interner, *typed_interface_id);
                 let blueprint =
-                    self.hinputs.interface_to_edge_blueprints.get(&typed_interface_id)
+                    self.hinputs.interface_template_to_edge_blueprints.get(&interface_template_id)
                         .expect("vassertSome: interface_to_edge_blueprints for InterfaceFunctionCall");
                 let index_in_edge =
                     blueprint.super_family_root_headers.iter()

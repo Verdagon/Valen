@@ -61,9 +61,9 @@ pub struct HinputsT<'s, 't> {
   // The borrow checker's aliasing info per function, keyed by signature. The backend reads it to emit
   // `noalias` attributes (and, later, block-scoped alias metadata).
   pub signature_to_aliasing_info: HashMap<SignatureT<'s, 't>, FunctionAliasingInfoT>,
-
-  pub interface_to_edge_blueprints: HashMap<IdT<'s, 't>, &'t InterfaceEdgeBlueprintT<'s, 't>>,
-  pub interface_to_sub_citizen_to_edge:
+  
+  pub interface_template_to_edge_blueprints: HashMap<IdT<'s, 't>, &'t InterfaceEdgeBlueprintT<'s, 't>>,
+  pub interface_template_to_sub_citizen_to_edge:
     HashMap<IdT<'s, 't>, HashMap<IdT<'s, 't>, &'t EdgeT<'s, 't>>>,
 
   pub instantiation_name_to_instantiation_bounds:
@@ -119,7 +119,7 @@ impl<'s, 't> HinputsT<'s, 't> {
 
   pub fn lookup_edge(&self, impl_id: IdT<'s, 't>) -> &'t EdgeT<'s, 't> {
     let matches: Vec<&&'t EdgeT<'s, 't>> = self
-      .interface_to_sub_citizen_to_edge
+      .interface_template_to_sub_citizen_to_edge
       .values()
       .flat_map(|m| m.values())
       .filter(|edge| edge.edge_id == impl_id)
@@ -273,14 +273,14 @@ impl<'s, 't> HinputsT<'s, 't> {
 
   pub fn lookup_impl(
     &self,
-    sub_citizen_tt: IdT<'s, 't>,
-    interface_tt: IdT<'s, 't>,
+    sub_citizen_template: IdT<'s, 't>,
+    interface_template: IdT<'s, 't>,
   ) -> &'t EdgeT<'s, 't> {
     self
-      .interface_to_sub_citizen_to_edge
-      .get(&interface_tt)
+      .interface_template_to_sub_citizen_to_edge
+      .get(&interface_template)
       .unwrap_or_else(|| panic!("lookup_impl: interface not found"))
-      .get(&sub_citizen_tt)
+      .get(&sub_citizen_template)
       .unwrap_or_else(|| panic!("lookup_impl: sub citizen not found"))
   }
 

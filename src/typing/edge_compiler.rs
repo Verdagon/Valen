@@ -27,7 +27,9 @@ use crate::typing::templata::templata::expect_kind_templata;
 use crate::typing::templata::templata::KindTemplataT;
 use crate::typing::templata::templata::PlaceholderTemplataT;
 use crate::typing::templata::templata::*;
-use crate::typing::templata_compiler::{replace_value_type_in_ref, IBoundArgumentsSource};
+use crate::typing::templata_compiler::{
+  get_interface_template, replace_value_type_in_ref, IBoundArgumentsSource,
+};
 use crate::typing::types::types::*;
 use crate::typing::types::types::{KindPlaceholderT, KindT, RegionT};
 use crate::utils::arena_index_map::ArenaIndexMap;
@@ -79,9 +81,7 @@ where
     // val itables = interfaceEdgeBlueprints.map(interfaceEdgeBlueprint => { ... })
     let itables: HashMap<IdT<'s, 't>, HashMap<IdT<'s, 't>, &'t EdgeT<'s, 't>>> =
             interface_edge_blueprints.iter().map(|interface_edge_blueprint| -> Result<(IdT<'s,'t>, HashMap<IdT<'s,'t>, &'t EdgeT<'s,'t>>), ICompileErrorT<'s,'t>> {
-                let interface_placeholdered_id = interface_edge_blueprint.interface;
-                let interface_template_id = self.get_interface_template(interface_placeholdered_id);
-                let interface_id = coutputs.lookup_interface_by_template_name(interface_template_id).instantiated_interface.id;
+                let interface_template_id = interface_edge_blueprint.interface_template;
                 let overriding_impls = coutputs.get_child_impls_for_super_interface_template(interface_template_id);
                 let overriding_citizen_to_found_function: HashMap<IdT<'s, 't>, &'t EdgeT<'s, 't>> =
                     overriding_impls.iter().map(|overriding_impl| -> Result<(IdT<'s,'t>, &'t EdgeT<'s,'t>), ICompileErrorT<'s,'t>> {
@@ -114,10 +114,9 @@ where
                             instantiation_bound_params: overriding_impl.instantiation_bound_params,
                             abstract_func_to_override_func,
                         });
-                        let overriding_citizen_def = coutputs.lookup_citizen_by_template_name(overriding_citizen_template_id);
-                        Ok((ISubKindTT::from(overriding_citizen_def.instantiated_citizen()).id(), edge))
+                        Ok((overriding_citizen_template_id, edge))
                     }).collect::<Result<HashMap<_, _>, _>>()?;
-                Ok((*interface_id, overriding_citizen_to_found_function))
+                Ok((interface_template_id, overriding_citizen_to_found_function))
             }).collect::<Result<HashMap<_, _>, _>>()?;
 
     Ok((interface_edge_blueprints, itables))
@@ -138,7 +137,7 @@ where
         match function.header.get_abstract_interface() {
           None => Vec::new(),
           Some(abstract_interface) => {
-            let abstract_interface_template = self.get_interface_template(*abstract_interface.id);
+            let abstract_interface_template = get_interface_template(self.typing_interner, *abstract_interface.id);
             vec![(abstract_interface_template, *function)]
           }
         }
@@ -211,7 +210,7 @@ where
           function_headers.into_iter().map(|(p, vi)| (p, vi as i32)).collect(),
         );
         self.typing_interner.alloc(InterfaceEdgeBlueprintT {
-          interface: *interface_def.instantiated_interface.id,
+          interface_template: interface_def.template_name,
           super_family_root_headers,
         })
       })

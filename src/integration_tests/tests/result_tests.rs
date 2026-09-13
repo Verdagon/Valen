@@ -84,7 +84,6 @@ exported func main() str {
 
 
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
 #[test]
 fn test_owning_expect() {
     let compilation_bump = bumpalo::Bump::new();

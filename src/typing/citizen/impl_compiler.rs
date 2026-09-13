@@ -14,6 +14,7 @@ use crate::typing::ast::citizens::CitizenDefinitionT;
 use crate::typing::ast::citizens::*;
 use crate::typing::ast::expressions::*;
 use crate::typing::compiler::Compiler;
+use crate::typing::templata_compiler::get_interface_template;
 use crate::typing::compiler_error_reporter::ICompileErrorT;
 use crate::typing::compiler_outputs::*;
 use crate::typing::env::environment::child_of;
@@ -408,7 +409,7 @@ where
           })
         }
       };
-    let super_interface_template_id = self.get_interface_template(*super_interface.id);
+    let super_interface_template_id = get_interface_template(self.typing_interner, *super_interface.id);
 
     let sub_citizen_sharedness = match coutputs.lookup_citizen_by_tt(sub_citizen, self) {
       CitizenDefinitionT::Struct(s) => s.sharedness,
