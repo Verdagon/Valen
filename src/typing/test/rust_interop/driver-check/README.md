@@ -23,14 +23,20 @@ at `src/typing/compiler_outputs.rs:639`. The call path is
 (`src/typing/citizen/struct_compiler_core.rs:267`) →
 `evaluate_generic_function_from_non_call_for_header`.
 
-## Why it only reproduces through `valen build`
+## Status: fixed, and now guarded in-suite
 
-It surfaces **only with the builtins compiled in** — the `valen build` / `run_driven_rustc`
-path. The builtins add the bounds that pull the imported param-type runes into the
-reachable-bounds set, so the bare `--lib` harness (`run_case_rustc_driven*` / `drive_rustc`,
-which compiles no builtins) does not hit it. This is why the repro is a real `valen build`
-project rather than an in-tree harness case; see the "builtins repro" trap in
-`docs/handoffs/rust-interop-handoff.md`.
+The crash is fixed: `check_defining_conclusions_and_resolve` derives a citizen's bounds via
+`resolve_citizen_bounds` (`src/typing/citizen/struct_compiler.rs`) from the postparsed
+declaration, never `get_inner_env_for_type`, so an imported param-only type contributes no
+bounds instead of unwrapping `None`.
+
+It surfaced **only with the builtins compiled in** — the builtins add the bounds that pull the
+imported param-type runes into the reachable-bounds set. The interop test harness now compiles
+the builtins too (`compile_builtins`, on for the whole corpus), so the driven case
+`a_trait_method_with_two_imported_params` (`cases.rs`) exercises exactly this reachable-bounds
+path in-suite and guards the fix — it no longer takes a real `valen build` to reach it. This
+project stays as the full-pipeline `valen build` e2e (and the vendored `--release` link repro,
+handoff Next #4).
 
 ## Reproduce
 
@@ -45,6 +51,10 @@ cargo build --manifest-path Cargo.toml --features rust_interop --bin valenc-rs -
 PATH="$PWD/target/debug:$PATH" RUST_BACKTRACE=1 ./target/debug/valen build \
   --manifest-path src/typing/test/rust_interop/driver-check/Valen.toml
 ```
+
+To see whether interop alone builds and runs a program the borrow checker does not yet accept, add
+`--no-borrow-check` to the `valen build` line. It reaches `valenc-rs` as `VALEN_BORROW_CHECK=0`
+on cargo's environment, so anyone driving cargo by hand can set that variable directly.
 
 → exit 101, the panic above.
 

@@ -285,6 +285,7 @@ where
       };
       ValeSig {
         generic_params,
+        generic_param_bounds: &[],
         params: interner.alloc_slice_from_vec(vec![receiver]),
         ret: ValeSigType::Kind(KindT::Void(VoidT)),
       }

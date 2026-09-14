@@ -552,6 +552,156 @@ fn param() {
   assert_templex_name(pattern.templex.as_ref().unwrap(), "F");
 }
 
+// A `mut` after a param's type is a placeholder for a future per-parameter borrow-checker modifier.
+// The parser accepts it and drops it: the param is exactly `self &Win`, nothing records the `mut`.
+#[test]
+fn param_trailing_mut_is_ignored() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let denizen = compile_denizen_expect(&parse_arena, &keywords, "func rotate(self &Win mut) { }");
+  match denizen {
+    IDenizenP::TopLevelFunction(FunctionP {
+      header:
+        FunctionHeaderP {
+          params:
+            Some(ParamsP {
+              params:
+                [ParameterP {
+                  self_borrow: None,
+                  pattern:
+                    Some(PatternPP {
+                      destination:
+                        Some(DestinationLocalP {
+                          decl: INameDeclarationP::LocalNameDeclaration(NameP(_, StrI("self"))),
+                          ..
+                        }),
+                      templex:
+                        Some(ITemplexPT::BorrowRef(BorrowRefPT {
+                          inner:
+                            ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("Win")), .. }),
+                          ..
+                        })),
+                      destructure: None,
+                      ..
+                    }),
+                  ..
+                }],
+              ..
+            }),
+          ..
+        },
+      ..
+    }) => {}
+    other => panic!("expected one `self &Win` param, got {:?}", other),
+  }
+}
+
+// `mut` is allowed on a generic type and on a non-final param; the comma split is unaffected.
+#[test]
+fn several_params_with_trailing_mut_parse() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let denizen = compile_denizen_expect(
+    &parse_arena,
+    &keywords,
+    "func on_tick<F>(self &Fwd<F> mut, w &Win mut, input &Inp) { }",
+  );
+  match denizen {
+    IDenizenP::TopLevelFunction(FunctionP {
+      header:
+        FunctionHeaderP {
+          params:
+            Some(ParamsP {
+              params:
+                [ParameterP {
+                  pattern:
+                    Some(PatternPP {
+                      destination:
+                        Some(DestinationLocalP {
+                          decl: INameDeclarationP::LocalNameDeclaration(NameP(_, StrI("self"))),
+                          ..
+                        }),
+                      templex:
+                        Some(ITemplexPT::BorrowRef(BorrowRefPT {
+                          inner:
+                            ITemplexPT::Call(CallPT {
+                              template:
+                                ITemplexPT::NameOrRune(NameOrRunePT {
+                                  name: NameP(_, StrI("Fwd")),
+                                  ..
+                                }),
+                              args:
+                                [ITemplexPT::NameOrRune(NameOrRunePT {
+                                  name: NameP(_, StrI("F")),
+                                  ..
+                                })],
+                              ..
+                            }),
+                          ..
+                        })),
+                      ..
+                    }),
+                  ..
+                }, ParameterP {
+                  pattern:
+                    Some(PatternPP {
+                      destination:
+                        Some(DestinationLocalP {
+                          decl: INameDeclarationP::LocalNameDeclaration(NameP(_, StrI("w"))),
+                          ..
+                        }),
+                      templex:
+                        Some(ITemplexPT::BorrowRef(BorrowRefPT {
+                          inner:
+                            ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("Win")), .. }),
+                          ..
+                        })),
+                      ..
+                    }),
+                  ..
+                }, ParameterP {
+                  pattern:
+                    Some(PatternPP {
+                      destination:
+                        Some(DestinationLocalP {
+                          decl: INameDeclarationP::LocalNameDeclaration(NameP(_, StrI("input"))),
+                          ..
+                        }),
+                      templex:
+                        Some(ITemplexPT::BorrowRef(BorrowRefPT {
+                          inner:
+                            ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("Inp")), .. }),
+                          ..
+                        })),
+                      ..
+                    }),
+                  ..
+                }],
+              ..
+            }),
+          ..
+        },
+      ..
+    }) => {}
+    other => panic!("expected `self &Fwd<F>`, `w &Win`, `input &Inp`, got {:?}", other),
+  }
+}
+
+// Only one trailing `mut` is recognized; a second one is still junk after the type.
+#[test]
+fn param_double_trailing_mut_is_rejected() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let err = compile_for_error(&parse_arena, &keywords, "func f(x &Win mut mut) { }");
+  match err {
+    ParseError::BadThingAfterTypeInPattern(_) => {}
+    other => panic!("expected BadThingAfterTypeInPattern, got {:?}", other),
+  }
+}
+
 #[test]
 fn func_with_rules() {
   let parse_bump = Bump::new();
@@ -604,6 +754,58 @@ fn func_with_func_bound() {
       assert_eq!(bound_name.as_str(), "moo");
     }
     other => panic!("expected `func sum<T>() where func moo(&T)void`, got {:?}", other),
+  }
+}
+
+// A bound prototype's params used to accept any trailing junk and silently drop it, because the
+// tuple parse never checked its element iterators were exhausted. Junk is now a parse error.
+#[test]
+fn func_bound_param_with_trailing_junk_is_rejected() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let err =
+    compile_for_error(&parse_arena, &keywords, "func sum<T>() where func moo(&T foo)void {3}");
+  match err {
+    ParseError::BadPrototypeParams(_) => {}
+    other => panic!("expected BadPrototypeParams, got {:?}", other),
+  }
+}
+
+// The one thing allowed after a bound param's type is the `mut` placeholder, which is dropped: the
+// bound is exactly `func moo(&T)void`.
+#[test]
+fn func_bound_param_trailing_mut_is_ignored() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let denizen =
+    compile_denizen_expect(&parse_arena, &keywords, "func sum<T>() where func moo(&T mut)void {3}");
+  match denizen {
+    IDenizenP::TopLevelFunction(FunctionP {
+      header:
+        FunctionHeaderP {
+          template_rules:
+            Some(TemplateRulesP {
+              rules:
+                [IRulexPR::Templex(ITemplexPT::Func(FuncPT {
+                  parameters:
+                    [ITemplexPT::BorrowRef(BorrowRefPT {
+                      region: RegionP::Unspecified,
+                      inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("T")), .. }),
+                      ..
+                    })],
+                  return_type:
+                    ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("void")), .. }),
+                  ..
+                }))],
+              ..
+            }),
+          ..
+        },
+      ..
+    }) => {}
+    other => panic!("expected bound `func moo(&T)void`, got {:?}", other),
   }
 }
 

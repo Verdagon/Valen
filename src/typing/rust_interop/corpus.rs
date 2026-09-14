@@ -155,8 +155,8 @@ exported func main() int {
 /// A Rust->Valen callback that takes a scalar argument. `Adder::add(&self, n: i32) -> i32`, with a
 /// Valen `MyAdder` implementing it; Rust's `run_adder::<MyAdder>(&a, 35)` passes `35` inbound and
 /// Valen's `add` returns it. Proves an inbound *value* crosses Rust->Valen — the `&self`-only
-/// callback above never passed one. `add` returns the argument rather than transforming it because
-/// the driven harness compiles no builtins, so Valen operators are unavailable here.
+/// callback above never passed one. `add` returns the argument unchanged; that the value arrives
+/// intact is the whole point, so it needs no arithmetic.
 pub const A_VALEN_CALLBACK_TAKES_A_SCALAR_ARG: Case = Case {
   fixture: "fixtures_rust_callback_scalar",
   name: "rust-callback-scalar-arg",
@@ -427,6 +427,22 @@ pub const CALLS_A_ZERO_ARG_RUST_FUNCTION: Case = Case {
 import rust.mycrate.seven;
 exported func main() int {
   return seven();
+}
+"#,
+  expect: Expect::Returns(7),
+};
+
+/// The builtins compile alongside a driven case, so Valen's operators — library functions in the
+/// builtins, not typing-pass primitives — resolve end to end: `3 + 4` reaches `+` and the linked bin
+/// exits 7. This is the in-tree guard on harness↔`valen build` builtins parity; without the builtins
+/// the driven harness rejected `+` as `CouldntFindFunctionToCallT`, so a program shape that only fails
+/// with builtins present (the reachable-bounds class) could not be reproduced here.
+pub const A_DRIVEN_CASE_RESOLVES_A_BUILTIN_OPERATOR: Case = Case {
+  fixture: "fixtures",
+  name: "builtin-operator",
+  vale: r#"
+exported func main() int {
+  return 3 + 4;
 }
 "#,
   expect: Expect::Returns(7),
@@ -822,7 +838,7 @@ exported func main() int {
 /// without disturbing anything.
 ///
 /// Deliberately absent: a second crate (a case names one fixture, and case 24 covers it) and
-/// arithmetic (the harness supplies no builtins — a Vale-side harness gap, not an interop one).
+/// arithmetic (covered on its own by `A_DRIVEN_CASE_RESOLVES_A_BUILTIN_OPERATOR`).
 pub const A_PROGRAM_USING_EVERYTHING_AT_ONCE: Case = Case {
   fixture: "fixtures",
   name: "everything",

@@ -683,3 +683,46 @@ exported func main() int {
   );
   let _coutputs = compile.expect_compiler_outputs();
 }
+
+#[test]
+fn generic_forwarder_with_churning_closure_param_compiles() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+struct Win { x int; }
+struct Inp { }
+
+func rotate(self &Win in r) mut(r) { }
+
+struct Fwd<F>
+where func drop(F)void, func __call(&F, &Win mut, &Inp)void
+{
+  f F;
+}
+
+func on_tick<F, r', s'>(self &Fwd<F> in s, w &Win in r, input &Inp) mut(r) mut(s) {
+  (&self.f)(w, input);
+}
+
+exported func main() int {
+  cb = Fwd((w, input) => { w.rotate(); });
+  return 0;
+}
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation_without_borrow_check(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
+}

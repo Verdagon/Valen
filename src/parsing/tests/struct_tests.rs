@@ -332,3 +332,48 @@ fn struct_with_int_rune() {
     _ => panic!("expected struct Vecf<N> full structure"),
   }
 }
+
+// The forwarder shape: a struct's `where func` bound whose middle param carries the `mut`
+// placeholder. It parses to exactly `func __call(&F, &Win, &Inp)void`, the `mut` dropped.
+#[test]
+fn struct_bound_param_trailing_mut_is_ignored() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let denizen = compile_denizen_expect(
+    &parse_arena,
+    &keywords,
+    r#"
+struct Fwd<F>
+where func drop(F)void, func __call(&F, &Win mut, &Inp)void
+{
+  f F;
+}
+"#,
+  );
+  match denizen {
+    IDenizenP::TopLevelStruct(StructP {
+      template_rules:
+        Some(TemplateRulesP {
+          rules:
+            [_, IRulexPR::Templex(ITemplexPT::Func(FuncPT {
+              parameters:
+                [ITemplexPT::BorrowRef(BorrowRefPT {
+                  inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("F")), .. }),
+                  ..
+                }), ITemplexPT::BorrowRef(BorrowRefPT {
+                  inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("Win")), .. }),
+                  ..
+                }), ITemplexPT::BorrowRef(BorrowRefPT {
+                  inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("Inp")), .. }),
+                  ..
+                })],
+              ..
+            }))],
+          ..
+        }),
+      ..
+    }) => {}
+    other => panic!("expected `func __call(&F, &Win, &Inp)void` bound, got {:?}", other),
+  }
+}

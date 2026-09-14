@@ -109,6 +109,16 @@ pub struct BuildInputs {
   pub build_dir: PathBuf,
   /// The `valenc-rs` wrapper binary cargo uses as `RUSTC_WORKSPACE_WRAPPER`.
   pub valenc_rs: PathBuf,
+  /// Wipe the driven crate's incremental cache before building. See `run_build` for why this exists:
+  /// with it unset, a warm rebuild links an *empty* `vale_cgu` (undefined `__vale_main`) until Parts
+  /// A+B of the incremental fix land. Tests drive both values directly; the `valen` bin flips this to
+  /// `false` once the fix is in, so real rebuilds reuse rustc's incremental cache.
+  pub clear_incremental: bool,
+  /// Whether the group borrow checker runs on the driven Valen crates. Handed to `valenc-rs` as
+  /// `VALEN_BORROW_CHECK=1|0` on the cargo spawn, set both ways explicitly so a value leaked into the
+  /// user's shell cannot override it. `valen build --no-borrow-check` passes `false`, so a user can
+  /// see whether interop alone builds and runs a program the checker does not yet accept.
+  pub borrow_check: bool,
 }
 
 /// Read the `Valen.toml`, generate the cargo workspace, write it under `build_dir`, and copy the
@@ -144,33 +154,41 @@ pub fn stage_workspace(inputs: &BuildInputs) -> Result<(), String> {
 /// Stage the workspace, then run `cargo build` over it with `valenc-rs` installed as
 /// `RUSTC_WORKSPACE_WRAPPER`, returning cargo's exit code. The generated `rust-toolchain.toml` selects
 /// the fork, and `valenc-rs`'s baked rpath finds `librustc_driver`, so no toolchain/dylib env is set
-/// here; a leaked `RUSTC` is cleared so it cannot override the wrapper. cargo invokes `valenc-rs` once
-/// per crate — a `.valen` crate drives Valen, a pure-Rust dependency passes through.
+/// here; a leaked `RUSTC` is cleared so it cannot override the wrapper. The one env this does set is
+/// `VALEN_BORROW_CHECK` (`inputs.borrow_check` as `1`/`0`, explicitly both ways), which `valenc-rs`'s
+/// `main()` reads. cargo invokes `valenc-rs` once per crate — a `.valen` crate drives Valen, a
+/// pure-Rust dependency passes through.
 ///
-/// Before building, the driven crate's incremental cache is cleared (interim). Valen emits the
-/// program's bodies — the entry `__vale_main` and each callback wrapper — into rustc's module out-of-band
-/// via `fill_extra_modules`, which rustc's incremental system does not track as an output. So an
-/// incremental *reuse* of the `.valen` crate's cached codegen units yields the object from *before*
-/// Valen's emit, missing `__vale_main`, and the link fails with an undefined symbol — the exact failure
-/// on any rebuild (`stage_workspace` re-copies the source, so cargo recompiles the bin every time).
-/// Disabling incremental entirely (`CARGO_INCREMENTAL=0`) is *not* the fix: its merged CGU layout drops
-/// the reified Rust leaves the Valen body calls (e.g. `main_loop::<MyCb>`). Clearing the cache instead
-/// forces a fresh *full* codegen on incremental's per-item CGU layout, so both Valen's emit and the leaves
-/// land. Dep rlibs live under `deps/` and are fingerprinted separately, so they still skip — only the
-/// driven bin recompiles (~2s). The permanent fix is fork-side: make the extra-module output participate
-/// in incremental tracking.
+/// When `inputs.clear_incremental` is set, the driven crate's incremental cache is wiped first — the
+/// interim workaround for the warm-rebuild bug. Valen re-emits its module (`vale_cgu`, carrying the
+/// entry `__vale_main` + each callback wrapper) on *every* build via `fill_extra_modules`, but that
+/// emit's inputs are populated only as a *side effect* of the `per_instance_mir` query writing
+/// `DriverState`. rustc reaches `per_instance_mir` only from `collect_items_of_instance` under the
+/// `items_of_instance` query (`cache_on_disk_if{true}`), so a warm build serves that from disk, never
+/// calls `per_instance_mir`, and the emit comes out fresh but *empty* → undefined `__vale_main` at
+/// link. It is **not** a stale object. Clearing forces a fresh full collect so `per_instance_mir`
+/// fires. Disabling incremental entirely (`CARGO_INCREMENTAL=0`) is *not* a substitute: its merged-CGU
+/// layout DCEs the reified Rust leaves the Valen body calls (e.g. `main_loop::<MyCb>`) — a different
+/// failure. Dep rlibs live under `deps/` and are fingerprinted separately, so they skip either way —
+/// only the driven bin recompiles (~2s; `stage_workspace` re-copies the source, bumping its mtime).
+/// The real no-fork fix (re-fire `per_instance_mir` from the `eval_always` partition override + bake a
+/// `.valen`-source digest into the stub) lets callers pass `clear_incremental = false` for fast,
+/// correct rebuilds.
 pub fn run_build(inputs: &BuildInputs) -> Result<i32, String> {
   stage_workspace(inputs)?;
-  let incremental = inputs.build_dir.join("target").join("debug").join("incremental");
-  if incremental.exists() {
-    fs::remove_dir_all(&incremental).map_err(|e| {
-      format!("could not clear the incremental cache at {}: {e}", incremental.display())
-    })?;
+  if inputs.clear_incremental {
+    let incremental = inputs.build_dir.join("target").join("debug").join("incremental");
+    if incremental.exists() {
+      fs::remove_dir_all(&incremental).map_err(|e| {
+        format!("could not clear the incremental cache at {}: {e}", incremental.display())
+      })?;
+    }
   }
   let status = Command::new("cargo")
     .current_dir(&inputs.build_dir)
     .arg("build")
     .env("RUSTC_WORKSPACE_WRAPPER", &inputs.valenc_rs)
+    .env("VALEN_BORROW_CHECK", if inputs.borrow_check { "1" } else { "0" })
     .env_remove("RUSTC")
     .status()
     .map_err(|e| format!("could not spawn cargo: {e}"))?;

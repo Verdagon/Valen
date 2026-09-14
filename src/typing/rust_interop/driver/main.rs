@@ -13,9 +13,12 @@
 
 #![feature(rustc_private)]
 
+use std::env;
 use std::process::exit;
 
-use frontend_rust::typing::rust_interop::drive::{default_sysroot, run_wrapper, WrapperInputs};
+use frontend_rust::typing::rust_interop::drive::{
+  default_sysroot, parse_borrow_check_env, run_wrapper, WrapperInputs,
+};
 
 fn main() {
   let argv: Vec<String> = std::env::args().collect();
@@ -29,7 +32,17 @@ fn main() {
   if !rustc_args.iter().any(|a| a == "--sysroot" || a.starts_with("--sysroot=")) {
     rustc_args.push(format!("--sysroot={}", default_sysroot()));
   }
-  match run_wrapper(&WrapperInputs { rustc_args }) {
+  // `valen build --no-borrow-check` reaches us as `VALEN_BORROW_CHECK=0` on cargo's env (setting it
+  // by hand works too, for anyone driving cargo themselves). Same rule: the env read stays here,
+  // above the dark box.
+  let borrow_check = match parse_borrow_check_env(env::var("VALEN_BORROW_CHECK").ok().as_deref()) {
+    Ok(on) => on,
+    Err(e) => {
+      eprintln!("valenc-rs: {e}");
+      exit(2);
+    }
+  };
+  match run_wrapper(&WrapperInputs { rustc_args, borrow_check }) {
     Ok(result) => exit(result.rustc_exit),
     Err(e) => {
       eprintln!("valenc-rs: {e}");

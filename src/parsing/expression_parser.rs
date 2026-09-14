@@ -444,6 +444,7 @@ where
           false,
           false,
           false,
+          /*is_parameter=*/ false,
           None,
         )?;
         (in_word.range, pattern)
@@ -642,6 +643,7 @@ where
       false,
       false,
       false,
+      /*is_parameter=*/ false,
       None,
     )?;
 

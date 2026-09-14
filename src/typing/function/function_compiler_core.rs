@@ -186,6 +186,7 @@ where
             outer_env: full_env.parent_env,
             function_template_id: &full_env.template_id,
           }),
+          instantiation_bound_params,
         );
         header
       }
@@ -393,6 +394,7 @@ where
     params2: &[ParameterT<'s, 't>],
     return_type: KindT<'s, 't>,
     maybe_origin: Option<FunctionTemplataT<'s, 't>>,
+    instantiation_bound_params: &'t InstantiationBoundArgumentsT<'s, 't>,
   ) -> &'t FunctionHeaderT<'s, 't> {
     match env.id.local_name {
       INameT::Function(FunctionNameT {
@@ -449,11 +451,7 @@ where
 
         let function2 = self.typing_interner.alloc(FunctionDefinitionT {
           header,
-          instantiation_bound_params: self.typing_interner.alloc(InstantiationBoundArgumentsT {
-            rune_to_bound_prototype: self.typing_interner.alloc_index_map(),
-            rune_to_citizen_rune_to_reachable_prototype: self.typing_interner.alloc_index_map(),
-            rune_to_bound_impl: self.typing_interner.alloc_index_map(),
-          }),
+          instantiation_bound_params,
           body: ExpressionTE::Return(self.typing_interner.alloc(ReturnTE::new(
             range,
             ExpressionTE::ExternFunctionCall(self.typing_interner.alloc(

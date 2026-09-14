@@ -3,9 +3,10 @@
 //
 // `run_wrapper` is the dark-box API (@DBAPIZ): cargo hands it the per-crate rustc argv, and its crate-root
 // extension decides whether to drive Valen (a `.valen`) or pass through to plain rustc (any other root).
-// `run_driven_rustc` is the shared driven-compile core; it reads no environment (the sysroot rides the
-// argv). The body mirrors the `#[cfg(test)]` `drive_rustc` harness template; the two should later be
-// unified onto this function (a noted follow-on), which is why the scoped-borrow reasoning is repeated.
+// `run_driven_rustc` is the one driven-compile engine; it reads no environment (the sysroot rides the
+// argv). The `#[cfg(test)]` test harness `drive_rustc` (`harness.rs`) delegates to it rather than
+// re-implementing it, and its typecheck-only `CaseCallbacks` shares the scout→oracle preamble via the
+// helpers below (`driven_code_source` / `scout_package_coords` / `collect_rust_import_paths`).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -52,12 +53,33 @@ pub fn default_sysroot() -> String {
   String::from_utf8(out.stdout).expect("sysroot was not utf8").trim().to_string()
 }
 
+/// The `VALEN_BORROW_CHECK` contract: absent or `"1"` runs the borrow checker, `"0"` skips it, and
+/// anything else is an error rather than a silent default. Pure — it takes the variable's value, not
+/// the environment — so the env read stays in `main()` above the dark box (@DBAPIZ) and the contract
+/// is unit-testable. `valen build` sets the variable both ways explicitly, so a value leaked into the
+/// user's shell cannot override the flag it was given.
+pub fn parse_borrow_check_env(value: Option<&str>) -> Result<bool, String> {
+  match value {
+    None => Ok(true),
+    Some("1") => Ok(true),
+    Some("0") => Ok(false),
+    Some(other) => {
+      Err(format!("VALEN_BORROW_CHECK must be \"1\" (on) or \"0\" (off), got {other:?}"))
+    }
+  }
+}
+
 /// Everything `run_wrapper` needs, gathered by `main()` above the dark-box boundary (@DBAPIZ).
 pub struct WrapperInputs {
   /// The rustc argv for `run_compiler`: argv[0] (the program name) kept, the rustc-path argv[1] cargo
   /// passes already stripped by `main()`, then cargo's flags and the crate-root input positional. For a
   /// `.valen` root the wrapper substitutes the generated stub `.rs` for that positional.
   pub rustc_args: Vec<String>,
+  /// Whether the group borrow checker runs on the driven Valen program. `main()` reads it from
+  /// `VALEN_BORROW_CHECK` (see `parse_borrow_check_env`) above the dark box; `valen build
+  /// --no-borrow-check` is what sets that env, so a user can see whether interop alone builds and runs
+  /// a program the checker does not yet accept.
+  pub borrow_check: bool,
 }
 
 /// The outcome of a wrapper invocation: rustc's exit code, whether the crate was a Valen crate (so the
@@ -73,6 +95,78 @@ pub struct WrapperResult {
 /// hook, so a non-Valen crate compiles byte-identically to vanilla rustc (@PRCCBIVRZ).
 struct NoopCallbacks;
 impl Callbacks for NoopCallbacks {}
+
+// --- Shared driven/typecheck preamble ---------------------------------------------------------------
+// The three interop rustc-callback paths (this file's `DrivenCallbacks`, and the test harness's
+// `DrivenCallbacks` + `CaseCallbacks`) build the same scout → oracle → typing preamble. These helpers
+// are the one home for the pieces that were copied across all three; each callback keeps only its own
+// tail (drive codegen, or stop and assert). `compile_builtins` threads through so operators
+// (`==`/`+`/…, library functions in the builtins) resolve on the paths that want them.
+
+/// The `CodeSource` for a compile: the user files, optionally preceded by the compiler builtins
+/// (arith/logic/…) so Valen's operator library functions resolve. `Source::from_code_map` copies the
+/// map, so the result is tied to the arena, not to `files`.
+pub(crate) fn driven_code_source<'a, 'ctx>(
+  parse_arena: &'ctx ParseArena<'a>,
+  parser_keywords: &'ctx Keywords<'a>,
+  files: &FileCoordinateMap<'a, String>,
+  compile_builtins: bool,
+) -> CodeSource<'a>
+where
+  'a: 'ctx,
+{
+  let mut sources = Vec::new();
+  if compile_builtins {
+    sources.push(Source::builtins(parse_arena, parser_keywords));
+  }
+  sources.push(Source::from_code_map(files));
+  CodeSource::new(sources)
+}
+
+/// The package coordinates to scout/typecheck: the program's own package, preceded by the builtin
+/// package coordinate (`("", [])`) when `compile_builtins` is set so `Source::builtins`' functions get
+/// compiled.
+pub(crate) fn scout_package_coords<'a, 'ctx>(
+  package_coord: &'a PackageCoordinate<'a>,
+  parse_arena: &'ctx ParseArena<'a>,
+  parser_keywords: &'ctx Keywords<'a>,
+  compile_builtins: bool,
+) -> Vec<&'a PackageCoordinate<'a>>
+where
+  'a: 'ctx,
+{
+  let mut coords = Vec::new();
+  if compile_builtins {
+    coords.push(PackageCoordinate::builtin(parse_arena, parser_keywords));
+  }
+  coords.push(package_coord);
+  coords
+}
+
+/// Scout the program and collect the deduped dotted paths of its `import rust.X.Y` statements — the
+/// oracle's importable allowlist. `get_scoutput` memoizes, so a caller that reuses the same scout
+/// afterward (for its code map + AST) pays nothing for this read.
+pub(crate) fn collect_rust_import_paths<'s, 'ctx, 'p>(
+  scout: &mut ScoutCompilation<'s, 'ctx, 'p>,
+  keywords: &Keywords<'s>,
+) -> Vec<String> {
+  let mut paths: Vec<String> = Vec::new();
+  if let Ok(scoutput) = scout.get_scoutput() {
+    for program in scoutput.file_coord_to_contents.values() {
+      for imp in program.imports {
+        if imp.module_name == keywords.rust {
+          let mut segments: Vec<&str> = imp.package_names.iter().map(|s| s.0).collect();
+          segments.push(imp.importee_name.0);
+          let joined = segments.join(".");
+          if !paths.contains(&joined) {
+            paths.push(joined);
+          }
+        }
+      }
+    }
+  }
+  paths
+}
 
 /// The `valenc-rs` wrapper's dark box (@DBAPIZ): cargo invokes `valenc-rs <rustc> <args…>` once per
 /// crate, and `main()` strips the rustc path and hands the rest here. The crate-root file extension
@@ -94,7 +188,13 @@ pub fn run_wrapper(inputs: &WrapperInputs) -> Result<WrapperResult, String> {
         .map_err(|e| format!("could not write the generated stub to {stub_path}: {e}"))?;
       let mut rustc_args = inputs.rustc_args.clone();
       rustc_args[idx] = stub_path;
-      let (rustc_exit, firings) = run_driven_rustc(&rustc_args, &vale_source)?;
+      let (rustc_exit, firings) = run_driven_rustc(
+        &rustc_args,
+        &vale_source,
+        /*emit_backend=*/ true,
+        /*compile_builtins=*/ true,
+        inputs.borrow_check,
+      )?;
       Ok(WrapperResult { rustc_exit, drove_valen: true, firings })
     }
     None => {
@@ -110,9 +210,19 @@ pub fn run_wrapper(inputs: &WrapperInputs) -> Result<WrapperResult, String> {
 /// Set up the instantiator state and drive rustc over `rustc_args` (which must point at a generated stub
 /// `.rs`), with Vale's query overrides + the fill_extra_modules hook installed and `vale_source` typed
 /// in `after_expansion`. Returns rustc's exit code and the provider's firing log. It runs no produced
-/// binary — the caller decides that — and reads no environment (@DBAPIZ). Called by `run_wrapper` once
-/// it has substituted the generated stub for the `.valen` crate root.
-fn run_driven_rustc(rustc_args: &[String], vale_source: &str) -> Result<(i32, Vec<String>), String> {
+/// binary — the caller decides that — and reads no environment (@DBAPIZ). `emit_backend` chooses whether
+/// the fill_extra_modules hook lowers the Vale bodies (off for a firing-log-only run); `compile_builtins`
+/// chooses whether the operator library functions are compiled in; `borrow_check` whether the group
+/// borrow checker runs (`main()` reads it from the environment, so this stays environment-free). Called
+/// by `run_wrapper` (backend and builtins on, the checker as `WrapperInputs` says) and by the test
+/// harness's `drive_rustc` (which threads its own).
+pub(crate) fn run_driven_rustc(
+  rustc_args: &[String],
+  vale_source: &str,
+  emit_backend: bool,
+  compile_builtins: bool,
+  borrow_check: bool,
+) -> Result<(i32, Vec<String>), String> {
   // The instantiator state, all in this frame so it outlives run_compiler (and thus every provider
   // call): four arenas, their interners, the Vale source, and the hinputs/monouts slots.
   let parse_bump = Bump::new();
@@ -129,13 +239,10 @@ fn run_driven_rustc(rustc_args: &[String], vale_source: &str) -> Result<(i32, Ve
   let package_coord = parse_arena.intern_package_coordinate(parse_arena.intern_str("test"), &[]);
   let mut files = FileCoordinateMap::<String>::new();
   files.put(parse_arena.intern_file_coordinate(package_coord, "0.vale"), vale_source.to_string());
-  // Compile the compiler builtins (arith/logic/… — where Valen's `==`/`+`/etc. are defined as library
-  // functions) alongside the user program, exactly as standalone valec does (pass_manager.rs), so int
-  // operators resolve. The builtin package coord is added to the typing scout in `after_expansion`.
-  let code_source = CodeSource::new(vec![
-    Source::builtins(&parse_arena, &parser_keywords),
-    Source::from_code_map(&files),
-  ]);
+  // The builtins (where Valen's `==`/`+`/etc. live as library functions) are compiled alongside the user
+  // program when `compile_builtins` is set, exactly as standalone valec does (pass_manager.rs), so
+  // operators resolve; the matching builtin package coord is added to the scout in `after_expansion`.
+  let code_source = driven_code_source(&parse_arena, &parser_keywords, &files, compile_builtins);
 
   let global_options = GlobalOptions {
     sanity_check: true,
@@ -166,7 +273,7 @@ fn run_driven_rustc(rustc_args: &[String], vale_source: &str) -> Result<(i32, Ve
     callbacks: &callbacks_slot,
     firings: &firings_slot,
     extern_abis: &extern_abis_slot,
-    emit_backend: true,
+    emit_backend,
   };
   let state_ptr = &state as *const DriverState as *const ();
 
@@ -182,6 +289,8 @@ fn run_driven_rustc(rustc_args: &[String], vale_source: &str) -> Result<(i32, Ve
     hinputs_slot: &hinputs_slot,
     typing_error_slot: &typing_error_slot,
     state_ptr,
+    compile_builtins,
+    borrow_check,
   };
   let rustc_exit = rustc_driver::catch_with_exit_code(|| {
     rustc_driver::run_compiler(rustc_args, &mut callbacks);
@@ -208,6 +317,8 @@ struct DrivenCallbacks<'ctx, 's, 't, 'p> {
   hinputs_slot: &'ctx RefCell<Option<HinputsT<'s, 't>>>,
   typing_error_slot: &'ctx RefCell<Option<String>>,
   state_ptr: *const (),
+  compile_builtins: bool,
+  borrow_check: bool,
 }
 
 // SAFETY: identical to the harness's — `run_compiler` moves the callbacks onto a thread it spawns but
@@ -223,37 +334,23 @@ impl<'ctx, 's, 't, 'p> Callbacks for DrivenCallbacks<'ctx, 's, 't, 'p> {
   }
 
   fn after_expansion<'tcx>(&mut self, _compiler: &RustcCompiler, tcx: TyCtxt<'tcx>) -> Compilation {
-    // The builtins live in the empty/root package (`("", [])`); include it alongside "test" so the
-    // operator functions from `Source::builtins` are compiled and `==`/`+`/etc. resolve.
-    let builtin_coord = PackageCoordinate::builtin(self.parse_arena, self.parser_keywords);
     let mut scout = ScoutCompilation::new(
       self.scout_arena,
       self.keywords,
       self.parser_keywords,
       self.parse_arena,
-      vec![builtin_coord, self.package_coord],
+      scout_package_coords(
+        self.package_coord,
+        self.parse_arena,
+        self.parser_keywords,
+        self.compile_builtins,
+      ),
       self.code_source,
       self.global_options.clone(),
     );
 
-    let mut import_paths: Vec<String> = Vec::new();
-    if let Ok(scoutput) = scout.get_scoutput() {
-      for program in scoutput.file_coord_to_contents.values() {
-        for imp in program.imports {
-          if imp.module_name == self.keywords.rust {
-            let mut segments: Vec<&str> = imp.package_names.iter().map(|s| s.0).collect();
-            segments.push(imp.importee_name.0);
-            import_paths.push(segments.join("."));
-          }
-        }
-      }
-    }
-    let mut import_path_strs: Vec<&str> = Vec::new();
-    for path in &import_paths {
-      if !import_path_strs.contains(&path.as_str()) {
-        import_path_strs.push(path.as_str());
-      }
-    }
+    let import_paths = collect_rust_import_paths(&mut scout, self.keywords);
+    let import_path_strs: Vec<&str> = import_paths.iter().map(|s| s.as_str()).collect();
 
     let real = TyCtxtOracle::new(tcx, self.scout_arena, &import_path_strs);
     let compiling = tcx.crate_name(rustc_span::def_id::LOCAL_CRATE).to_string();
@@ -263,7 +360,7 @@ impl<'ctx, 's, 't, 'p> Callbacks for DrivenCallbacks<'ctx, 's, 't, 'p> {
       global_options: self.global_options.clone(),
       debug_out: Arc::new(|x: &str| println!("{}", x)),
       tree_shaking_enabled: true,
-      borrow_checker_enabled: true,
+      borrow_checker_enabled: self.borrow_check,
     };
 
     let code_map = scout.get_code_map().expect("getCodeMap failed");
@@ -282,5 +379,34 @@ impl<'ctx, 's, 't, 'p> Callbacks for DrivenCallbacks<'ctx, 's, 't, 'p> {
 
     arm_driver_state(self.state_ptr);
     Compilation::Continue
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::parse_borrow_check_env;
+
+  // Absent → on: a cargo build that runs `valenc-rs` with no env set still borrow-checks. This is
+  // what keeps a build that spawns cargo without `run_build` (the release e2e) checking.
+  #[test]
+  fn borrow_check_env_defaults_on_when_absent() {
+    assert_eq!(parse_borrow_check_env(None), Ok(true));
+  }
+
+  // The two values `valen build` sets — explicitly both ways, so a leaked env cannot override it.
+  #[test]
+  fn borrow_check_env_reads_one_as_on_and_zero_as_off() {
+    assert_eq!(parse_borrow_check_env(Some("1")), Ok(true));
+    assert_eq!(parse_borrow_check_env(Some("0")), Ok(false));
+  }
+
+  // Anything else is loud, not a silent default: a typo'd `VALEN_BORROW_CHECK=false` must not
+  // quietly leave the checker on, nor quietly turn it off.
+  #[test]
+  fn borrow_check_env_rejects_any_other_value() {
+    match parse_borrow_check_env(Some("false")) {
+      Err(msg) => assert!(msg.contains("VALEN_BORROW_CHECK"), "msg: {msg}"),
+      other => panic!("expected a loud error, got {other:?}"),
+    }
   }
 }

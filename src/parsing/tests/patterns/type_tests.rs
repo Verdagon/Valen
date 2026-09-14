@@ -1,13 +1,14 @@
 use crate::cast;
 use crate::interner::StrI;
 use crate::keywords::Keywords;
+use crate::lexing::errors::ParseError;
 use crate::parse_arena::ParseArena;
 use crate::parsing::ast::{
   BorrowRefPT, GroupP, INameDeclarationP, ITemplexPT, NameOrRunePT, NameP, OwnRefPT, PatternPP,
   RegionP, SharednessP, WeakRefPT,
 };
 use crate::parsing::tests::utils::{
-  assert_templex_name, compile_pattern_expect, expect_1, expect_2,
+  assert_templex_name, compile_pattern, compile_pattern_expect, expect_1, expect_2,
 };
 use bumpalo::Bump;
 
@@ -299,4 +300,17 @@ fn call_type() {
   let int_type = expect_1(&mylist_call.args);
   assert_templex_name(int_type, "int");
   assert!(pattern.destructure.is_none());
+}
+
+// The trailing `mut` placeholder belongs to parameters only. Through the bare pattern entry point
+// (a `let` destination, a destructure element) it is still junk after the type.
+#[test]
+fn trailing_mut_is_not_allowed_outside_parameters() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  match compile_pattern(&parse_arena, &keywords, "x &Win mut") {
+    Err(ParseError::BadThingAfterTypeInPattern(_)) => {}
+    other => panic!("expected BadThingAfterTypeInPattern, got {:?}", other),
+  }
 }

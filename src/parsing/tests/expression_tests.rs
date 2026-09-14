@@ -693,6 +693,77 @@ fn single_arg_brace_lambda() {
   }
 }
 
+// A typed lambda param takes the same trailing `mut` placeholder as a header param, and drops it the
+// same way: the params are exactly `w &Win` and `input &Inp`.
+#[test]
+fn lambda_param_trailing_mut_is_ignored() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let expr =
+    compile_expression_expect(&parse_arena, &keywords, "(w &Win mut, input &Inp) => { w }");
+  match &expr {
+    IExpressionPE::Lambda(LambdaPE {
+      function:
+        FunctionP {
+          header:
+            FunctionHeaderP {
+              params:
+                Some(ParamsP {
+                  params:
+                    [ParameterP {
+                      pattern:
+                        Some(PatternPP {
+                          destination:
+                            Some(DestinationLocalP {
+                              decl: INameDeclarationP::LocalNameDeclaration(NameP(_, StrI("w"))),
+                              ..
+                            }),
+                          templex:
+                            Some(ITemplexPT::BorrowRef(BorrowRefPT {
+                              inner:
+                                ITemplexPT::NameOrRune(NameOrRunePT {
+                                  name: NameP(_, StrI("Win")),
+                                  ..
+                                }),
+                              ..
+                            })),
+                          ..
+                        }),
+                      ..
+                    }, ParameterP {
+                      pattern:
+                        Some(PatternPP {
+                          destination:
+                            Some(DestinationLocalP {
+                              decl: INameDeclarationP::LocalNameDeclaration(NameP(_, StrI("input"))),
+                              ..
+                            }),
+                          templex:
+                            Some(ITemplexPT::BorrowRef(BorrowRefPT {
+                              inner:
+                                ITemplexPT::NameOrRune(NameOrRunePT {
+                                  name: NameP(_, StrI("Inp")),
+                                  ..
+                                }),
+                              ..
+                            })),
+                          ..
+                        }),
+                      ..
+                    }],
+                  ..
+                }),
+              ..
+            },
+          ..
+        },
+      ..
+    }) => {}
+    other => panic!("expected `(w &Win, input &Inp) =>` params, got {:?}", other),
+  }
+}
+
 #[test]
 fn single_arg_no_brace_lambda() {
   let parse_bump = Bump::new();

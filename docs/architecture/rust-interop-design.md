@@ -98,15 +98,15 @@ pub fn valen_override_queries(_session: &Session, providers: &mut Providers) {
   let _ = DEFAULT_DEDUCED_PARAM_ATTRS.set(providers.queries.deduced_param_attrs);
   providers.queries.collect_and_partition_mono_items = lang_collect_and_partition_mono_items;
   providers.queries.deduced_param_attrs = lang_deduced_param_attrs;
-  // layout_of and cross_crate_inlinable TBD
+  // layout_of TBD
 }
 ```
 
 In provide, specifically we install:
  * `per_instance_mir`, which will be called during instantiation.
- * `collect_and_partition_mono_items` which will trigger instantiating then removes valen functions from the list of things their backend should emit.
+ * `collect_and_partition_mono_items` which will trigger instantiating then removes valen functions from the list of things their backend should emit, and marks the Valen-called Rust functions as globally visible.
  * `deduced_param_attrs` which removes some function information that rustc incorrectly derives about our valen functions.
- * `layout_of` and `cross_crate_inlinable` will come soon.
+ * `layout_of` may come soon.
 
 #### consumer_fill_modules emits Valen bodies into rustc's borrowed module
 
@@ -186,7 +186,9 @@ fn lang_collect_and_partition_mono_items<'tcx>(
   let MonoItemPartitions { codegen_units: upstream_cgus, all_mono_items: reachable, .. } = upstream(tcx, key);
   ... // If no __VALEN_STUBS_MARKER, just return the above.
 
-  // Populate the filtered_cgus with new CGUs that don't contain any valen items
+  // Populate the filtered_cgus with new CGUs that don't contain any valen items.
+  // Also, mark the Valen-called Rust functions as External linkage so they don't get cleaned up
+  // by rustc's optimizations.
   let mut filtered_cgus: Vec<CodegenUnit<'tcx>> = ...
   // Assemble new result.
   MonoItemPartitions { codegen_units: tcx.arena.alloc_from_iter(filtered_cgus), all_mono_items: reachable, }
@@ -425,7 +427,11 @@ S2. A Valen **library** compiles in **two passes** inside `valenc-rs`: pass 1 us
 
 ## Details
 
+From the `collect_and_partition_mono_items` design (its force-External of the Valen-called Rust functions): after delegating to the saved default partitioner (which has already run `internalize_symbols`), the override sets `(Linkage::External, Visibility::Default)` on every surviving CGU item whose `symbol_name` matches a materialized `FunctionExternI.link_name`. It wins because the LLVM backend reads `data.linkage` directly; `Visibility::Default` (not `Hidden`) also keeps the item out of the internalize-candidate set. Match on `symbol_name`, never `def_path_str` (which ICEs in the partitioner's non-diagnostic context). Mirrors Harmonious's fork-free "Outcome A". Covers default (non-LTO) release; an LTO profile has a separate LLVM `internalize` pass (see Open Questions).
+
 ## Test cases
+
+`release_build_of_driver_check_links` (`src/typing/test/rust_interop/pipeline_e2e.rs`): a `--release` `valen build` of the vendored `driver-check` project must link and produce a binary. Fails without the force-External promotion — the reified leaves (`NobiliaWindow::new`, `main_loop::<MyMainLoopCallback>`, the `__vale_drop<T>` shim, `fit_camera`, `load_terrain`) are internalized and the `vale_cgu` references dangle. The in-process driven/callback tests (`cases.rs`, `drive_tests.rs`) exercise the same leaf-preservation path once `-Clink-dead-code` is removed from the harnesses.
 
 ## Background
 
@@ -435,6 +441,8 @@ S2. A Valen **library** compiles in **two passes** inside `valenc-rs`: pass 1 us
  * The `fill_extra_modules` hook is the one channel not on the `Callbacks` contract: a fork-patched process-global set via `rustc_codegen_llvm::set_fill_extra_modules_hook` (`harness.rs:526`).
  * rustc calls into Valen through six points today. `DrivenCallbacks::config` (`src/typing/test/rust_interop/harness.rs`) installs them: `override_queries = valen_override_queries` plus `set_fill_extra_modules_hook(consumer_fill_modules)`.
  * `valen_override_queries` (`src/instantiating/rust_interop/mod.rs`) overrides three rustc queries: `per_instance_mir` (drives our instantiator), `collect_and_partition_mono_items` (strips our `#[valen::emit_consumer_body]` stub bodies before LLVM codegen), and `deduced_param_attrs` (returns `&[]` for those stubs).
+ * `lang_collect_and_partition_mono_items` (`src/instantiating/rust_interop/mod.rs`) also force-sets `(Linkage::External, Visibility::Default)` on each surviving item whose `symbol_name` matches a materialized `FunctionExternI.link_name` (the reified-leaf set on `DriverState.monouts`), so rustc's release internalize can't strand `vale_cgu`'s out-of-band references at link.
+ * The reified leaf's symbol is `tcx.symbol_name` of its instance, stored as `FunctionExternI.link_name` when the leaf resolves in `resolve_new_requests` (`src/instantiating/rust_interop/mod.rs`) — the same string `symbol_name` yields for that item in the partitioner, so matching by symbol string is exact.
  * `consumer_fill_modules` (`src/instantiating/rust_interop/mod.rs`) is the `fill_extra_modules` fork-patch hook, called before rustc's `start_async_codegen`; this is where our backend emits Valen bodies into rustc's module.
  * Two callbacks structs exist for two jobs: `ValenCallbacks` (`src/typing/rust_interop/driver/main.rs`) runs typing only and returns `Compilation::Stop`; `DrivenCallbacks` (`src/typing/test/rust_interop/harness.rs`) drives codegen and returns `Compilation::Continue`. `ValenRustInteropCallbacks` is the intended unified name for both.
  * The opposite direction (Valen reads facts from rustc, the oracle seam) is a larger set of ordinary query reads, not overrides: `tcx.layout_of` + `tcx.fn_abi_of_instance` for aggregate ABI (`compute_struct_layouts` / `compute_extern_abi` in `src/instantiating/rust_interop/mod.rs`), `tcx.symbol_name` for single-symbol naming, and `module_children` / `fn_sig` for imports.
@@ -446,6 +454,9 @@ S2. A Valen **library** compiles in **two passes** inside `valenc-rs`: pass 1 us
  * Cargo accepts a non-`.rs` explicit target path: a `[[bin]] path = "src/main.valen"` with valid Rust inside compiles and runs under stock nightly cargo with no warning (verified by a throwaway probe). Cargo validates targets before it invokes `RUSTC_WORKSPACE_WRAPPER`, so this holds under the wrapper too.
 
 ## Open Questions
+
+ * Under an LTO release profile, does forcing the Valen-called Rust functions to External suffice, or is `@llvm.used` pinning of the leaves also required? Fat/thin LTO runs a *separate* LLVM `internalize` pass that force-External alone does not defeat. Force-External is verified only for default (non-LTO) release; the generated `[profile.release]` is intended to set `lto` (see "Generating Cargo.toml from Valen.toml"), so this needs settling before shipping release LTO.
+ * Does the out-of-band `vale_cgu` + force-External model satisfy invariant 2 (cross-language inlining is an absolute requirement)? Valen's calls to Rust leaves are direct calls in a separate module that rustc's IR inliner never sees, so a leaf may link but not inline into a Valen caller (nor a Valen body into a Rust caller). The reference architecture fills bodies into rustc's own module (in-pipeline, before `start_async_codegen`) specifically to get this. Determine whether Valen must move to in-pipeline fill to honor invariant 2, or whether the current model achieves the inlining another way.
 
 ## Required Reading
 

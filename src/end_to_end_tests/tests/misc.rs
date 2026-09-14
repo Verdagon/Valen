@@ -1,9 +1,43 @@
 #![allow(non_snake_case)]
 
-use crate::end_to_end_tests::{assert_compile_and_run_dbg, cmd, expect, reject, programs_dir};
+use crate::end_to_end_tests::{
+    assert_compile_and_run_dbg, assert_inline_compile_and_run, cmd, expect, programs_dir, reject,
+};
 
 fn p(rel: &str) -> std::path::PathBuf {
     programs_dir().join(rel)
+}
+
+#[test]
+fn generic_lambda_forwarder_runs() {
+    assert_inline_compile_and_run(
+        r#"
+#!DeriveInterfaceDrop
+sealed interface Bork {
+  func bork(virtual self &Bork) int;
+}
+
+#!DeriveStructDrop
+struct BorkForwarder<Lam>
+where func drop(Lam)void, func __call(&Lam)int {
+  lam Lam;
+}
+
+impl<Lam> Bork for BorkForwarder<Lam>;
+
+func bork<Lam>(self &BorkForwarder<Lam>) int {
+  return (&self.lam)();
+}
+
+exported func main() int {
+  f = BorkForwarder({ 7 });
+  z = (&f).bork();
+  [_] = ^f;
+  return ^z;
+}
+"#,
+        7,
+    );
 }
 
 // The chained set-swap exchanges the two locals' values: before it a.fuel=1/b.fuel=2, after it

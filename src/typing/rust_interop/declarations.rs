@@ -33,13 +33,13 @@ use crate::postparsing::itemplatatype::{
 };
 use crate::postparsing::names::{
   ArgumentRuneS, CodeNameS, CodeNameValS, CodeRuneS, FunctionNameS, IFunctionDeclarationNameS,
-  IImpreciseNameS,
+  IImpreciseNameS, ImplicitRuneValS,
   CodeVarNameS, IImpreciseNameValS, IRuneValS, IStructDeclarationNameS, IVarDeclarationNameS,
   ReturnRuneS,
   TopLevelInterfaceDeclarationNameS, TopLevelStructDeclarationNameS,
 };
 use crate::postparsing::rules::rules::{
-  BorrowRefSR, CallSR, EqualsSR, IRulexSR, LookupSR, RegionSR, RuneUsage,
+  BorrowRefSR, CallSR, EqualsSR, IRulexSR, ImplBoundS, LookupSR, RegionSR, RuneUsage,
 };
 use crate::postparsing::rules::types::{
   BorrowRefST, EffectS, GroupS, ITypeST, RegionS, RuneUsageST,
@@ -272,6 +272,36 @@ where
     _ => None,
   };
 
+  // Emit each imported-trait bound (`where implements(P, Trait)`) the oracle surfaced. The sub is
+  // the generic param's own rune; the super is the trait, bound through the same `bind_sig_type`
+  // path a parameter citizen uses so its Lookup/Call rules join `header_rules` and both operands get
+  // conclusions. The result rune has no rules — the post-solve pass fills it — so it is an
+  // ImplicitRune kept out of every rune-usage list, exactly as the postparser mints it (rule_scout).
+  // Without these bounds a rust caller `run<C: MainLoop>` carries no `C: MainLoop`, so Vale never
+  // resolves the impl `MyStruct: MainLoop` nor records the concrete override the reverse callback needs.
+  let mut impl_bounds: Vec<ImplBoundS<'s>> = Vec::new();
+  for bound in sig.generic_param_bounds.iter() {
+    let sub_rune = generic_runes[bound.sub_generic_index as usize];
+    let super_own_rune = fresh_rune(scout_arena, range, &mut next_synthetic);
+    let super_rune = bind_sig_type(
+      compiler,
+      &bound.super_trait,
+      super_own_rune,
+      range,
+      &generic_runes,
+      &mut header_rules,
+      &mut next_synthetic,
+    )?;
+    let mut result_child_lidb = lidb.child();
+    let result_rune = RuneUsage {
+      range,
+      rune: scout_arena.intern_rune(IRuneValS::ImplicitRune(ImplicitRuneValS::new(
+        result_child_lidb.borrow_val(),
+      ))),
+    };
+    impl_bounds.push(ImplBoundS { range, sub_rune, super_rune, result_rune });
+  }
+
   // One template parameter per declared generic, typed as a kind. Empty for a concrete
   // function, which is what makes `make_extern_function` — which reads its template arguments
   // off the *solved* environment — work identically for both.
@@ -305,11 +335,12 @@ where
     // callers to the callee's aliasing rules. Empty when nothing is borrowed mutably.
     scout_arena.alloc_slice_from_vec(effects),
     scout_arena.alloc_slice_from_vec(header_rules),
-    // No impl bounds, and that is the truth rather than a placeholder. A Rust function's trait
-    // obligations are discharged by rustc, never by Vale — and we read no predicates at all,
-    // which is why a signature that *needs* one (`first<I: Iterator> -> I::Item`) is declined
-    // outright rather than imported with a bound nothing could satisfy.
-    &[],
+    // Impl bounds (`where implements(P, Trait)`) surfaced from rustc's predicates for imported
+    // traits — see the loop above and ValeSigImplBound. For the forward direction rustc discharges
+    // these, so this is usually empty; the reverse direction relies on it. A signature needing a
+    // bound whose trait is NOT imported (`first<I: Iterator> -> I::Item`) is still declined earlier
+    // (the projection return type is unreadable), not imported with an unsatisfiable bound.
+    scout_arena.alloc_slice_from_vec(impl_bounds),
     &[],
     scout_arena.alloc(IBodyS::ExternBody(ExternBodyS {})),
   )))
@@ -845,6 +876,7 @@ where
     let mapped_ret = map_self_to_interface(interner, &sig.ret, human_name, package_coord);
     let mapped_sig = ValeSig {
       generic_params: &[],
+      generic_param_bounds: &[],
       params: interner.alloc_slice_from_vec(mapped_params),
       ret: mapped_ret,
     };
@@ -969,8 +1001,12 @@ mod tests {
     };
     let params =
       typing_interner.alloc_slice_from_vec(vec![borrow(true), borrow(true), borrow(false)]);
-    let sig =
-      ValeSig { generic_params: &[], params, ret: ValeSigType::Kind(KindT::Void(VoidT)) };
+    let sig = ValeSig {
+      generic_params: &[],
+      generic_param_bounds: &[],
+      params,
+      ret: ValeSigType::Kind(KindT::Void(VoidT)),
+    };
 
     let name = scout_arena.intern_str("on_tick");
     let f = synthesize_abstract_interface_method(&compiler, name, &sig).unwrap();

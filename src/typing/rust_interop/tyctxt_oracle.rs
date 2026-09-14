@@ -20,7 +20,7 @@ use crate::scout_arena::ScoutArena;
 use crate::typing::env::environment::{ImportedItemKind, ResolvedName};
 use crate::typing::names::names::*;
 use crate::typing::compiler_error_reporter::CouldNotPostparseReason;
-use crate::typing::rust_interop::oracle::{RustItemId, RustOracle, ValeSig, ValeSigType};
+use crate::typing::rust_interop::oracle::{RustItemId, RustOracle, ValeSig, ValeSigImplBound, ValeSigType};
 use crate::typing::rust_interop::reserved::RUST_MODULE;
 use crate::typing::templata::templata::{ITemplataT, KindTemplataT};
 use crate::typing::types::types::*;
@@ -674,8 +674,53 @@ where
       .collect::<Result<Vec<_>, _>>()?;
     let ret = self.lower_sig_ty(sig.output(), generic_params, def_id, interner)?;
 
+    // Surface each `where P: Trait` predicate whose subject P is one of THIS function's own generic
+    // params and whose trait is imported, as a Vale `where implements(P, Trait)` impl bound. See
+    // ValeSigImplBound for why the reverse direction needs the bound the forward direction discards.
+    // Auto-traits / Sized / un-imported traits are dropped: none appear in `self.items`. The trait
+    // is kept unapplied (its own type args, if any, lowered as signature positions), matching how a
+    // parameter citizen is kept — a non-generic trait like `MainLoop` simply has empty args.
+    let generic_param_bounds: Vec<ValeSigImplBound<'s, 't>> = self
+      .tcx
+      .predicates_of(def_id)
+      .predicates
+      .iter()
+      .filter_map(|(clause, _span)| {
+        let trait_pred = clause.as_trait_clause()?.skip_binder();
+        if trait_pred.polarity != rustc_middle::ty::PredicatePolarity::Positive {
+          return None;
+        }
+        let TyKind::Param(param) = trait_pred.self_ty().kind() else {
+          return None;
+        };
+        let sub_generic_index =
+          generic_params.iter().position(|p| p.0 == param.name.as_str())? as u32;
+        let trait_did = trait_pred.trait_ref.def_id;
+        let idx =
+          self.items.iter().position(|i| i.kind == ItemKind::Trait && i.def_id == trait_did)?;
+        // The trait's own type args, if any — skip `args[0]`, which is the `Self` (the sub param).
+        let trait_args: Vec<ValeSigType<'s, 't>> = trait_pred
+          .trait_ref
+          .args
+          .types()
+          .skip(1)
+          .map(|arg| self.lower_sig_ty(arg, generic_params, def_id, interner))
+          .collect::<Result<Vec<_>, _>>()
+          .ok()?;
+        Some(ValeSigImplBound {
+          sub_generic_index,
+          super_trait: ValeSigType::Citizen {
+            name: self.items[idx].human_name,
+            package: self.items[idx].package,
+            args: interner.alloc_slice_from_vec(trait_args),
+          },
+        })
+      })
+      .collect();
+
     Ok(ValeSig {
       generic_params: interner.alloc_slice_copy(generic_params),
+      generic_param_bounds: interner.alloc_slice_from_vec(generic_param_bounds),
       params: interner.alloc_slice_from_vec(params),
       ret,
     })

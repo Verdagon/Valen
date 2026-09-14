@@ -9,7 +9,9 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-use crate::typing::rust_interop::drive::{default_sysroot, run_wrapper, WrapperInputs};
+use crate::typing::rust_interop::drive::{
+  default_sysroot, run_wrapper, WrapperInputs, WrapperResult,
+};
 use crate::typing::rust_interop::stub_gen::generate_stub_source_from_vale;
 
 use super::harness::build_dep_rlib;
@@ -69,9 +71,14 @@ fn build_reexport_crate(root: &Path) -> PathBuf {
 }
 
 // Drive a `.valen` binary crate through the wrapper the way cargo would — write it, build a
-// `--crate-type=bin` arg set (plus `extra` flags like `--extern`/`-L` for imports), assert it drove
-// Valen and rustc exited 0, then run the produced binary and return its exit code.
-fn wrapper_run_binary(out_dir: &Path, vale_source: &str, extra: Vec<String>) -> i32 {
+// `--crate-type=bin` arg set (plus `extra` flags like `--extern`/`-L` for imports), and hand back
+// `run_wrapper`'s own result, so a test can observe a typing failure as the `Err` it is.
+fn wrapper_drive(
+  out_dir: &Path,
+  vale_source: &str,
+  extra: Vec<String>,
+  borrow_check: bool,
+) -> Result<WrapperResult, String> {
   let valen = out_dir.join("prog.valen");
   fs::write(&valen, vale_source).expect("could not write prog.valen");
   let mut rustc_args = vec![
@@ -84,14 +91,24 @@ fn wrapper_run_binary(out_dir: &Path, vale_source: &str, extra: Vec<String>) -> 
     format!("--out-dir={}", out_dir.display()),
   ];
   rustc_args.extend(extra);
+  run_wrapper(&WrapperInputs { rustc_args, borrow_check })
+}
 
-  let result = run_wrapper(&WrapperInputs { rustc_args }).expect("run_wrapper should succeed");
-  assert_eq!(result.rustc_exit, 0, "firings: {:?}", result.firings);
-  assert!(result.drove_valen, "a .valen crate must drive the Valen engine");
-
+// Run the `prog` binary a successful `wrapper_drive` left in `out_dir`, returning its exit code.
+fn run_produced_binary(out_dir: &Path) -> i32 {
   let exe = out_dir.join("prog");
   let output = Command::new(&exe).output().expect("could not run the produced binary");
   output.status.code().unwrap_or(-1)
+}
+
+// `wrapper_drive` with the borrow checker on, asserting it drove Valen and rustc exited 0, then run
+// the produced binary and return its exit code.
+fn wrapper_run_binary(out_dir: &Path, vale_source: &str, extra: Vec<String>) -> i32 {
+  let result = wrapper_drive(out_dir, vale_source, extra, /*borrow_check=*/ true)
+    .expect("run_wrapper should succeed");
+  assert_eq!(result.rustc_exit, 0, "firings: {:?}", result.firings);
+  assert!(result.drove_valen, "a .valen crate must drive the Valen engine");
+  run_produced_binary(out_dir)
 }
 
 // Find cargo's content-hashed `lib<name>-<hash>.rlib` in a deps dir — the explicit path cargo hands the
@@ -119,7 +136,9 @@ fn stub_gen_emits_pub_use_and_consumer_body_from_parsed_program() {
   let stub = generate_stub_source_from_vale(TINY_VALE).expect("stub generation should succeed");
   assert!(stub.contains("extern crate tiny;"), "stub:\n{stub}");
   assert!(stub.contains("pub use tiny::seven;"), "stub:\n{stub}");
-  assert!(stub.contains("#[vale::emit_consumer_body]"), "stub:\n{stub}");
+  // The attr carries a digest of the `.valen` source (so rustc re-collects on a body-only edit —
+  // the incremental fix, Part B), so match its prefix rather than the bare attr.
+  assert!(stub.contains("#[vale::emit_consumer_body(digest = \""), "stub:\n{stub}");
   assert!(stub.contains("pub fn __vale_main() -> i32"), "stub:\n{stub}");
   assert!(stub.contains("__VALE_STUBS_MARKER"), "stub:\n{stub}");
   assert!(stub.contains("fn main()"), "stub:\n{stub}");
@@ -146,7 +165,10 @@ exported func main() int {
 }
 "#;
   let stub = generate_stub_source_from_vale(vale).expect("stub generation should succeed");
-  assert!(stub.contains("pub struct MyCb {}"), "stub:\n{stub}");
+  // The non-generic struct is the degenerate case of the wrapper-as-field shape: a `__ValeOpaque<HASH>`
+  // payload + an empty `PhantomData<()>` carrier, and a non-generic `impl Cb for MyCb`.
+  assert!(stub.contains("pub struct MyCb(__ValeOpaque<"), "stub:\n{stub}");
+  assert!(stub.contains(", ::std::marker::PhantomData<()>);"), "stub:\n{stub}");
   assert!(stub.contains("impl Cb for MyCb {"), "stub:\n{stub}");
   // The override is emitted inside the impl with a deferred body and the rendered Rust signature.
   assert!(stub.contains("fn on_event(&self, _w: &Widget) {"), "stub:\n{stub}");
@@ -187,6 +209,38 @@ exported func main() int {
   );
 }
 
+// A generic, data-carrying forwarder (`MyCb<F>` holding a functor, implementing an imported trait) is the
+// shape that lets a lambda be handed to a rust callback. It projects as the design's opaque wrapper-as-field
+// shape (arch §10): `pub struct MyCb<F>(__ValeOpaque<HASH>, PhantomData<(F)>)` + `impl<F> Cb for MyCb<F>`,
+// with the `__ValeOpaque<const T: u64>` wrapper predeclared once at the stub root. rustc keeps MyCb's own
+// DefId (so the impl resolves) but never sees its fields; Vale owns the layout via a `layout_of` override
+// (deferred). Mirrors Sky's `__ToylangOpaque` shape (toylangc/src/stub_gen.rs).
+#[test]
+fn stub_gen_projects_a_generic_forwarder_as_opaque_wrapper() {
+  let vale = r#"
+import rust.mycrate.Widget;
+import rust.mycrate.Cb;
+struct MyCb<F> where func drop(F)void, func __call(&F, &Widget)void { f F; }
+impl<F> Cb for MyCb<F>;
+func on_event<F>(self &MyCb<F>, w &Widget) {
+  (&self.f)(w);
+}
+exported func main() int {
+  return 7;
+}
+"#;
+  let stub = generate_stub_source_from_vale(vale).expect("stub generation should succeed");
+  // The universal opaque wrapper is predeclared once at the stub root.
+  assert!(stub.contains("pub struct __ValeOpaque<const T: u64>;"), "stub:\n{stub}");
+  // The forwarder is the 2-field wrapper-as-field shape, generic over F, with a PhantomData carrier so the
+  // declared generic is "used" (E0392). The typeid hash is elided (it is stability-fenced separately).
+  assert!(stub.contains("pub struct MyCb<F>(__ValeOpaque<"), "stub:\n{stub}");
+  assert!(stub.contains(">, ::std::marker::PhantomData<(F)>);"), "stub:\n{stub}");
+  // The impl mirrors the struct's generics: `impl<F> Cb for MyCb<F>`.
+  assert!(stub.contains("impl<F> Cb for MyCb<F> {"), "stub:\n{stub}");
+  assert!(stub.contains("fn on_event(&self, _w: &Widget) {"), "stub:\n{stub}");
+}
+
 // The pure-Rust passthrough (@PRCCBIVRZ). A crate whose root is `.rs` is not a Valen crate, so
 // `run_wrapper`'s extension dispatch takes the passthrough branch: it installs no query overrides and no
 // fill_extra_modules hook (`drove_valen == false`, no firings), compiling exactly as vanilla rustc would.
@@ -208,6 +262,7 @@ fn wrapper_passes_through_a_pure_rust_crate() {
       format!("--sysroot={}", default_sysroot()),
       format!("--out-dir={}", out_dir.display()),
     ],
+    borrow_check: true,
   })
   .expect("run_wrapper should succeed");
 
@@ -351,4 +406,248 @@ exported func main() int {
     vec![format!("--extern=noblike={}", rlib.display()), format!("-L{}", out_dir.display())],
   );
   assert_eq!(exit, 7);
+}
+
+// Slice 2 (convo-148) — outbound arg-lowering in isolation: a generic forwarder `MyCb<F>` (holding a
+// lambda functor, impl-ing an imported trait so it's projected) is handed to a Rust generic fn `touch<C>`
+// that takes it by borrow and *never calls the trait method*. So this exercises only the outbound leaf
+// `touch::<MyCb<Lambda>>` — its type arg `MyCb<Lambda>` must lower, with the internal lambda functor
+// rewritten to `__ValeOpaque<typeid>` (arch §10.7 Case 2) — with no inbound callback (no `collect_callback`,
+// that's slice 3). Before slice 2, lowering the `LambdaCitizen` arg panics in `rust_request_arg_tys`.
+#[test]
+fn wrapper_lowers_a_forwarder_arg_to_a_noncallback_rust_fn() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+
+  let noblike_rs = out_dir.join("noblike.rs");
+  fs::write(
+    &noblike_rs,
+    "pub struct Window { pub ticks: i32 }\n\
+     pub trait MainLoop {\n\
+     \x20   fn on_tick(&self, w: &Window);\n\
+     }\n\
+     pub fn touch<C: MainLoop>(_cb: &C) {}\n",
+  )
+  .expect("could not write noblike.rs");
+  build_dep_rlib("noblike", &noblike_rs, out_dir);
+  let rlib = out_dir.join("libnoblike.rlib");
+
+  let vale = r#"
+import rust.noblike.Window;
+import rust.noblike.MainLoop;
+import rust.noblike.touch;
+struct MyCb<F> where func drop(F)void, func __call(&F, &Window)void { f F; }
+impl<F> MainLoop for MyCb<F>;
+func on_tick<F>(self &MyCb<F>, w &Window) {
+  (&self.f)(w);
+}
+exported func main() int {
+  cb = MyCb((w2) => { });
+  touch(&cb);
+  return 7;
+}
+"#;
+
+  let exit = wrapper_run_binary(
+    out_dir,
+    vale,
+    vec![format!("--extern=noblike={}", rlib.display()), format!("-L{}", out_dir.display())],
+  );
+  assert_eq!(exit, 7);
+}
+
+// PROBE (convo-148): the stateless-lambda forwarder, end to end through the wrapper. A generic forwarder
+// `MyCb<F>` holds a *stateless* lambda functor and implements an imported `&self` trait; `main` hands
+// `MyCb((w)=>{...})` to a generic Rust `fn run<C>(&self, cb: &C)`. The functor is a ZST, so the opaque-ZST
+// stub projection is correct here. This test drives it to find the real next wall past stub-gen (likely
+// the functor type arg not being resolvable / `collect_callback` empty-subs); its failure IS the finding.
+#[test]
+fn wrapper_drives_a_stateless_lambda_forwarder_to_exit_seven() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+
+  let noblike_rs = out_dir.join("noblike.rs");
+  fs::write(
+    &noblike_rs,
+    "pub struct Window { pub ticks: i32 }\n\
+     pub trait MainLoop {\n\
+     \x20   fn on_tick(&self, w: &Window);\n\
+     }\n\
+     impl Window {\n\
+     \x20   pub fn new() -> Window { Window { ticks: 0 } }\n\
+     \x20   pub fn poke(&self) {}\n\
+     \x20   pub fn run<C: MainLoop>(&self, cb: &C) -> i32 {\n\
+     \x20       cb.on_tick(self);\n\
+     \x20       7\n\
+     \x20   }\n\
+     }\n",
+  )
+  .expect("could not write noblike.rs");
+  build_dep_rlib("noblike", &noblike_rs, out_dir);
+  let rlib = out_dir.join("libnoblike.rlib");
+
+  let vale = r#"
+import rust.noblike.Window;
+import rust.noblike.MainLoop;
+struct MyCb<F> where func drop(F)void, func __call(&F, &Window)void { f F; }
+impl<F> MainLoop for MyCb<F>;
+func on_tick<F>(self &MyCb<F>, w &Window) {
+  (&self.f)(w);
+}
+exported func main() int {
+  w = Window.new();
+  cb = MyCb((w2) => { w2.poke(); });
+  return w.run(&cb);
+}
+"#;
+
+  let exit = wrapper_run_binary(
+    out_dir,
+    vale,
+    vec![format!("--extern=noblike={}", rlib.display()), format!("-L{}", out_dir.display())],
+  );
+  assert_eq!(exit, 7);
+}
+
+// Build a `noblike` rlib in `out_dir` shaped like NobiliaV's window: a `&mut self` trait method, a
+// `&mut self` window method (`push`), and a generic `&mut self` caller whose return exposes whether
+// the callback's churn actually happened (`ticks + 6`, so one `push` → 7).
+fn build_churning_noblike_rlib(out_dir: &Path) -> Vec<String> {
+  let noblike_rs = out_dir.join("noblike.rs");
+  fs::write(
+    &noblike_rs,
+    "pub struct Window { pub ticks: i32 }\n\
+     pub struct Frame {}\n\
+     pub trait MainLoop {\n\
+     \x20   fn on_tick(&mut self, w: &mut Window, input: &Frame);\n\
+     }\n\
+     impl Window {\n\
+     \x20   pub fn new() -> Window { Window { ticks: 0 } }\n\
+     \x20   pub fn push(&mut self) { self.ticks += 1; }\n\
+     \x20   pub fn run<C: MainLoop>(&mut self, cb: &mut C) -> i32 {\n\
+     \x20       let frame = Frame {};\n\
+     \x20       cb.on_tick(self, &frame);\n\
+     \x20       self.ticks + 6\n\
+     \x20   }\n\
+     }\n",
+  )
+  .expect("could not write noblike.rs");
+  build_dep_rlib("noblike", &noblike_rs, out_dir);
+  let rlib = out_dir.join("libnoblike.rlib");
+  vec![format!("--extern=noblike={}", rlib.display()), format!("-L{}", out_dir.display())]
+}
+
+// NobiliaV's target shape: a generic forwarder wrapping a closure that CHURNS the window it is handed.
+// The override keeps its named regions (`mut(r) mut(s)`) so the generated stub renders `&mut`, the
+// bound writes the churn as the `&Window mut` placeholder, and the closure calls a `&mut self` method.
+const CHURNING_FORWARDER_VALE: &str = r#"
+import rust.noblike.Window;
+import rust.noblike.Frame;
+import rust.noblike.MainLoop;
+struct MyCb<F> where func drop(F)void, func __call(&F, &Window mut, &Frame)void { f F; }
+impl<F> MainLoop for MyCb<F>;
+func on_tick<F, r', s'>(self &MyCb<F> in s, w &Window in r, input &Frame) mut(r) mut(s) {
+  (&self.f)(w, input);
+}
+exported func main() int {
+  w = Window.new();
+  cb = MyCb((w2, input) => { w2.push(); });
+  return w.run(&cb);
+}
+"#;
+
+// With the borrow checker off, the churning forwarder compiles, links, and runs: the closure's `push`
+// reaches the real window through the forwarder (exit 7 = one tick + 6). This is the shape NobiliaV
+// can build today with `valen build --no-borrow-check`.
+#[test]
+fn wrapper_with_borrow_check_off_drives_a_churning_lambda_forwarder_to_exit_seven() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+  let extra = build_churning_noblike_rlib(out_dir);
+  let result = wrapper_drive(out_dir, CHURNING_FORWARDER_VALE, extra, /*borrow_check=*/ false)
+    .expect("run_wrapper should succeed with the borrow checker off");
+  assert_eq!(result.rustc_exit, 0, "firings: {:?}", result.firings);
+  assert_eq!(run_produced_binary(out_dir), 7);
+}
+
+// The same program with the borrow checker on is rejected: the closure churns its window param and
+// nothing declares that (the `mut` placeholder on the bound is not yet read by the checker). Pins the
+// wall `--no-borrow-check` exists to step around.
+#[test]
+fn wrapper_with_borrow_check_on_rejects_the_churning_lambda_forwarder() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+  let extra = build_churning_noblike_rlib(out_dir);
+  match wrapper_drive(out_dir, CHURNING_FORWARDER_VALE, extra, /*borrow_check=*/ true) {
+    Err(err) => assert!(err.contains("BorrowCheckError"), "err:\n{err}"),
+    Ok(result) => panic!(
+      "the borrow checker should reject the churning closure, but rustc exited {} with firings {:?}",
+      result.rustc_exit, result.firings
+    ),
+  }
+}
+
+// Build a `counter` rlib in `out_dir` — an opaque struct with a `&mut self` method — and return the
+// `--extern`/`-L` flags that let a driven `.valen` import it.
+fn build_counter_rlib(out_dir: &Path) -> Vec<String> {
+  let counter_rs = out_dir.join("counter.rs");
+  fs::write(
+    &counter_rs,
+    "pub struct Counter { pub n: i32 }\n\
+     impl Counter {\n\
+     \x20   pub fn new() -> Counter { Counter { n: 6 } }\n\
+     \x20   pub fn bump(&mut self) { self.n += 1; }\n\
+     \x20   pub fn get(&self) -> i32 { self.n }\n\
+     }\n",
+  )
+  .expect("could not write counter.rs");
+  build_dep_rlib("counter", &counter_rs, out_dir);
+  let rlib = out_dir.join("libcounter.rlib");
+  vec![format!("--extern=counter={}", rlib.display()), format!("-L{}", out_dir.display())]
+}
+
+// A Vale function that churns one of its *parameters'* groups — calling the imported `&mut self`
+// `bump` on a `&Counter in g` parameter — without declaring `mut(g)`.
+const CHURN_VALE: &str = r#"
+import rust.counter.Counter;
+func bump_it<g'>(c &Counter in g) {
+  c.bump();
+}
+exported func main() int {
+  c = Counter.new();
+  bump_it(&c);
+  return c.get();
+}
+"#;
+
+// With the borrow checker on, the undeclared churn is rejected by the producer gate: the importer
+// gives `bump` a `mut` effect on its receiver's group, and `bump_it` declares none for `g`. The
+// interop twin of producer_gate_tests' `test_undeclared_param_churn_rejected`; the wrapper surfaces
+// the typing failure as an `Err`, so nothing is emitted.
+#[test]
+fn wrapper_rejects_an_undeclared_churn_of_an_imported_mut_method() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+  let extra = build_counter_rlib(out_dir);
+  match wrapper_drive(out_dir, CHURN_VALE, extra, /*borrow_check=*/ true) {
+    Err(err) => assert!(err.contains("BorrowCheckError"), "err:\n{err}"),
+    Ok(result) => panic!(
+      "the borrow checker should reject the undeclared churn, but rustc exited {} with firings {:?}",
+      result.rustc_exit, result.firings
+    ),
+  }
+}
+
+// The switch NobiliaV needs: with the borrow checker off, the same program compiles, links and runs,
+// so rust interop can be exercised on a program the checker is not yet happy with. The only
+// difference from the test above is the flag.
+#[test]
+fn wrapper_with_borrow_check_off_runs_an_undeclared_churn_to_exit_seven() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+  let extra = build_counter_rlib(out_dir);
+  let result = wrapper_drive(out_dir, CHURN_VALE, extra, /*borrow_check=*/ false)
+    .expect("run_wrapper should succeed with the borrow checker off");
+  assert_eq!(result.rustc_exit, 0, "firings: {:?}", result.firings);
+  assert_eq!(run_produced_binary(out_dir), 7);
 }

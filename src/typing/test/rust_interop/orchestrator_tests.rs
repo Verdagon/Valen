@@ -82,6 +82,8 @@ fn run_build_stages_the_workspace() {
     manifest_path: project.join("Valen.toml"),
     build_dir: build_dir.clone(),
     valenc_rs: PathBuf::from("/unused/valenc-rs"),
+    clear_incremental: true,
+    borrow_check: true,
   })
   .expect("stage_workspace should succeed");
 

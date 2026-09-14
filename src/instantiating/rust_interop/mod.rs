@@ -24,7 +24,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::middle::deduced_param_attrs::DeducedParamAttrs;
 use rustc_hir::attrs::Linkage;
-use rustc_middle::mir::mono::{CodegenUnit, MonoItemPartitions, Visibility};
+use rustc_middle::mir::mono::{CodegenUnit, MonoItem, MonoItemPartitions, Visibility};
 use rustc_abi::{BackendRepr, Primitive, RegKind};
 use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
@@ -58,6 +58,8 @@ use crate::instantiating::ast::ast::{FunctionExportI, FunctionExternI};
 use crate::instantiating::instantiator::{DenizenBoundToDenizenCallerBoundArgI, InstantiatedOutputsI, InstantiatorI};
 use crate::keywords::Keywords;
 use crate::typing::names::names::{IdT, INameT};
+use crate::typing::compiler::Compiler;
+use crate::typing::templata_compiler::get_interface_template;
 use crate::typing::ast::ast::PrototypeT;
 use crate::typing::types::types::RegionT;
 use crate::utils::fx::IndexMap;
@@ -65,6 +67,7 @@ use crate::scout_arena::ScoutArena;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::rust_interop::reserved::RUST_MODULE;
 use crate::typing::rust_interop::tyctxt_oracle::resolve_crate_qualified_path;
+use crate::typing::rust_interop::typeid::typeid;
 use crate::typing::typing_interner::TypingInterner;
 
 // The instantiator state the provider drives, reached through a scoped raw pointer rather than a
@@ -221,28 +224,84 @@ impl<'s, 'ctx, 't, 'i> DriverState<'s, 'ctx, 't, 'i> {
       Some(h) => h,
       None => return Vec::new(),
     };
-    // The Vale override body lives in hinputs.functions under its own short name (e.g. "on_call").
-    // Two functions share that name: the trait's *abstract* method (a virtual/abstract self param,
-    // from the interface projection) and the concrete *override*. We want the override — the
-    // non-abstract one. Slice 5 has a single impl, so this is unambiguous; multiple impls would need
-    // the receiver type to disambiguate, which is a later slice.
-    let overrides: Vec<_> = hinputs
-      .functions
-      .iter()
-      .copied()
-      .filter(|f| {
-        matches!(&f.header.id.local_name, INameT::Function(n) if n.template.human_name.as_str() == item_name)
-          && f.header.get_abstract_interface().is_none()
-      })
-      .collect();
-    let override_def = match overrides.as_slice() {
-      [f] => *f,
-      [] => return Vec::new(), // no concrete override to emit (a resolved callback always has one)
-      _ => panic!(
-        "multiple concrete overrides named {item_name:?}; receiver-type disambiguation is a later slice"
-      ),
+    let code_map = |loc: CodeLocationS| format!("{:?}", loc);
+
+    // The concrete `Self` type rustc monomorphized this override at — e.g. `MyCb<__ValeOpaque<HASH>>`
+    // for a lambda forwarder, or a plain `MyCb` for a non-generic callback (the degenerate case).
+    let impl_def_id = tcx
+      .impl_of_assoc(instance.def_id())
+      .expect("a trait-impl override method must live in an impl block");
+    let self_ty = tcx.type_of(impl_def_id).instantiate(tcx, instance.args);
+
+    // Reverse-decode + identify the concrete Valen impl this callback instance stands for (arch
+    // §8.9/§10.9). Build the typeid→kind-id universe table over the citizens instantiated so far, keyed
+    // by the same content hash the outbound lowering stamps (`typeid(humanize_id(id))`, see `opaque_ty`).
+    // The concrete override for a *generic* impl is an instantiator product (`translate_override`),
+    // never a typing product — so we identify the impl from the collector-driven instance and drive the
+    // instantiator's own virtual-dispatch path, exactly as a native `InterfaceFunctionCall` would.
+    let (matched_impl_t, matched_impl_i) = {
+      let monouts = self.monouts.borrow();
+      let mut universe: HashMap<u64, IdI> = HashMap::default();
+      for id in monouts.structs.keys().chain(monouts.interfaces_without_methods.keys()) {
+        universe.insert(typeid(&humanize_id(&code_map, id, None)), *id);
+      }
+      // Fail loud (not silent-wrong) if the instance carries an opaque type Vale never instantiated:
+      // §10.9 recovery must find every crossed Valen type in the universe.
+      for arg in self_ty.walk() {
+        if let Some(arg_ty) = arg.as_type() {
+          if let Some(tid) = read_opaque_typeid(tcx, arg_ty) {
+            assert!(
+              universe.contains_key(&tid),
+              "rust interop: callback {item_name:?} carries opaque typeid {tid} for a Valen type not in \
+               the instantiated universe (a monomorphization Vale never produced)"
+            );
+          }
+        }
+      }
+      // Match the callback's concrete `Self` against a recorded impl by projecting each candidate's
+      // sub-citizen forward through the same converter the outbound path uses and comparing rustc types.
+      let mut matched = None;
+      for impls in monouts.interface_to_impls.values() {
+        for (impl_t, impl_i) in impls.iter() {
+          let sub_id = monouts
+            .impls
+            .get(impl_i)
+            .expect("an impl in interface_to_impls must be in impls")
+            .0
+            .id();
+          if citizen_or_opaque_to_rustc_ty(tcx, &sub_id) == Some(self_ty) {
+            matched = Some((*impl_t, *impl_i));
+          }
+        }
+      }
+      match matched {
+        Some(pair) => pair,
+        None => return Vec::new(), // no Valen impl for this Self — nothing to emit
+      }
     };
-    let override_proto_t: PrototypeT = override_def.header.to_prototype();
+
+    // The typed abstract method header this override implements: reach it through the impl's edge and
+    // the interface's blueprint (typing owns the abstract method set + order).
+    let impl_template = Compiler::get_impl_template(self.typing_interner, matched_impl_t);
+    let edge = hinputs
+      .interface_template_to_sub_citizen_to_edge
+      .values()
+      .flat_map(|m| m.values().copied())
+      .find(|edge| Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template)
+      .expect("no edge for the matched impl");
+    let interface_template_id = get_interface_template(self.typing_interner, edge.super_interface);
+    let blueprint = hinputs
+      .interface_template_to_edge_blueprints
+      .get(&interface_template_id)
+      .expect("no edge blueprint for the matched impl's interface");
+    let abstract_proto_t: PrototypeT = blueprint
+      .super_family_root_headers
+      .iter()
+      .map(|(p, _)| *p)
+      .find(|p| {
+        matches!(&p.id.local_name, INameT::Function(n) if n.template.human_name.as_str() == item_name)
+      })
+      .expect("no abstract method by that name in the interface blueprint");
 
     let instantiator = InstantiatorI {
       opts: self.opts,
@@ -256,29 +315,44 @@ impl<'s, 'ctx, 't, 'i> DriverState<'s, 'ctx, 't, 'i> {
     // Snapshot the Rust-leaf requests before instantiating the callback body, so `resolve_new_requests`
     // returns only the ones this body added (e.g. an outbound `w.get()`).
     let before: HashSet<_> = monouts.rust_instantiation_requests.keys().copied().collect();
-    // A non-generic override: no caller bounds, no placeholder substitutions. `translate_prototype`
-    // builds the instantiated prototype and enqueues the body; `drain` translates it into
-    // `monouts.functions`, from where `assemble_hinputs`/the backend emits it.
+
     let empty_bound = DenizenBoundToDenizenCallerBoundArgI {
       func_id_to_bound_arg_prototype: IndexMap::default(),
       bound_param_impl_id_to_bound_arg_impl_id: IndexMap::default(),
     };
     let empty_subs: IndexMap<IdT, ITemplataI> = IndexMap::default();
-    let proto_i = instantiator.translate_prototype(
+    // Resolve the concrete override *statically*, the same seam a devirtualized `where implements`
+    // call uses (`BoundFunctionCall` in the instantiator). This yields the plain concrete override
+    // prototype directly — no vtable, no abstract-method dispatcher instantiation — so the backend
+    // never builds an interface fat pointer. The reverse callback is static dispatch (Rust calls the
+    // concrete override directly); the interface exists only for typechecking. Non-generic callbacks
+    // flow through here unchanged as the degenerate case (@NNGZ).
+    let (concrete_impl_id_t, impl_bound_args) = *monouts
+      .instantiated_impl_to_typed_impl_and_bounds
+      .get(&matched_impl_i)
+      .expect("matched impl not recorded in instantiated_impl_to_typed_impl_and_bounds");
+    let abstract_bound_args = instantiator.translate_bound_args_for_callee(
       &mut monouts,
-      &override_proto_t.id,
+      &abstract_proto_t.id,
       &empty_bound,
       &empty_subs,
       &RegionT::Default,
-      &override_proto_t,
+      hinputs.get_instantiation_bound_args(abstract_proto_t.id),
+    );
+    let override_proto = instantiator.resolve_override_prototype(
+      &mut monouts,
+      &concrete_impl_id_t,
+      &matched_impl_i,
+      &abstract_proto_t,
+      &abstract_bound_args,
+      impl_bound_args,
     );
     instantiator.drain_instantiation_queue(&mut monouts);
 
-    // The instantiated body's metal name is `humanize_id(proto_i.id)` (metal_lowerer's
+    // The instantiated body's metal name is `humanize_id(override_proto.id)` (metal_lowerer's
     // `lower_function` keys it that way). That single string is both the extern-ABI key the wrapper's
     // `buildBoundarySignature` looks up and the `vale_name` the wrapper forwards through.
-    let code_map = |loc: CodeLocationS| format!("{:?}", loc);
-    let vale_name = humanize_id(&code_map, &proto_i.id, None);
+    let vale_name = humanize_id(&code_map, &override_proto.id, None);
     let symbol = tcx.symbol_name(instance).name.to_string();
     // The inbound ABI is role-agnostic: the same `fn_abi_of_instance` read the outbound leaves use
     // gives how Rust passes the `&self` receiver (and args) into the callback.
@@ -501,8 +575,22 @@ fn request_name_parts<'s, 'i>(
 /// instantiated name. `None` if the request is not a plain function, or if any type arg is one we
 /// cannot yet lower (so the caller drops the request rather than mis-instantiate it).
 fn rust_request_arg_tys<'tcx>(tcx: TyCtxt<'tcx>, proto: &PrototypeI) -> Option<Vec<Ty<'tcx>>> {
-  let (_, template_args, _) = request_name_parts(proto)?;
-  template_args.iter().map(|t| templata_to_rustc_ty(tcx, t)).collect()
+  let (name, template_args, _) = request_name_parts(proto)?;
+  let mut arg_tys = Vec::with_capacity(template_args.len());
+  for t in template_args.iter() {
+    match templata_to_rustc_ty(tcx, t) {
+      Some(ty) => arg_tys.push(ty),
+      // A generic type arg of a Rust callee that won't lower to a rustc `Ty` used to return `None`,
+      // silently dropping the whole leaf (no `FunctionExternI`) and aborting the C++ backend far away
+      // on a missing extern. That is a real gap — an unprojected/unlowerable type — never a benign
+      // skip, so fail loudly here, naming the callee and the offending arg, instead of downstream.
+      None => panic!(
+        "rust interop: cannot lower generic type argument of Rust callee `{}` to a rustc type: {t:?}",
+        name.as_str()
+      ),
+    }
+  }
+  Some(arg_tys)
 }
 
 /// Convert one Vale type templata to a rustc `Ty`. Only type (`Kind`) templatas participate in a
@@ -526,10 +614,76 @@ fn kind_to_rustc_ty<'tcx>(tcx: TyCtxt<'tcx>, kind: &KindIT) -> Option<Ty<'tcx>> 
     },
     KindIT::BoolIT(_) => Some(tcx.types.bool),
     KindIT::USizeIT(_) => Some(tcx.types.usize),
-    KindIT::StructIT(s) => citizen_to_rustc_ty(tcx, &s.id),
-    KindIT::InterfaceIT(i) => citizen_to_rustc_ty(tcx, &i.id),
+    KindIT::StructIT(s) => citizen_or_opaque_to_rustc_ty(tcx, &s.id),
+    KindIT::InterfaceIT(i) => citizen_or_opaque_to_rustc_ty(tcx, &i.id),
     _ => None,
   }
+}
+
+/// Lower a citizen kind used as a Rust callee's generic argument, choosing between two ways it can
+/// cross to rust:
+///  - A rust-backed citizen (a dependency-crate type) or a Valen-defined citizen that is *projected*
+///    into the stub crate (a struct that implements a Rust trait, so it has a real stub `DefId`) lowers
+///    to its own `Adt` via `citizen_to_rustc_ty`.
+///  - Any other Valen-internal type — a lambda closure, or a struct not projected into the stub — has no
+///    nameable rust identity, so it crosses as an opaque blob `__ValeOpaque<typeid>` (arch §10.7 Case 2):
+///    rustc monomorphizes over it without ever inspecting it. A rust-module citizen that fails to resolve
+///    is a genuine dependency-resolution failure, not an opaque type, so it stays `None` (fails loudly at
+///    the call site rather than being masked).
+fn citizen_or_opaque_to_rustc_ty<'tcx>(tcx: TyCtxt<'tcx>, id: &IdI) -> Option<Ty<'tcx>> {
+  if let Some(ty) = citizen_to_rustc_ty(tcx, id) {
+    return Some(ty);
+  }
+  if id.package_coord.module.0 == RUST_MODULE {
+    return None;
+  }
+  opaque_ty(tcx, id)
+}
+
+/// Build the opaque wrapper type `__ValeOpaque<typeid>` for a Valen-internal type. The typeid is the
+/// content-addressed hash of the type's humanized instantiated id, so the inbound callback path
+/// (`collect_callback`) can recover which Valen type an opaque instantiation stands for by matching the
+/// same hash over the universe. Mirrors Sky's `build_opaque_args` (toylangc/src/oracle.rs:1330).
+fn opaque_ty<'tcx>(tcx: TyCtxt<'tcx>, id: &IdI) -> Option<Ty<'tcx>> {
+  let opaque_def_id = resolve_local_type(tcx, "__ValeOpaque")?;
+  let code_map = |loc: CodeLocationS| format!("{:?}", loc);
+  let tid = typeid(&humanize_id(&code_map, id, None));
+  Some(Ty::new_adt(tcx, tcx.adt_def(opaque_def_id), build_opaque_args(tcx, opaque_def_id, tid)))
+}
+
+/// The `GenericArgs` for `__ValeOpaque<HASH>`: the typeid interned as its single `const T: u64` argument.
+fn build_opaque_args<'tcx>(
+  tcx: TyCtxt<'tcx>,
+  opaque_def_id: DefId,
+  tid: u64,
+) -> ty::GenericArgsRef<'tcx> {
+  let typeid_const =
+    ty::Const::from_bits(tcx, tid as u128, ty::TypingEnv::fully_monomorphized(), tcx.types.u64);
+  ty::GenericArgs::for_item(tcx, opaque_def_id, |param, _| match param.kind {
+    ty::GenericParamDefKind::Const { .. } => typeid_const.into(),
+    ty::GenericParamDefKind::Lifetime => tcx.lifetimes.re_erased.into(),
+    ty::GenericParamDefKind::Type { .. } => {
+      panic!("__ValeOpaque must have only its const param, got a type param")
+    }
+  })
+}
+
+/// Recover the content-addressed typeid from an `__ValeOpaque<HASH>` type — the inverse of
+/// `opaque_ty`/`build_opaque_args`. This is the inbound (`collect_callback`) decode: rustc hands us a
+/// callback `Instance` whose `Self` type carries `__ValeOpaque<HASH>` for each Valen-internal type
+/// arg (e.g. the lambda functor), and the HASH is `typeid(humanize_id(kind.id))` — so this reader plus
+/// the typeid→kind universe table (`build_universe_table`) recovers which Valen kind the opaque blob
+/// stands for (arch §10.9). Returns `None` for any other type (a primitive, a real Rust `Adt`, a
+/// borrow) so a caller can fall through / fail loud rather than mis-decode.
+fn read_opaque_typeid<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<u64> {
+  let ty::TyKind::Adt(adt_def, args) = ty.kind() else {
+    return None;
+  };
+  let opaque_def_id = resolve_local_type(tcx, "__ValeOpaque")?;
+  if adt_def.did() != opaque_def_id {
+    return None;
+  }
+  args.const_at(0).try_to_leaf().map(|scalar| scalar.to_u64())
 }
 
 /// Lower a Rust-backed citizen (struct or enum) kind to its rustc `Adt` `Ty`: reconstruct the type's
@@ -695,6 +849,19 @@ fn lang_collect_and_partition_mono_items<'tcx>(
     let mut new_cgu = CodegenUnit::new(cgu.name());
     for (&mono_item, &data) in cgu.items() {
       if is_vale_codegen_target(tcx, mono_item.def_id()) {
+        // Re-fire `per_instance_mir` for our stub instances (incremental fix, Part A). Its provider's
+        // side effects (populating `DriverState` with the entry symbol, the instantiated bodies, the
+        // callbacks) are the emit's only inputs, but rustc reaches it only through the disk-cached
+        // `items_of_instance` — so on a *warm* rebuild the collector never calls it and the emit comes
+        // out empty (undefined `__vale_main` at link). This query (`collect_and_partition_mono_items`)
+        // is `eval_always`, so it runs every build; calling `per_instance_mir` here forces the side
+        // effect to fire. Safe against double-firing: `per_instance_mir` is `cache_on_disk_if{false}`
+        // and rustc's in-memory query cache runs its provider at most once per instance per build — so
+        // on a cold build, where the default partitioner above already called it, this is a cache-hit
+        // no-op. We discard the body; only the side effect matters here.
+        if let MonoItem::Fn(instance) = mono_item {
+          let _ = tcx.per_instance_mir(instance);
+        }
         continue;
       }
       let mut data = data;

@@ -265,6 +265,22 @@ fn a_valen_callback_takes_a_scalar_arg() {
   );
 }
 
+/// The driven harness compiles the builtins in (like `valen build`), so Valen's operators — library
+/// functions, not typing-pass primitives — resolve: `3 + 4` reaches `+` and the linked bin exits 7.
+/// Without the builtins the driven path rejected `+` as `CouldntFindFunctionToCallT`; this guards that
+/// parity, so a bug that only surfaces with builtins present (the reachable-bounds class) can be
+/// reproduced from an in-tree driven case.
+#[test]
+fn a_driven_case_resolves_a_builtin_operator() {
+  let run = run_case_rustc_driven_and_run(&A_DRIVEN_CASE_RESOLVES_A_BUILTIN_OPERATOR);
+  assert_eq!(
+    run.process_exit,
+    Some(7),
+    "the driven builtin-operator bin did not exit 7 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
 /// Slice 7 (reverse direction): a Rust borrow crosses inbound and the callback calls back out to Rust.
 /// `run_ticker::<MyTicker>()` makes a `Counter` and hands `&Counter` to Valen's `on_tick`, which
 /// returns `w.peek()` — an outbound Rust call on the received borrow. The linked bin exits 5.

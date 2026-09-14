@@ -16,6 +16,7 @@ pub mod oracle;
 pub mod orchestrator;
 pub mod reserved;
 pub mod stub_gen;
+pub mod typeid;
 pub mod tyctxt_oracle;
 
 pub use corpus::{Case, Expect};

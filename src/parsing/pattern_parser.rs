@@ -102,6 +102,7 @@ where
       is_in_citizen,
       is_in_function,
       is_in_lambda,
+      /*is_parameter=*/ true,
       maybe_name,
     )?;
 
@@ -123,6 +124,7 @@ where
     is_in_citizen: bool,
     is_in_function: bool,
     is_in_lambda: bool,
+    is_parameter: bool,
     maybe_name_from_parameter: Option<WordLE<'p>>,
   ) -> ParseResult<PatternPP<'p>> {
     if !iter.has_next() {
@@ -258,6 +260,12 @@ where
       }
     };
 
+    // A `mut` after a parameter's type is a placeholder for a future per-parameter borrow-checker
+    // modifier. Recognize and discard it; nothing stores it yet.
+    if is_parameter {
+      let _ = iter.try_skip_word(self.keywords.r#mut);
+    }
+
     // Parse optional destructure (lines 196-215)
     let maybe_destructure = match iter.peek_cloned() {
       Some(INodeLEEnum::Squared(SquaredLE {
@@ -281,6 +289,7 @@ where
             false,
             false,
             false,
+            /*is_parameter=*/ false,
             None,
           )?;
           patterns.push(pattern);

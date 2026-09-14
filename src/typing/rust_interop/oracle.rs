@@ -80,6 +80,23 @@ pub enum ValeSigType<'s, 't> {
   Borrow { inner: &'t ValeSigType<'s, 't>, is_mut: bool },
 }
 
+/// An imported-trait bound on one of a function's own generic parameters — a `where P: Trait`
+/// predicate surfaced from rustc's `predicates_of`, lowered to Vale's `where implements(P, Trait)`.
+///
+/// Rust discharges these obligations itself for the forward direction, which is why the synthesized
+/// function used to drop them. The reverse direction needs them: a rust caller `run<C: MainLoop>`'s
+/// `C: MainLoop` bound is exactly what tells Vale an impl `MyStruct: MainLoop` exists, so typing
+/// resolves that impl and records its concrete override — the datum the instantiator then reads.
+///
+/// `sub_generic_index` is the index into the function's own `generic_params` (the bound's subject);
+/// `super_trait` is the imported trait, kept as a `Citizen` so the declaration binds it through the
+/// same `bind_sig_type` path a parameter citizen uses.
+#[derive(Copy, Clone, Debug)]
+pub struct ValeSigImplBound<'s, 't> {
+  pub sub_generic_index: u32,
+  pub super_trait: ValeSigType<'s, 't>,
+}
+
 /// A Rust function signature, lowered to Vale terms.
 ///
 /// Note this is expressed over `KindT`, not `CoordT`: the onion refactor dissolved
@@ -91,6 +108,9 @@ pub struct ValeSig<'s, 't> {
   /// function, which is the degenerate case rather than a separate one. `ValeSigType::Generic`
   /// indexes into this.
   pub generic_params: &'t [StrI<'s>],
+  /// Imported-trait bounds on the generic params (`where implements(..)`). Empty for a function
+  /// with no such bounds, which is the common case.
+  pub generic_param_bounds: &'t [ValeSigImplBound<'s, 't>],
   pub params: &'t [ValeSigType<'s, 't>],
   pub ret: ValeSigType<'s, 't>,
 }

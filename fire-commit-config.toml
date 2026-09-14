@@ -54,6 +54,16 @@ cmd = "cargo +rustc-fork test --manifest-path Cargo.toml --lib --features rust_i
 env = {}
 when_changed = ["src/typing/rust_interop/**"]
 
+# Full-pipeline `valen build` e2e (`pipeline_e2e`): the only tests that run the real orchestrator —
+# cargo -> the real `valenc-rs` wrapper -> generated workspace -> link -> run. They need the interop
+# bins built first (naming them dodges `valec`, which can't link the interop lib), so this command
+# builds them, then runs the module; without the bins the tests soft-skip (so the `--lib` gate above
+# is unaffected). Slower than the `--lib` suite and fork-only; printed for the operator to run.
+[[repo.tests]]
+cmd = "cargo +rustc-fork build --manifest-path Cargo.toml --features rust_interop --bin valenc-rs --bin valen && cargo +rustc-fork test --manifest-path Cargo.toml --lib --features rust_interop pipeline_e2e"
+env = {}
+when_changed = ["src/typing/rust_interop/**", "src/typing/test/rust_interop/**"]
+
 # Externals, located by path; each carries its own fire-commit-config.toml. Both are plain clones
 # here (independent checkouts, gitignored in this repo), not submodules.
 [[external]]

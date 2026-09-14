@@ -27,7 +27,6 @@
 // `Compilation::Stop`, so a fixture that type-errors is invisible here. Tier 2 would catch that
 // rot; tier 1 structurally cannot.
 
-use std::collections::HashMap;
 use std::env::var;
 use std::fs::read_dir;
 use tempfile::TempDir;
@@ -41,18 +40,9 @@ use rustc_middle::ty::TyCtxt;
 
 use std::sync::Arc;
 
-use crate::backend_ffi::metal_lowerer::ExternAbi;
-use crate::code_source::{CodeSource, Source};
 use crate::compile_options::GlobalOptions;
 use crate::instantiating::instantiating_interner::InstantiatingInterner;
 use crate::instantiating::instantiator;
-use crate::instantiating::ast::ast::FunctionExportI;
-use crate::instantiating::instantiator::InstantiatedOutputsI;
-use crate::instantiating::rust_interop::{
-  arm_driver_state, consumer_fill_modules, vale_override_queries, CallbackReq, DriverState,
-};
-use crate::typing::compiler::Compiler;
-use std::cell::RefCell;
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;
 use crate::postparsing::ScoutCompilation;
@@ -60,12 +50,15 @@ use crate::scout_arena::ScoutArena;
 use crate::typing::compilation::TypingPassCompilation;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::oracles::Oracles;
+use crate::typing::rust_interop::drive::{
+  collect_rust_import_paths, driven_code_source, run_driven_rustc, scout_package_coords,
+};
 use crate::typing::rust_interop::{
   Case, Expect, LoggingOracle, OracleCall, OracleQuery, TyCtxtOracle,
 };
 use crate::typing::typing_interner::TypingInterner;
 use crate::typing::TypingPassOptions;
-use crate::utils::code_hierarchy::{FileCoordinateMap, PackageCoordinate};
+use crate::utils::code_hierarchy::FileCoordinateMap;
 
 /// A typing-pass failure, owned so it can outlive the compilation that produced it.
 ///
@@ -213,6 +206,8 @@ struct CaseCallbacks<'a, F, R> {
   /// Run the instantiator (`translate`) on the typing output when the program compiles, recording
   /// the denizen counts. Off by default so most cases stay pure typing-pass tests.
   instantiate: bool,
+  /// Compile the builtins (arith/logic/…) alongside the case so its operators (`==`/`+`/…) resolve.
+  compile_builtins: bool,
   outcome: Option<CaseOutcome<R>>,
 }
 
@@ -241,7 +236,8 @@ where
       parse_arena.intern_file_coordinate(package_coord, "0.vale"),
       self.vale_source.to_string(),
     );
-    let code_source = CodeSource::new(vec![Source::from_code_map(&files)]);
+    let code_source =
+      driven_code_source(&parse_arena, &parser_keywords, &files, self.compile_builtins);
 
     let global_options = GlobalOptions {
       sanity_check: true,
@@ -255,8 +251,7 @@ where
     // `import rust.X.Y` statements, each joined back into the dotted path the oracle resolves.
     // `ScoutCompilation` needs no oracle, so it runs first and yields the parsed imports; the tiny
     // program is parsed again inside the typing compilation below, which costs nothing.
-    let mut import_paths: Vec<String> = Vec::new();
-    {
+    let import_paths = {
       let mut scout = ScoutCompilation::new(
         &scout_arena,
         &keywords,
@@ -266,25 +261,9 @@ where
         &code_source,
         global_options.clone(),
       );
-      if let Ok(scoutput) = scout.get_scoutput() {
-        for program in scoutput.file_coord_to_contents.values() {
-          for imp in program.imports {
-            if imp.module_name == keywords.rust {
-              let mut segments: Vec<&str> = imp.package_names.iter().map(|s| s.0).collect();
-              segments.push(imp.importee_name.0);
-              import_paths.push(segments.join("."));
-            }
-          }
-        }
-      }
-    }
-    // String-dedup so a program that names the same item twice does not register it twice.
-    let mut import_path_strs: Vec<&str> = Vec::new();
-    for path in &import_paths {
-      if !import_path_strs.contains(&path.as_str()) {
-        import_path_strs.push(path.as_str());
-      }
-    }
+      collect_rust_import_paths(&mut scout, &keywords)
+    };
+    let import_path_strs: Vec<&str> = import_paths.iter().map(|s| s.as_str()).collect();
 
     // No package coordinate is handed to the oracle: each item derives its own from
     // `tcx.def_path`, so items from different crates cannot collide on one coordinate.
@@ -298,7 +277,7 @@ where
       &keywords,
       &parser_keywords,
       &parse_arena,
-      vec![package_coord],
+      scout_package_coords(package_coord, &parse_arena, &parser_keywords, self.compile_builtins),
       &code_source,
       TypingPassOptions {
         global_options: global_options.clone(),
@@ -490,114 +469,6 @@ pub fn try_run_case<R: Send>(
   try_run_case_in_package(case, "test", false, extract)
 }
 
-/// Callbacks for the rustc-driven path. Unlike `CaseCallbacks`, the arenas/interners and the owned
-/// `HinputsT`/`monouts` live in the *caller's* frame (see `run_case_rustc_driven`); this only holds
-/// borrows of them, runs the Vale typing pass in `after_expansion` (writing the owned `HinputsT` into
-/// the caller's slot), and arms the scoped pointer so the `per_instance_mir` provider can drive the
-/// instantiator during codegen.
-struct DrivenCallbacks<'ctx, 's, 't, 'p> {
-  scout_arena: &'ctx ScoutArena<'s>,
-  keywords: &'ctx Keywords<'s>,
-  parser_keywords: &'ctx Keywords<'p>,
-  parse_arena: &'ctx ParseArena<'p>,
-  package_coord: &'p PackageCoordinate<'p>,
-  code_source: &'ctx CodeSource<'p>,
-  typing_interner: &'ctx TypingInterner<'s, 't>,
-  global_options: GlobalOptions,
-  hinputs_slot: &'ctx RefCell<Option<HinputsT<'s, 't>>>,
-  // Set when the Vale program fails to typecheck. drive_rustc reads it after run_compiler and panics
-  // on the test thread, so a broken driven program surfaces its diagnostic instead of looking like an
-  // empty `__vale_main -> []` firing log with an undefined `__vale_main` at link.
-  typing_error_slot: &'ctx RefCell<Option<String>>,
-  state_ptr: *const (),
-}
-
-// SAFETY: `rustc_driver::run_compiler` moves the callbacks onto a thread it spawns, but it *joins*
-// that thread before returning — the calling (test) thread is parked in `run_compiler` for the whole
-// compilation. So the rustc thread has exclusive access to everything this borrows (the arenas,
-// interners, and slots that live in `run_case_rustc_driven`'s frame) for exactly the window it uses
-// them, and the calling thread touches none of it until `run_compiler` returns. This is the same
-// scoped-borrow guarantee `std::thread::scope` formalizes; the `!Send`/`!Sync` arena internals are
-// never actually accessed from two threads at once. The `*const ()` is a pointer into that same
-// frame, valid for the same window.
-unsafe impl<'ctx, 's, 't, 'p> Send for DrivenCallbacks<'ctx, 's, 't, 'p> {}
-
-impl<'ctx, 's, 't, 'p> Callbacks for DrivenCallbacks<'ctx, 's, 't, 'p> {
-  fn config(&mut self, config: &mut rustc_interface::Config) {
-    config.override_queries = Some(vale_override_queries);
-    // Install the codegen-time hook that drives Vale's backend. It's a process-global `OnceLock`
-    // (first-wins; every driven run installs the same fn), and no-ops unless a `DriverState` is armed.
-    rustc_codegen_llvm::set_fill_extra_modules_hook(consumer_fill_modules);
-  }
-
-  fn after_expansion<'tcx>(&mut self, _compiler: &RustcCompiler, tcx: TyCtxt<'tcx>) -> Compilation {
-    // Scout once: the imports feed the oracle's allowlist, and the same scout's code map + AST feed
-    // typing. Mirrors TypingPassCompilation::get_compiler_outputs, but calls Compiler::evaluate
-    // directly so we get an *owned* HinputsT to move into the caller's slot (the compilation itself
-    // borrows the tcx-bound oracle and cannot outlive this callback).
-    let mut scout = ScoutCompilation::new(
-      self.scout_arena,
-      self.keywords,
-      self.parser_keywords,
-      self.parse_arena,
-      vec![self.package_coord],
-      self.code_source,
-      self.global_options.clone(),
-    );
-
-    let mut import_paths: Vec<String> = Vec::new();
-    if let Ok(scoutput) = scout.get_scoutput() {
-      for program in scoutput.file_coord_to_contents.values() {
-        for imp in program.imports {
-          if imp.module_name == self.keywords.rust {
-            let mut segments: Vec<&str> = imp.package_names.iter().map(|s| s.0).collect();
-            segments.push(imp.importee_name.0);
-            import_paths.push(segments.join("."));
-          }
-        }
-      }
-    }
-    let mut import_path_strs: Vec<&str> = Vec::new();
-    for path in &import_paths {
-      if !import_path_strs.contains(&path.as_str()) {
-        import_path_strs.push(path.as_str());
-      }
-    }
-
-    let real = TyCtxtOracle::new(tcx, self.scout_arena, &import_path_strs);
-    let compiling = tcx.crate_name(rustc_span::def_id::LOCAL_CRATE).to_string();
-    let logging = LoggingOracle::new(&real, &compiling);
-
-    let options = TypingPassOptions {
-      global_options: self.global_options.clone(),
-      debug_out: Arc::new(|x: &str| println!("{}", x)),
-      tree_shaking_enabled: true,
-      borrow_checker_enabled: true,
-    };
-
-    let code_map = scout.get_code_map().expect("getCodeMap failed");
-    let astrouts = scout.expect_scoutput();
-    let compiler = Compiler::new(
-      self.scout_arena,
-      &self.typing_interner,
-      self.keywords,
-      &options,
-      Oracles::with_rust(&logging),
-    );
-    match compiler.evaluate(&code_map, astrouts) {
-      Ok(hinputs) => *self.hinputs_slot.borrow_mut() = Some(hinputs),
-      // Capture the failure rather than swallowing it. A None hinputs would otherwise flow silently
-      // into empty leaf collection and no body emission, so drive_rustc surfaces this after the run.
-      Err(err) => *self.typing_error_slot.borrow_mut() = Some(format!("{err:?}")),
-    }
-
-    // Arm the scoped pointer on this (the rustc) thread, where the provider will read it during
-    // codegen. The state outlives run_compiler, so the pointer stays valid for every provider call.
-    arm_driver_state(self.state_ptr);
-    Compilation::Continue
-  }
-}
-
 /// The result of a rustc-driven run: the provider's per-item firing log, rustc's own exit code
 /// (`0` means it drove all the way through codegen without erroring on the reified Rust leaves), and,
 /// when the run built and executed a bin, the exit code of that process (`None` for a lib run, or when
@@ -664,79 +535,24 @@ fn drive_rustc(case: &Case, emit_backend: bool, crate_type: &str, run_exe: bool)
     ));
   }
 
-  // The instantiator state, all in this frame so it outlives run_compiler (and thus every provider
-  // call): four arenas, their interners, the Vale source, and the hinputs/monouts slots.
-  let parse_bump = Bump::new();
-  let scout_bump = Bump::new();
-  let typing_bump = Bump::new();
-  let instantiating_bump = Bump::new();
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let typing_interner = TypingInterner::new(&typing_bump);
-  let instantiating_interner = InstantiatingInterner::new(&instantiating_bump);
+  // Delegate the whole driven compile to the production engine (`drive.rs`) — the shared arenas/slots/
+  // `DriverState`/query-override machinery, one home instead of two. Cases compile the builtins in, the
+  // same as the real `valen build` path, so a program that only reaches a bug with builtins present can
+  // be reproduced in-tree. A typing failure comes back as `Err`, which we surface on the test thread (a
+  // broken driven program otherwise reads as an empty `__vale_main -> []` firing log plus an undefined
+  // `__vale_main` at link, masking the real cause).
+  let (rustc_exit, firings) =
+    run_driven_rustc(
+      &rustc_args,
+      case.vale,
+      emit_backend,
+      /*compile_builtins=*/ true,
+      /*borrow_check=*/ true,
+    )
+      .unwrap_or_else(|err| {
+        panic!("driven case '{}' failed to typecheck, so no Vale body was emitted:\n{err}", case.name)
+      });
 
-  let package_coord = parse_arena.intern_package_coordinate(parse_arena.intern_str("test"), &[]);
-  let mut files = FileCoordinateMap::<String>::new();
-  files.put(parse_arena.intern_file_coordinate(package_coord, "0.vale"), case.vale.to_string());
-  let code_source = CodeSource::new(vec![Source::from_code_map(&files)]);
-
-  let global_options = GlobalOptions {
-    sanity_check: true,
-    use_overload_index: true,
-    use_optimized_solver: true,
-    verbose_errors: true,
-    debug_output: true,
-  };
-
-  let hinputs_slot: RefCell<Option<HinputsT>> = RefCell::new(None);
-  let typing_error_slot: RefCell<Option<String>> = RefCell::new(None);
-  let monouts_slot: RefCell<InstantiatedOutputsI> = RefCell::new(InstantiatedOutputsI::new());
-  let function_exports_slot: RefCell<Vec<FunctionExportI>> = RefCell::new(Vec::new());
-  let entry_symbol_slot: RefCell<Option<String>> = RefCell::new(None);
-  let callbacks_slot: RefCell<Vec<CallbackReq>> = RefCell::new(Vec::new());
-  let firings_slot: RefCell<Vec<String>> = RefCell::new(Vec::new());
-  let extern_abis_slot: RefCell<HashMap<String, ExternAbi>> = RefCell::new(HashMap::new());
-  let state = DriverState {
-    opts: &global_options,
-    interner: &instantiating_interner,
-    typing_interner: &typing_interner,
-    scout_arena: &scout_arena,
-    keywords: &keywords,
-    hinputs: &hinputs_slot,
-    monouts: &monouts_slot,
-    function_exports: &function_exports_slot,
-    entry_symbol: &entry_symbol_slot,
-    callbacks: &callbacks_slot,
-    firings: &firings_slot,
-    extern_abis: &extern_abis_slot,
-    emit_backend,
-  };
-  let state_ptr = &state as *const DriverState as *const ();
-
-  let mut callbacks = DrivenCallbacks {
-    scout_arena: &scout_arena,
-    keywords: &keywords,
-    parser_keywords: &parser_keywords,
-    parse_arena: &parse_arena,
-    package_coord,
-    code_source: &code_source,
-    typing_interner: &typing_interner,
-    global_options: global_options.clone(),
-    hinputs_slot: &hinputs_slot,
-    typing_error_slot: &typing_error_slot,
-    state_ptr,
-  };
-  let rustc_exit = rustc_driver::catch_with_exit_code(|| {
-    rustc_driver::run_compiler(&rustc_args, &mut callbacks);
-  });
-  // Surface a Vale typing failure on the test thread. Without this, a broken driven program leaves
-  // hinputs None and reads downstream as an empty `__vale_main -> []` firing log plus an undefined
-  // `__vale_main` at link, masking the real cause.
-  if let Some(err) = typing_error_slot.into_inner() {
-    panic!("driven case '{}' failed to typecheck, so no Vale body was emitted:\n{err}", case.name);
-  }
   // Run the produced executable while out_dir_tmp is still alive (it self-deletes on drop). A bin
   // build lands its executable at <out_dir>/<crate-name>; only run when rustc actually linked one.
   let process_exit = if run_exe && rustc_exit == 0 {
@@ -748,7 +564,7 @@ fn drive_rustc(case: &Case, emit_backend: bool, crate_type: &str, run_exe: bool)
   } else {
     None
   };
-  DrivenRun { firings: firings_slot.into_inner(), rustc_exit, process_exit }
+  DrivenRun { firings, rustc_exit, process_exit }
 }
 
 fn try_run_case_in_package<R: Send>(
@@ -785,8 +601,14 @@ fn try_run_case_in_package<R: Send>(
     ));
   }
 
-  let mut callbacks =
-    CaseCallbacks { vale_source: case.vale, package_module, extract, instantiate, outcome: None };
+  let mut callbacks = CaseCallbacks {
+    vale_source: case.vale,
+    package_module,
+    extract,
+    instantiate,
+    compile_builtins: true,
+    outcome: None,
+  };
   // rustc's fatal-error path does not return — it emits the diagnostic and then **unwinds**,
   // with a `FatalErrorMarker` payload rather than a string. `catch_with_exit_code` is rustc's
   // own way of turning that back into a value, and using it is what keeps a broken fixture from

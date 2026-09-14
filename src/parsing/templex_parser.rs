@@ -181,11 +181,26 @@ where
       None => return Err(ParseError::BadPrototypeName(iter.get_pos())),
     };
 
+    // The params are parsed here rather than through `parse_tuple`, which does not check that each
+    // element's tokens are exhausted: a bound param must be exactly a type, optionally followed by
+    // the `mut` placeholder for a future per-parameter borrow-checker modifier, which is recognized
+    // and discarded (nothing stores it yet). Anything else after the type is an error.
     let args_begin = iter.get_pos();
-    let args = match self.parse_tuple(iter)? {
-      None => return Err(ParseError::BadPrototypeParams(iter.get_pos())),
-      Some(ITemplexPT::Tuple(TuplePT { elements, .. })) => elements,
-      Some(_) => return Err(ParseError::BadPrototypeParams(iter.get_pos())),
+    let args = match iter.peek_cloned() {
+      Some(INodeLEEnum::Parend(ParendLE { contents, .. })) => {
+        let contents = contents.clone();
+        iter.advance();
+        let mut elements: Vec<&'p ITemplexPT<'p>> = Vec::new();
+        for mut element_iter in ScrambleIterator::new(&contents).split_on_symbol(',', false) {
+          elements.push(&*self.parse_arena.alloc(self.parse_templex(&mut element_iter)?));
+          let _ = element_iter.try_skip_word(self.keywords.r#mut);
+          if element_iter.has_next() {
+            return Err(ParseError::BadPrototypeParams(element_iter.get_pos()));
+          }
+        }
+        self.parse_arena.alloc_slice_from_vec(elements)
+      }
+      _ => return Err(ParseError::BadPrototypeParams(iter.get_pos())),
     };
     let args_end = iter.get_prev_end_pos();
 
