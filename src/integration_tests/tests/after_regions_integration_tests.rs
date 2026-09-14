@@ -1,4 +1,6 @@
 #![allow(unused_imports, dead_code, unused_variables, unreachable_code)]
+use crate::collect_where_tnode;
+use crate::typing::test::traverse::NodeRefT;
 use crate::integration_tests::tests::run_compilation::test;
 use crate::integration_tests::tests::run_compilation::test_without_borrow_check;
 use crate::keywords::Keywords;
@@ -177,6 +179,220 @@ exported func main() int {
         IVonData::Int(VonInt { value: 42 }) => {}
         other => panic!("Expected VonInt(42), got {:?}", other),
     }
+}
+
+// Ensures an impl-bounded method call runs correctly end-to-end: `cb.bork()` where `cb: &C` and
+// `where implements(C, Bork)`, called with a concrete `C`, returns 7 in the TestVM. (exp-4's repro.)
+#[test]
+fn impl_bounded_generic_method_call_forwarder_testvm() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+#!DeriveInterfaceDrop
+sealed interface Bork { func bork(virtual self &Bork) int; }
+
+#!DeriveStructDrop
+struct BorkForwarder<Lam> where func drop(Lam)void, func __call(&Lam)int { lam Lam; }
+
+impl<Lam> Bork for BorkForwarder<Lam>;
+
+func bork<Lam>(self &BorkForwarder<Lam>) int { return (&self.lam)(); }
+
+func run<C>(cb &C) int where implements(C, Bork) { return cb.bork(); }
+
+exported func main() int {
+  f = BorkForwarder({ 7 });
+  z = run(&f);
+  [_] = ^f;
+  return ^z;
+}
+",
+    );
+    match compile.eval_for_kind_primitive_args(Vec::new()).unwrap() {
+        IVonData::Int(VonInt { value: 7 }) => {}
+        other => panic!("Expected VonInt(7), got {:?}", other),
+    }
+}
+
+// The impl-bounded method call `cb.bork()` inside a generic must be typed as a BoundFunctionCall
+// (receiver kept un-upcast, devirtualizable at monomorphization), never a FunctionCall-to-abstract
+// with an UpcastGeneric receiver. exp-4 repro.
+#[test]
+fn impl_bounded_method_call_emits_bound_function_call() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+#!DeriveInterfaceDrop
+sealed interface Bork { func bork(virtual self &Bork) int; }
+
+#!DeriveStructDrop
+struct BorkForwarder<Lam> where func drop(Lam)void, func __call(&Lam)int { lam Lam; }
+
+impl<Lam> Bork for BorkForwarder<Lam>;
+
+func bork<Lam>(self &BorkForwarder<Lam>) int { return (&self.lam)(); }
+
+func run<C>(cb &C) int where implements(C, Bork) { return cb.bork(); }
+
+exported func main() int {
+  f = BorkForwarder({ 7 });
+  z = run(&f);
+  [_] = ^f;
+  return ^z;
+}
+",
+    );
+    let coutputs = compile.expect_compiler_outputs();
+    let run = coutputs.lookup_function_by_str("run");
+    let bound_calls: Vec<_> = collect_where_tnode!(
+        NodeRefT::FunctionDefinition(run),
+        NodeRefT::BoundFunctionCall(b) => Some(b)
+    );
+    let generic_upcasts: Vec<_> = collect_where_tnode!(
+        NodeRefT::FunctionDefinition(run),
+        NodeRefT::UpcastGeneric(u) => Some(u)
+    );
+    assert!(
+        !bound_calls.is_empty(),
+        "expected >=1 BoundFunctionCall in `run`, got {}",
+        bound_calls.len()
+    );
+    assert_eq!(
+        generic_upcasts.len(),
+        0,
+        "expected 0 UpcastGeneric in `run` (receiver is kept in the BoundFunctionCall), got {}",
+        generic_upcasts.len()
+    );
+}
+
+// After monomorphization with a concrete receiver, the impl-bounded method call must devirtualize:
+// the instantiated `run` body must contain no Upcast (no fat-ptr construction) — a direct static
+// call to the concrete override instead. (The TestVM result — 7 — is covered by
+// impl_bounded_generic_method_call_forwarder_testvm.)
+#[test]
+fn impl_bounded_method_call_instantiates_to_static_override() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+#!DeriveInterfaceDrop
+sealed interface Bork { func bork(virtual self &Bork) int; }
+
+#!DeriveStructDrop
+struct BorkForwarder<Lam> where func drop(Lam)void, func __call(&Lam)int { lam Lam; }
+
+impl<Lam> Bork for BorkForwarder<Lam>;
+
+func bork<Lam>(self &BorkForwarder<Lam>) int { return (&self.lam)(); }
+
+func run<C>(cb &C) int where implements(C, Bork) { return cb.bork(); }
+
+exported func main() int {
+  f = BorkForwarder({ 7 });
+  z = run(&f);
+  [_] = ^f;
+  return ^z;
+}
+",
+    );
+    let monouts = compile.get_monouts();
+    let run_body = monouts
+        .functions
+        .iter()
+        .find(|f| format!("{:?}", f.header.id).contains("\"run\""))
+        .map(|f| format!("{:?}", f.body))
+        .expect("monomorphized `run` not found");
+    assert!(
+        !run_body.contains("Upcast"),
+        "instantiated `run` should have no Upcast (devirtualized to a static override call), body:\n{}",
+        run_body
+    );
+}
+
+// The contrast: a real, user-written concrete->interface upcast stays an UpcastInterface, never
+// becomes an UpcastGeneric.
+#[test]
+fn direct_interface_upcast_stays_interface() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+sealed interface IShip {}
+struct Raza {}
+impl IShip for Raza;
+func launch(s &IShip) { }
+exported func main() {
+  launch(&Raza());
+}
+",
+    );
+    let coutputs = compile.expect_compiler_outputs();
+    let main = coutputs.lookup_function_by_str("main");
+    let interface_upcasts: Vec<_> = collect_where_tnode!(
+        NodeRefT::FunctionDefinition(main),
+        NodeRefT::UpcastInterface(u) => Some(u)
+    );
+    let generic_upcasts: Vec<_> = collect_where_tnode!(
+        NodeRefT::FunctionDefinition(main),
+        NodeRefT::UpcastGeneric(u) => Some(u)
+    );
+    assert!(
+        !interface_upcasts.is_empty(),
+        "expected >=1 UpcastInterface for launch(&Raza()), got {}",
+        interface_upcasts.len()
+    );
+    assert_eq!(
+        generic_upcasts.len(),
+        0,
+        "expected 0 UpcastGeneric for a direct upcast, got {}",
+        generic_upcasts.len()
+    );
 }
 
 #[test]

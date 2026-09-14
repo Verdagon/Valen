@@ -3,7 +3,9 @@ use crate::utils::range::RangeS;
 use crate::postparsing::ast::LocationInDenizen;
 use crate::postparsing::names::{CodeNameS, CodeNameValS, IImpreciseNameValS};
 use crate::typing::ast::ast::LocT;
-use crate::typing::ast::expressions::UpcastTE;
+use crate::typing::ast::expressions::UpcastGenericTE;
+use crate::typing::ast::expressions::UpcastInterfaceTE;
+use crate::typing::names::names::IImplNameT;
 use crate::typing::ast::expressions::*;
 use crate::typing::citizen::impl_compiler::IsParentResult;
 use crate::typing::compiler::Compiler;
@@ -239,13 +241,32 @@ target:
         assert!(coutputs
           .get_instantiation_bounds(self.typing_interner, is_parent.impl_id)
           .is_some());
-        Ok(ExpressionTE::Upcast(self.typing_interner.alloc(UpcastTE::new(
-          self.typing_interner,
-          range[0],
-          source_expr,
-          target_super_kind,
-          is_parent.impl_id,
-        ))))
+        // Upcasting to a placeholder with an impl bound (`implements(T, ISomething)`) should
+        // produce an UpcastGenericTE which evaporates in the instantiator.
+        // Upcasting to an actual interface should make an UpcastInterfaceTE which is lowered to
+        // a fat pointer.
+        let impl_name = IImplNameT::try_from(is_parent.impl_id.local_name)
+          .expect("is_parent impl_id local_name should be an impl name");
+        match impl_name {
+          IImplNameT::ImplBound(_) => {
+            Ok(ExpressionTE::UpcastGeneric(self.typing_interner.alloc(UpcastGenericTE::new(
+              self.typing_interner,
+              range[0],
+              source_expr,
+              target_super_kind,
+              is_parent.impl_id,
+            ))))
+          }
+          IImplNameT::Impl(_) | IImplNameT::AnonymousSubstructImpl(_) => {
+            Ok(ExpressionTE::UpcastInterface(self.typing_interner.alloc(UpcastInterfaceTE::new(
+              self.typing_interner,
+              range[0],
+              source_expr,
+              target_super_kind,
+              is_parent.impl_id,
+            ))))
+          }
+        }
       }
     }
   }

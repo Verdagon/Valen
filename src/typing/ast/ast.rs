@@ -190,7 +190,7 @@ impl<'s, 't> ParameterT<'s, 't> {
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ICalleeCandidate<'s, 't> {
   Function(FunctionCalleeCandidate<'s, 't>),
-  Header(&'t HeaderCalleeCandidate<'s, 't>),
+  Header(&'t HeaderCalleeCandidate<'s, 't>), // Dead?
   PrototypeTemplata(PrototypeTemplataCalleeCandidate<'s, 't>),
 }
 

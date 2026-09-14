@@ -59,6 +59,7 @@ pub enum ExpressionTE<'s, 't> {
   InterfaceFunctionCall(&'t InterfaceFunctionCallTE<'s, 't>),
   ExternFunctionCall(&'t ExternFunctionCallTE<'s, 't>),
   FunctionCall(&'t FunctionCallTE<'s, 't>),
+  BoundFunctionCall(&'t BoundFunctionCallTE<'s, 't>),
   Reinterpret(&'t ReinterpretTE<'s, 't>),
   Construct(&'t ConstructTE<'s, 't>),
   NewRuntimeSizedArray(&'t NewRuntimeSizedArrayTE<'s, 't>),
@@ -70,7 +71,8 @@ pub enum ExpressionTE<'s, 't> {
   PushRuntimeSizedArray(&'t PushRuntimeSizedArrayTE<'s, 't>),
   PopRuntimeSizedArray(&'t PopRuntimeSizedArrayTE<'s, 't>),
   InterfaceToInterfaceUpcast(&'t InterfaceToInterfaceUpcastTE<'s, 't>),
-  Upcast(&'t UpcastTE<'s, 't>),
+  UpcastInterface(&'t UpcastInterfaceTE<'s, 't>),
+  UpcastGeneric(&'t UpcastGenericTE<'s, 't>),
   Destroy(&'t DestroyTE<'s, 't>),
   CopyPrim(&'t CopyPrimTE<'s, 't>),
   LocalLookup(&'t LocalLookupTE<'s, 't>),
@@ -114,6 +116,7 @@ where
       ExpressionTE::InterfaceFunctionCall(e) => e.result,
       ExpressionTE::ExternFunctionCall(e) => e.result,
       ExpressionTE::FunctionCall(e) => e.result,
+      ExpressionTE::BoundFunctionCall(e) => e.result,
       ExpressionTE::Reinterpret(e) => e.result,
       ExpressionTE::Construct(e) => e.result,
       ExpressionTE::NewRuntimeSizedArray(e) => e.result,
@@ -125,7 +128,8 @@ where
       ExpressionTE::PushRuntimeSizedArray(e) => e.result,
       ExpressionTE::PopRuntimeSizedArray(e) => e.result,
       ExpressionTE::InterfaceToInterfaceUpcast(e) => e.result,
-      ExpressionTE::Upcast(e) => e.result,
+      ExpressionTE::UpcastInterface(e) => e.result,
+      ExpressionTE::UpcastGeneric(e) => e.result,
       ExpressionTE::Destroy(e) => e.result,
       ExpressionTE::CopyPrim(e) => e.result,
       ExpressionTE::LocalLookup(e) => KindT::BorrowRef(e.result),
@@ -956,6 +960,45 @@ where
     }
   }
 }
+/// Arena-allocated (see @TFITCX)
+/// A method call on placeholder, using the interface we know it implements.
+#[derive(Debug)]
+pub struct BoundFunctionCallTE<'s, 't>
+where
+  's: 't,
+{
+  pub range: RangeS<'s>,
+  pub impl_name: IdT<'s, 't>,
+  pub abstract_prototype: &'t PrototypeT<'s, 't>,
+  pub virtual_param_index: usize,
+  pub result: KindT<'s, 't>,
+  pub args: &'t [ExpressionTE<'s, 't>],
+  _sealed: (),
+}
+
+impl<'s, 't> BoundFunctionCallTE<'s, 't>
+where
+  's: 't,
+{
+  pub fn new(
+    range: RangeS<'s>,
+    impl_name: IdT<'s, 't>,
+    abstract_prototype: &'t PrototypeT<'s, 't>,
+    virtual_param_index: usize,
+    result: KindT<'s, 't>,
+    args: &'t [ExpressionTE<'s, 't>],
+  ) -> BoundFunctionCallTE<'s, 't> {
+    BoundFunctionCallTE {
+      range,
+      impl_name,
+      abstract_prototype,
+      virtual_param_index,
+      result,
+      args,
+      _sealed: (),
+    }
+  }
+}
 
 /// Value-type (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -1356,7 +1399,7 @@ where
 }
 /// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
-pub struct UpcastTE<'s, 't>
+pub struct UpcastInterfaceTE<'s, 't>
 where
   's: 't,
 {
@@ -1368,7 +1411,7 @@ where
   _sealed: (),
 }
 
-impl<'s, 't> UpcastTE<'s, 't>
+impl<'s, 't> UpcastInterfaceTE<'s, 't>
 where
   's: 't,
 {
@@ -1378,9 +1421,40 @@ where
     inner_expr: ExpressionTE<'s, 't>,
     target_super_kind: ISuperKindTT<'s, 't>,
     impl_name: IdT<'s, 't>,
-  ) -> UpcastTE<'s, 't> {
+  ) -> UpcastInterfaceTE<'s, 't> {
     let result = replace_value_type_in_ref(interner, inner_expr.result(), target_super_kind.into());
-    UpcastTE { range, inner_expr, target_super_kind, impl_name, result, _sealed: () }
+    UpcastInterfaceTE { range, inner_expr, target_super_kind, impl_name, result, _sealed: () }
+  }
+}
+/// Arena-allocated (see @TFITCX)
+/// An upcast of a placeholder to one of the interfaces that it implements.
+/// The instantiator should make this evaporate.
+#[derive(Debug)]
+pub struct UpcastGenericTE<'s, 't>
+where
+  's: 't,
+{
+  pub range: RangeS<'s>,
+  pub inner_expr: ExpressionTE<'s, 't>,
+  pub target_super_kind: ISuperKindTT<'s, 't>,
+  pub impl_name: IdT<'s, 't>,
+  pub result: KindT<'s, 't>,
+  _sealed: (),
+}
+
+impl<'s, 't> UpcastGenericTE<'s, 't>
+where
+  's: 't,
+{
+  pub fn new(
+    interner: &TypingInterner<'s, 't>,
+    range: RangeS<'s>,
+    inner_expr: ExpressionTE<'s, 't>,
+    target_super_kind: ISuperKindTT<'s, 't>,
+    impl_name: IdT<'s, 't>,
+  ) -> UpcastGenericTE<'s, 't> {
+    let result = replace_value_type_in_ref(interner, inner_expr.result(), target_super_kind.into());
+    UpcastGenericTE { range, inner_expr, target_super_kind, impl_name, result, _sealed: () }
   }
 }
 /// Arena-allocated (see @TFITCX)

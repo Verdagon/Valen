@@ -256,6 +256,8 @@ where
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct AttemptedCandidate<'s, 't> {
   pub prototype: &'t PrototypeT<'s, 't>,
+  /// If the winning callee is a virtual (abstract) function, the index of its virtual param.
+  pub maybe_virtual_index: Option<usize>,
 }
 
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't>
@@ -337,6 +339,7 @@ where
               reason,
             }
           })?;
+        let maybe_virtual_index = function.params.iter().position(|p| p.virtuality.is_some());
         let identifying_rune_templata_types = function.tyype.param_types;
         // Now we want to check that the user didn't specify too many right here.
         // The function can inherit runes from its container, so subtract those first.
@@ -548,6 +551,7 @@ where
                               .is_some());
                             Ok(Ok(AttemptedCandidate {
                               prototype: eval_success.prototype.prototype,
+                              maybe_virtual_index,
                             }))
                           }
                         }
@@ -591,6 +595,7 @@ where
                             .is_some());
                           Ok(Ok(AttemptedCandidate {
                             prototype: resolve_success.prototype.prototype,
+                            maybe_virtual_index,
                           }))
                         }
                       },
@@ -635,7 +640,7 @@ where
             assert!(coutputs
               .get_instantiation_bounds(self.typing_interner, prototype_t.id)
               .is_some());
-            Ok(Ok(AttemptedCandidate { prototype: self.typing_interner.alloc(prototype_t) }))
+            Ok(Ok(AttemptedCandidate { prototype: self.typing_interner.alloc(prototype_t), maybe_virtual_index: None }))
           }
         }
       }

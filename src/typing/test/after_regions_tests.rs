@@ -14,6 +14,7 @@ use crate::tests::tests::new_test_code_map;
 use crate::tests::tests::new_test_package_source;
 use crate::typing::ast::ast::PrototypeT;
 use crate::typing::ast::citizens::StructMemberT;
+use crate::typing::ast::expressions::BoundFunctionCallTE;
 use crate::typing::ast::expressions::FunctionCallTE;
 use crate::typing::compiler_error_reporter::ICompileErrorT;
 use crate::typing::names::names::IFunctionNameT;
@@ -93,8 +94,8 @@ exported func main() {
   let launch_generic = coutputs.lookup_function_by_str("launchGeneric");
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(launch_generic),
-      NodeRefT::FunctionCall(FunctionCallTE {
-          callable: PrototypeT {
+      NodeRefT::BoundFunctionCall(BoundFunctionCallTE {
+          abstract_prototype: PrototypeT {
               id: IdT { local_name: INameT::Function(FunctionNameT { template: FunctionTemplateNameT { human_name: StrI("launch"), .. }, .. }), .. },
               ..
           },
@@ -105,7 +106,7 @@ exported func main() {
   let main = coutputs.lookup_function_by_str("main");
   let upcasts: Vec<_> = collect_where_tnode!(
       NodeRefT::FunctionDefinition(main),
-      NodeRefT::Upcast(u) => Some(u)
+      NodeRefT::UpcastInterface(u) => Some(u)
   );
   assert_eq!(upcasts.len(), 0);
   collect_only_tnode!(

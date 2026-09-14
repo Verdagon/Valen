@@ -1,7 +1,7 @@
 use crate::interner::StrI;
 use crate::utils::range::CodeLocationS;
 use crate::instantiating::ast::types::KindIT;
-use crate::instantiating::ast::names::{IdI, INameI};
+use crate::instantiating::ast::names::{IdI, IImplTemplateNameI, INameI};
 use crate::instantiating::ast::templata::ITemplataI;
 use crate::instantiating::ast::ast::SignatureI;
 use crate::instantiating::ast::names::RawArrayNameI;
@@ -151,6 +151,18 @@ pub fn humanize_name<'s, 'i>(
                 + "(" + &n.parameters.iter().map(|c| humanize_coord(code_map, c)).collect::<Vec<_>>().join(",") + ")"
         }
         INameI::Self_(_) => "self".to_string(),
+        INameI::Impl(n) => {
+            let template_str = match n.template {
+                IImplTemplateNameI::ImplTemplate(t) => format!("implt:{}", code_map(t.code_location)),
+                IImplTemplateNameI::ImplBoundTemplate(t) => {
+                    format!("implboundt:{}", code_map(t.code_location))
+                }
+                IImplTemplateNameI::AnonymousSubstructImplTemplate(t) => {
+                    humanize_name(code_map, t.interface.into(), None) + ".anonymous.impl"
+                }
+            };
+            template_str + &humanize_generic_args(code_map, n.template_args, containing_region)
+        }
         other => panic!("humanize_name: unimplemented variant {:?}", discriminant(&other)),
     }
 }

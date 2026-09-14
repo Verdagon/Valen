@@ -36,7 +36,7 @@ use crate::typing::ast::expressions::ExpressionTE;
 use crate::typing::ast::expressions::FunctionCallTE;
 use crate::typing::ast::expressions::LetAndLendTE;
 use crate::typing::ast::expressions::MemberLookupTE;
-use crate::typing::ast::expressions::UpcastTE;
+use crate::typing::ast::expressions::UpcastInterfaceTE;
 use crate::typing::ast::expressions::{LetNormalTE, LocalLookupTE};
 use crate::typing::compiler_error_humanizer::humanize;
 use crate::typing::compiler_error_reporter::ICompileErrorT;
@@ -2091,9 +2091,9 @@ fn tests_upcasting_from_a_struct_to_an_interface() {
       }) => Some(())
   );
 
-  let upcast: &UpcastTE = collect_only_tnode!(
+  let upcast: &UpcastInterfaceTE = collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
-      NodeRefT::Upcast(u) => Some(u)
+      NodeRefT::UpcastInterface(u) => Some(u)
   );
 
   match upcast.result {
@@ -2164,7 +2164,7 @@ fn tests_calling_a_virtual_function() {
 
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
-      NodeRefT::Upcast(u @ UpcastTE {
+      NodeRefT::UpcastInterface(u @ UpcastInterfaceTE {
           target_super_kind: ISuperKindTT::Interface(InterfaceTT {
               id: IdT {
                   local_name: INameT::Interface(InterfaceNameT {
@@ -2237,9 +2237,9 @@ fn tests_upcasting_has_the_right_stuff() {
 
   let main = coutputs.lookup_function_by_str("main");
 
-  let upcast: &UpcastTE = collect_only_tnode!(
+  let upcast: &UpcastInterfaceTE = collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
-      NodeRefT::Upcast(u @ UpcastTE {
+      NodeRefT::UpcastInterface(u @ UpcastInterfaceTE {
           target_super_kind: ISuperKindTT::Interface(InterfaceTT {
               id: IdT {
                   local_name: INameT::Interface(InterfaceNameT {
@@ -2818,7 +2818,7 @@ func main() {
 
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
-      NodeRefT::Upcast(UpcastTE {
+      NodeRefT::UpcastInterface(UpcastInterfaceTE {
           target_super_kind: ISuperKindTT::Interface(InterfaceTT {
               id: IdT {
                   local_name: INameT::Interface(InterfaceNameT {
@@ -2868,7 +2868,7 @@ func main() {
 
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
-      NodeRefT::Upcast(UpcastTE {
+      NodeRefT::UpcastInterface(UpcastInterfaceTE {
           target_super_kind: ISuperKindTT::Interface(InterfaceTT {
               id: IdT {
                   local_name: INameT::Interface(InterfaceNameT {
@@ -2918,7 +2918,7 @@ func main() {
 
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
-      NodeRefT::Upcast(UpcastTE {
+      NodeRefT::UpcastInterface(UpcastInterfaceTE {
           target_super_kind: ISuperKindTT::Interface(InterfaceTT {
               id: IdT {
                   local_name: INameT::Interface(InterfaceNameT {
@@ -5806,7 +5806,7 @@ exported func main() {
 
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(do_upcast),
-      NodeRefT::Upcast(u) => {
+      NodeRefT::UpcastGeneric(u) => {
           match u.inner_expr.result() {
               KindT::KindPlaceholder(_) => {}
               other => panic!("sourceExpr.result.coord.kind: {:?}", other),

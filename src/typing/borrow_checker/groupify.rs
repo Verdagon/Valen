@@ -196,6 +196,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         result: self.make_kind_g_groupless(expr.result()),
         args: arena.alloc_slice_fill_iter(e.args.iter().map(|a| self.groupify(coutputs, a, ctx, arena))),
       },
+      ExpressionTE::BoundFunctionCall(e) => IExpressionGE::InterfaceFunctionCall {
+        result: self.make_kind_g_groupless(expr.result()),
+        args: arena.alloc_slice_fill_iter(e.args.iter().map(|a| self.groupify(coutputs, a, ctx, arena))),
+      },
       ExpressionTE::ExternFunctionCall(e) => IExpressionGE::ExternFunctionCall {
         result: self.make_kind_g_groupless(expr.result()),
         args: arena.alloc_slice_fill_iter(e.args.iter().map(|a| self.groupify(coutputs, a, ctx, arena))),
@@ -271,7 +275,12 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let result = self.cast_result(expr.result(), inner_expr.result());
         IExpressionGE::InterfaceToInterfaceUpcast { result, inner_expr }
       }
-      ExpressionTE::Upcast(e) => {
+      ExpressionTE::UpcastInterface(e) => {
+        let inner_expr = arena.alloc(self.groupify(coutputs, &e.inner_expr, ctx, arena));
+        let result = self.cast_result(expr.result(), inner_expr.result());
+        IExpressionGE::Upcast { result, inner_expr }
+      }
+      ExpressionTE::UpcastGeneric(e) => {
         let inner_expr = arena.alloc(self.groupify(coutputs, &e.inner_expr, ctx, arena));
         let result = self.cast_result(expr.result(), inner_expr.result());
         IExpressionGE::Upcast { result, inner_expr }

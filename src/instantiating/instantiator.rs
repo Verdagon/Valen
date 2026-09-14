@@ -141,7 +141,9 @@ use crate::typing::ast::expressions::DerefTE;
 use crate::typing::ast::expressions::StaticArrayFromCallableTE;
 use crate::typing::ast::expressions::StaticArrayFromValuesTE;
 use crate::typing::ast::expressions::StaticSizedArrayLookupTE;
-use crate::typing::ast::expressions::UpcastTE;
+use crate::typing::ast::expressions::UpcastGenericTE;
+use crate::typing::ast::expressions::UpcastInterfaceTE;
+use crate::typing::ast::expressions::BoundFunctionCallTE;
 use crate::typing::names::names::AnonymousSubstructConstructorNameT;
 use crate::typing::names::names::AnonymousSubstructConstructorTemplateNameT;
 use crate::typing::names::names::AnonymousSubstructImplNameT;
@@ -221,15 +223,20 @@ pub struct InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
     pub impl_to_sharedness: IndexMap<IdI<'s, 'i>, SharednessI>,
     pub impl_to_bounds: IndexMap<IdI<'s, 'i>, DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>>,
     pub interface_to_impls: IndexMap<IdI<'s, 'i>, Vec<(IdT<'s, 't>, IdI<'s, 'i>)>>,
+    // A concrete impl's instantiated id → (its typed id, its own instantiation bound args), recorded
+    // when the impl is resolved, so a later
+    // devirtualization (or translate_override) can recover the typed id (to find the impl's edge via
+    // get_impl_template) and the impl's reachable `where func` satisfiers.
+    pub instantiated_impl_to_typed_impl_and_bounds: IndexMap<IdI<'s, 'i>, (IdT<'s, 't>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
     // Inner value is (virtual_param_index, index_in_edge). index_in_edge is the method's vtable
     // slot = its position in typing's InterfaceEdgeBlueprintT.super_family_root_headers. After the
     // worklist drains, each inner map is sorted by index_in_edge so the blueprint/internal_methods/
     // edge all emit in typing's order (matching the slot stamped on each InterfaceFunctionCallIE).
     pub interface_to_abstract_func_to_virtual_index: IndexMap<IdI<'s, 'i>, IndexMap<PrototypeI<'s, 'i>, (usize, i32)>>,
-    pub impls: IndexMap<IdI<'s, 'i>, (ICitizenIT<'s, 'i>, IdI<'s, 'i>, DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, InstantiationBoundArgumentsI<'s, 'i>)>,
+    pub impls: IndexMap<IdI<'s, 'i>, (ICitizenIT<'s, 'i>, IdI<'s, 'i>, DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
     pub abstract_func_to_bounds: IndexMap<IdI<'s, 'i>, (DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
     pub interface_to_impl_to_abstract_prototype_to_override: IndexMap<IdI<'s, 'i>, IndexMap<IdI<'s, 'i>, IndexMap<PrototypeI<'s, 'i>, PrototypeI<'s, 'i>>>>,
-    pub new_impls: Vec<(IdT<'s, 't>, IdI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>)>,
+    pub new_impls: Vec<(IdT<'s, 't>, IdI<'s, 'i>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
     pub new_abstract_funcs: Vec<(PrototypeT<'s, 't>, PrototypeI<'s, 'i>, usize, IdI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>)>,
     pub new_functions: Vec<(PrototypeT<'s, 't>, PrototypeI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>, Option<DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>>)>,
     pub kind_externs: Vec<KindExternI<'s, 'i>>,
@@ -261,6 +268,7 @@ impl<'s, 't, 'i> InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
       impl_to_sharedness: IndexMap::default(),
       impl_to_bounds: IndexMap::default(),
       interface_to_impls: IndexMap::default(),
+      instantiated_impl_to_typed_impl_and_bounds: IndexMap::default(),
       interface_to_abstract_func_to_virtual_index: IndexMap::default(),
       impls: IndexMap::default(),
       abstract_func_to_bounds: IndexMap::default(),
@@ -745,6 +753,17 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
 
 
     pub fn translate_override(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, abstract_func_prototype_t: &PrototypeT<'s, 't>, _abstract_func_prototype: &PrototypeI<'s, 'i>, _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>) {
+        let impl_instantiation_bound_args = _monouts.impls.get(_impl_id).expect("vassertSome monouts.impls").3;
+        let override_prototype =
+            self.resolve_override_prototype(_monouts, impl_id_t, _impl_id, abstract_func_prototype_t, _abstract_func_instantiation_bound_args, impl_instantiation_bound_args);
+        let super_interface_id = _monouts.impls.get(_impl_id).expect("vassertSome monouts.impls").1;
+        _monouts.add_method_to_v_table(*_impl_id, super_interface_id, *_abstract_func_prototype, override_prototype);
+    }
+
+    // Resolve, at compile time, the concrete override PrototypeI for (impl, abstract method): find the
+    // impl's edge in hinputs and substitute the
+    // impl's concrete template args into the override's dispatcher/case placeholders.
+    pub fn resolve_override_prototype(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, abstract_func_prototype_t: &PrototypeT<'s, 't>, _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>, impl_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>) -> PrototypeI<'s, 'i> {
         let impl_template_id = Compiler::get_impl_template(self.typing_interner, *impl_id_t);
         let edge_t = vassert_one(
             self.hinputs.interface_template_to_sub_citizen_to_edge.values()
@@ -807,7 +826,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         let mut _case_substitutions: HashMap<IdT<'s, 't>, ITemplataI<'s, 'i>> = dispatcher_placeholder_id_to_supplied_templata_map.clone();
         _case_substitutions.extend(dispatcher_case_placeholder_id_to_supplied_templata_map.iter().map(|(k, v)| (*k, *v)));
 
-        let impl_rune_to_impl_instantiation_bound_args = &_monouts.impls.get(_impl_id).expect("vassertSome monouts.impls").3;
+        let impl_rune_to_impl_instantiation_bound_args = impl_instantiation_bound_args;
         let _bound_param_prototype_t_to_bound_arg_prototype_i_from_impl: HashMap<IdT<'s, 't>, &'i PrototypeI<'s, 'i>> =
             _dispatcher_and_case_placeholdered_impl_reachable_prototypes.iter().flat_map(|(rune_in_impl, citizen_rune_to_bound)| {
                 citizen_rune_to_bound.iter().map(move |(rune_in_citizen, prototype_t)| {
@@ -836,18 +855,17 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         let override_prototype =
             self.translate_prototype(_monouts, &_dispatcher_case_id_t, &case_instantiation_bound_params_to_args, &case_substitutions_idx, &RegionT::Default, &_override_prototype_t);
 
-        let super_interface_id = _monouts.impls.get(_impl_id).expect("vassertSome monouts.impls").1;
-        _monouts.add_method_to_v_table(*_impl_id, super_interface_id, *_abstract_func_prototype, override_prototype);
+        override_prototype
     }
 
 
-    pub fn translate_impl_callsite(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, _impl_id_t: &IdT<'s, 't>, impl_id: &IdI<'s, 'i>, _instantiation_bounds_for_unsubstituted_impl: InstantiationBoundArgumentsI<'s, 'i>) {
+    pub fn translate_impl_callsite(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, _impl_id_t: &IdT<'s, 't>, impl_id: &IdI<'s, 'i>, _instantiation_bounds_for_unsubstituted_impl: &'i InstantiationBoundArgumentsI<'s, 'i>) {
         let impl_template_id = Compiler::get_impl_template(self.typing_interner, *_impl_id_t);
         let impl_definition = vassert_one(self.hinputs.interface_template_to_sub_citizen_to_edge.iter().flat_map(|(_, m)| m.values()).filter(|edge| {
             Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template_id
         }));
 
-        let denizen_bound_to_denizen_caller_supplied_thing = Self::assemble_instantiation_bound_param_to_arg(&impl_definition.instantiation_bound_params, &_instantiation_bounds_for_unsubstituted_impl);
+        let denizen_bound_to_denizen_caller_supplied_thing = Self::assemble_instantiation_bound_param_to_arg(&impl_definition.instantiation_bound_params, _instantiation_bounds_for_unsubstituted_impl);
         let substitutions = self.assemble_placeholder_map(&impl_definition.edge_id, impl_id);
         self.translate_impl_definition(_monouts, _impl_id_t, _instantiation_bounds_for_unsubstituted_impl, &denizen_bound_to_denizen_caller_supplied_thing, &substitutions, _impl_id_t, impl_id, impl_definition);
     }
@@ -1681,6 +1699,40 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     result: result_it,
                 }))
             }
+            ExpressionTE::BoundFunctionCall(b) => {
+                let virtual_param_index = b.virtual_param_index;
+                // Resolve the impl bound → the concrete instantiated impl id.
+                let concrete_impl_id = *denizen_bound_to_denizen_caller_supplied_thing
+                    .bound_param_impl_id_to_bound_arg_impl_id.get(&b.impl_name)
+                    .expect("BoundFunctionCall: missing impl bound arg");
+                // Translate all args; the receiver is kept un-upcast (its concrete kind decides dispatch).
+                let args_it_ce: Vec<(KindIT<'s, 'i>, ExpressionIE<'s, 'i>)> = b.args.iter().map(|arg_te| {
+                    self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, arg_te)
+                }).collect();
+                let receiver_it = args_it_ce[virtual_param_index].0;
+                match receiver_it.peel_all_references() {
+                    KindIT::StructIT(_) => {
+                        // Concrete receiver → devirtualize: resolve the concrete override in the impl's
+                        // edge and emit a direct static call with the un-upcast receiver. No fat ptr, no vtable.
+                        // Recover the impl's typed id (to find its edge) + its own bound args, recorded when it was resolved.
+                        let (concrete_impl_id_t, impl_bound_args) = *monouts.instantiated_impl_to_typed_impl_and_bounds.get(&concrete_impl_id)
+                            .expect("BoundFunctionCall: concrete impl not recorded in instantiated_impl_to_typed_impl_and_bounds");
+                        let abstract_bound_args = self.translate_bound_args_for_callee(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, self.hinputs.get_instantiation_bound_args(b.abstract_prototype.id));
+                        let override_prototype = self.resolve_override_prototype(monouts, &concrete_impl_id_t, &concrete_impl_id, b.abstract_prototype, &abstract_bound_args, impl_bound_args);
+                        let args_ce: Vec<ExpressionIE<'s, 'i>> = args_it_ce.iter().map(|(_, ce)| *ce).collect();
+                        ExpressionIE::FunctionCall(self.interner.alloc(FunctionCallIE {
+                            range: b.range,
+                            callable: override_prototype,
+                            args: self.interner.bump().alloc_slice_fill_iter(args_ce.into_iter()),
+                            result: result_it,
+                        }))
+                    }
+                    // Interface receiver (interfaces can implement interfaces) → real dynamic dispatch.
+                    // First cut: unimplemented; no current test reaches it (see plan).
+                    KindIT::InterfaceIT(_) => panic!("unimplemented: interface-receiver impl-bound dispatch"),
+                    other => panic!("BoundFunctionCall receiver peeled to a non-citizen: {:?}", other),
+                }
+            }
             ExpressionTE::Reinterpret(r) => {
                 // A Reinterpret is a type-identity node from typing (e.g. `@x` viewed as `&x`)
                 // that only exists to bridge kinds pre-monomorphization. Once substitution is
@@ -1835,8 +1887,22 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             ExpressionTE::InterfaceToInterfaceUpcast(_) => {
                 panic!("Unimplemented: translate_ref_expr InterfaceToInterfaceUpcast");
             }
-            ExpressionTE::Upcast(u) => {
-                let UpcastTE { inner_expr: inner_expr_unsubstituted, target_super_kind, impl_name: untranslated_impl_id, .. } = *u;
+            ExpressionTE::UpcastInterface(u) => {
+                let UpcastInterfaceTE { inner_expr: inner_expr_unsubstituted, target_super_kind, impl_name: untranslated_impl_id, .. } = *u;
+                let impl_id = self.translate_impl_id(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &untranslated_impl_id);
+                let (inner_it, inner_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &inner_expr_unsubstituted);
+                let super_kind = self.translate_super_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &target_super_kind);
+                ExpressionIE::Upcast(self.interner.bump().alloc(UpcastIE {
+                    range: u.range,
+                    inner_expr: inner_ce,
+                    source_type: inner_it,
+                    target_interface: super_kind,
+                    impl_name: impl_id,
+                    result: result_it,
+                }))
+            }
+            ExpressionTE::UpcastGeneric(u) => {
+                let UpcastGenericTE { inner_expr: inner_expr_unsubstituted, target_super_kind, impl_name: untranslated_impl_id, .. } = *u;
                 let impl_id = self.translate_impl_id(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &untranslated_impl_id);
                 let (inner_it, inner_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &inner_expr_unsubstituted);
                 let super_kind = self.translate_super_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &target_super_kind);
@@ -2060,7 +2126,12 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 let impl_id = IdI { package_coord: module, init_steps: self.interner.bump().alloc_slice_fill_iter(translated_steps.into_iter()), local_name: INameI::from(impl_name_i) };
                 let bound_args_for_call_unsubstituted = self.hinputs.get_instantiation_bound_args(*_impl_id_t);
                 let rune_to_bound_args_for_new_impl = self.translate_bound_args_for_callee(_monouts, _denizen_name, _denizen_bound_to_denizen_caller_supplied_thing, _substitutions, _perspective_region_t, &bound_args_for_call_unsubstituted);
-                _monouts.new_impls.push((*_impl_id_t, impl_id, rune_to_bound_args_for_new_impl));
+                // Record this concrete impl's typed id + its own bound args, keyed by its instantiated
+                // id, so a later BoundFunctionCall devirtualization (and translate_override) can recover
+                // both without reaching into monouts.impls (which isn't populated until the impl drains).
+                let bounds_ref: &'i InstantiationBoundArgumentsI<'s, 'i> = self.interner.alloc(rune_to_bound_args_for_new_impl);
+                _monouts.instantiated_impl_to_typed_impl_and_bounds.insert(impl_id, (*_impl_id_t, bounds_ref));
+                _monouts.new_impls.push((*_impl_id_t, impl_id, bounds_ref));
                 impl_id
             }
         }
@@ -2596,7 +2667,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
     }
 
 
-    pub fn translate_impl_definition(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, _denizen_name: &IdT<'s, 't>, _instantiation_bounds_for_unsubstituted_impl: InstantiationBoundArgumentsI<'s, 'i>, _denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, _substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, _impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, _impl_definition: &EdgeT<'s, 't>) {
+    pub fn translate_impl_definition(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, _denizen_name: &IdT<'s, 't>, _instantiation_bounds_for_unsubstituted_impl: &'i InstantiationBoundArgumentsI<'s, 'i>, _denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, _substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, _impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, _impl_definition: &EdgeT<'s, 't>) {
         let perspective_region_t = RegionT::Default;
         let sub_citizen_bound_args = self.translate_bound_args_for_callee(_monouts, _denizen_name, _denizen_bound_to_denizen_caller_supplied_thing, _substitutions, &perspective_region_t, &self.hinputs.get_instantiation_bound_args(_impl_definition.sub_citizen.id()));
         let sub_citizen = self.translate_citizen(_monouts, _denizen_name, _denizen_bound_to_denizen_caller_supplied_thing, _substitutions, &perspective_region_t, &_impl_definition.sub_citizen, &sub_citizen_bound_args);

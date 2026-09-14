@@ -73,6 +73,7 @@ where
           false,
           false,
         )?;
+        let maybe_virtual_index: Option<usize> = potential_banner.as_ref().ok().and_then(|pb| pb.maybe_virtual_index);
         // VCOORD: simplify
         let stamp_result = match (match potential_banner {
           Err(e) => Ok(Err(e)),
@@ -181,13 +182,34 @@ where
           .get_instantiation_bounds(self.typing_interner, stamp_result.prototype.id)
           .is_some());
         let result_te = stamp_result.prototype.return_type;
-        let call_expr = ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
-          LocT::from_lid(self.typing_interner, call_location),
-          self.typing_interner.alloc_slice_copy(range),
-          stamp_result.prototype,
-          self.typing_interner.alloc_slice_from_vec(args_exprs_2),
-          result_te,
-        )));
+        // If this was a virtual call on a placeholder, make a BoundFunctionCallTE.
+        // If this was a virtual call on a non-placeholder, make a FunctionCallTE (to an interface method).
+        // If this was any other call, make a FunctionCallTE.
+        let call_expr = match maybe_virtual_index {
+          Some(vi) if matches!(args_exprs_2.get(vi), Some(ExpressionTE::UpcastGeneric(_))) => {
+            let upcast = match args_exprs_2[vi] {
+              ExpressionTE::UpcastGeneric(u) => u,
+              _ => unreachable!(),
+            };
+            let mut bound_args = args_exprs_2;
+            bound_args[vi] = upcast.inner_expr;
+            ExpressionTE::BoundFunctionCall(self.typing_interner.alloc(BoundFunctionCallTE::new(
+              range[0],
+              upcast.impl_name,
+              stamp_result.prototype,
+              vi,
+              result_te,
+              self.typing_interner.alloc_slice_from_vec(bound_args),
+            )))
+          }
+          _ => ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
+            LocT::from_lid(self.typing_interner, call_location),
+            self.typing_interner.alloc_slice_copy(range),
+            stamp_result.prototype,
+            self.typing_interner.alloc_slice_from_vec(args_exprs_2),
+            result_te,
+          ))),
+        };
         // A call can return a &&T (e.g. Opt.get's returned &T with T = &str), so decay to &T.
         let call_expr_decayed = match call_expr.result() {
           KindT::BorrowRef(BorrowRefT { inner: KindT::BorrowRef(_) }) => ExpressionTE::Deref(

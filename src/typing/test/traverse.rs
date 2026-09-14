@@ -9,12 +9,12 @@ use crate::typing::ast::expressions::{
   BorrowToWeakTE, BreakTE, ConsecutorTE, ConstantBoolTE, ConstantFloatTE, ConstantIntTE,
   ConstantStrTE, ConstructTE, DerefTE, DestroyRuntimeSizedArrayTE,
   DestroyStaticSizedArrayIntoFunctionTE, DestroyStaticSizedArrayIntoLocalsTE, DestroyTE, DiscardTE,
-  ExpressionTE, ExternFunctionCallTE, FunctionCallTE, IfTE, InterfaceFunctionCallTE,
+  BoundFunctionCallTE, ExpressionTE, ExternFunctionCallTE, FunctionCallTE, IfTE, InterfaceFunctionCallTE,
   InterfaceToInterfaceUpcastTE, IsSameInstanceTE, LetAndLendTE, LetNormalTE, LocalLookupTE,
   LockWeakTE, MutateTE, NewRuntimeSizedArrayTE, PopRuntimeSizedArrayTE, PushRuntimeSizedArrayTE,
   MemberLookupTE, ReinterpretTE, RestackifyTE, ReturnTE, RuntimeSizedArrayCapacityTE,
   RuntimeSizedArrayLookupTE, StaticArrayFromCallableTE, StaticArrayFromValuesTE,
-  StaticSizedArrayLookupTE, UnletTE, UpcastTE, VoidLiteralTE, WhileTE,
+  StaticSizedArrayLookupTE, UnletTE, UpcastGenericTE, UpcastInterfaceTE, VoidLiteralTE, WhileTE,
 };
 use crate::typing::env::environment::IEnvironmentT;
 use crate::typing::env::function_environment_t::LocalVariable;
@@ -77,6 +77,7 @@ pub enum NodeRefT<'s, 't> {
   InterfaceFunctionCall(&'t InterfaceFunctionCallTE<'s, 't>),
   ExternFunctionCall(&'t ExternFunctionCallTE<'s, 't>),
   FunctionCall(&'t FunctionCallTE<'s, 't>),
+  BoundFunctionCall(&'t BoundFunctionCallTE<'s, 't>),
   Reinterpret(&'t ReinterpretTE<'s, 't>),
   Construct(&'t ConstructTE<'s, 't>),
   NewRuntimeSizedArray(&'t NewRuntimeSizedArrayTE<'s, 't>),
@@ -88,7 +89,8 @@ pub enum NodeRefT<'s, 't> {
   PushRuntimeSizedArray(&'t PushRuntimeSizedArrayTE<'s, 't>),
   PopRuntimeSizedArray(&'t PopRuntimeSizedArrayTE<'s, 't>),
   InterfaceToInterfaceUpcast(&'t InterfaceToInterfaceUpcastTE<'s, 't>),
-  Upcast(&'t UpcastTE<'s, 't>),
+  UpcastInterface(&'t UpcastInterfaceTE<'s, 't>),
+  UpcastGeneric(&'t UpcastGenericTE<'s, 't>),
   Destroy(&'t DestroyTE<'s, 't>),
 
   // 5 address expression variants
@@ -487,6 +489,7 @@ where
     ExpressionTE::InterfaceFunctionCall(x) => visit_interface_function_call(pred, out, x),
     ExpressionTE::ExternFunctionCall(x) => visit_extern_function_call(pred, out, x),
     ExpressionTE::FunctionCall(x) => visit_function_call(pred, out, x),
+    ExpressionTE::BoundFunctionCall(x) => visit_bound_function_call(pred, out, x),
     ExpressionTE::Reinterpret(x) => visit_reinterpret(pred, out, x),
     ExpressionTE::Construct(x) => visit_construct(pred, out, x),
     ExpressionTE::NewRuntimeSizedArray(x) => visit_new_mut_runtime_sized_array(pred, out, x),
@@ -506,7 +509,8 @@ where
     ExpressionTE::InterfaceToInterfaceUpcast(x) => {
       visit_interface_to_interface_upcast(pred, out, x)
     }
-    ExpressionTE::Upcast(x) => visit_upcast(pred, out, x),
+    ExpressionTE::UpcastInterface(x) => visit_upcast(pred, out, x),
+    ExpressionTE::UpcastGeneric(x) => visit_upcast_generic(pred, out, x),
     ExpressionTE::Destroy(x) => visit_destroy(pred, out, x),
     ExpressionTE::CopyPrim(x) => visit_expression_te(pred, out, x.inner),
     ExpressionTE::LocalLookup(x) => visit_local_lookup(pred, out, x),
@@ -820,6 +824,19 @@ where
   visit_kind(pred, out, x.result);
 }
 
+fn visit_bound_function_call<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, x: &'t BoundFunctionCallTE<'s, 't>)
+where
+  F: Fn(NodeRefT<'s, 't>) -> Option<T>,
+  's: 't,
+{
+  collect_if(pred, out, NodeRefT::BoundFunctionCall(x));
+  visit_prototype(pred, out, x.abstract_prototype);
+  for a in x.args {
+    visit_expression_te(pred, out, *a);
+  }
+  visit_kind(pred, out, x.result);
+}
+
 fn visit_reinterpret<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, x: &'t ReinterpretTE<'s, 't>)
 where
   F: Fn(NodeRefT<'s, 't>) -> Option<T>,
@@ -961,12 +978,23 @@ fn visit_interface_to_interface_upcast<'s, 't, T, F>(
   visit_interface_tt(pred, out, x.target_interface);
 }
 
-fn visit_upcast<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, x: &'t UpcastTE<'s, 't>)
+fn visit_upcast<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, x: &'t UpcastInterfaceTE<'s, 't>)
 where
   F: Fn(NodeRefT<'s, 't>) -> Option<T>,
   's: 't,
 {
-  collect_if(pred, out, NodeRefT::Upcast(x));
+  collect_if(pred, out, NodeRefT::UpcastInterface(x));
+  visit_expression_te(pred, out, x.inner_expr);
+  visit_super_kind(pred, out, &x.target_super_kind);
+  visit_id(pred, out, &x.impl_name);
+}
+
+fn visit_upcast_generic<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, x: &'t UpcastGenericTE<'s, 't>)
+where
+  F: Fn(NodeRefT<'s, 't>) -> Option<T>,
+  's: 't,
+{
+  collect_if(pred, out, NodeRefT::UpcastGeneric(x));
   visit_expression_te(pred, out, x.inner_expr);
   visit_super_kind(pred, out, &x.target_super_kind);
   visit_id(pred, out, &x.impl_name);
