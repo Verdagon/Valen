@@ -44,6 +44,17 @@ cmd = "cargo nextest run --manifest-path Cargo.toml"
 env = { VALE_TEST_BACKEND = "wasi" }
 when_changed = []
 
+# Syntax-highlighter parser-sync tests. The tree-sitter grammar under highlighter/ is a
+# second, independent Vale parser; these tests assert it stays in step with the real compiler
+# parser/lexer (parses driver.valen + the corpus, highlights every compiler keyword). Native
+# only and inkjet-free, so it's fast — run it always, since a compiler-side syntax/keyword
+# change is exactly the drift it guards. Kept out of the main crate deliberately: a dev-dep on
+# tree-sitter-vale would drag its parser.c C build into the wasi backend above.
+[[repo.tests]]
+cmd = "cargo nextest run --manifest-path highlighter/tree-sitter-vale/Cargo.toml"
+env = {}
+when_changed = []
+
 # The `rust_interop` feature (lazy Rust imports) is off by default and its suite isn't in the default
 # gate. Gate it on changes to its subtree so it runs exactly when relevant. It builds against the Vale
 # rustc fork (`+rustc-fork`), whose sysroot already ships `rustc-dev` + `rust-src` (no `rustup component
