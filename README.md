@@ -28,6 +28,8 @@ Check back later today for a more filled out readme =)
 
 (WIP)
 
+This compiler uses a patched version of rustc for its Rust interop, see [fork here](https://github.com/valen-lang/rust).
+
 ## Built on Vale
 
 Valen is the successor to the [Vale programming language](https://vale.dev/).
