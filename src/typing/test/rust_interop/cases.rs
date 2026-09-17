@@ -1025,6 +1025,42 @@ fn rustc_driven_bin_links_and_returns_from_add_two_numbers() {
   );
 }
 
+/// Exercises passing/returning i64 across the boundary.
+#[test]
+fn rustc_driven_bin_links_and_returns_from_add_i64() {
+  let run = run_case_rustc_driven_and_run(&CALLS_A_RUST_I64_FUNCTION);
+  assert_eq!(
+    run.process_exit,
+    Some(42),
+    "the driven i64 bin did not exit 42 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
+// Exercises structs with i64 in them, across the boundary.
+#[test]
+fn rustc_driven_bin_i64_struct_method_returns_42() {
+  let run = run_case_rustc_driven_and_run(&CALLS_AN_I64_STRUCT_METHOD);
+  assert_eq!(
+    run.process_exit,
+    Some(42),
+    "the driven i64-struct bin did not exit 42 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
+// Exercises calling a Rust function with `#[track_caller]`, see @TCHAPZ.
+#[test]
+fn rustc_driven_bin_track_caller_returns_42() {
+  let run = run_case_rustc_driven_and_run(&CALLS_A_TRACK_CALLER_FUNCTION);
+  assert_eq!(
+    run.process_exit,
+    Some(42),
+    "the driven track_caller bin did not exit 42 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
 /// The goal (tier 2): the full domino case, `d = Domino.new(); d.add_glyph(Glyph.new(7)); d_ref =
 /// d.get_glyph(7); return d_ref.location();`, linked and run, returns 7. It protects every ABI mode at
 /// once, each sourced from rustc (`tcx.layout_of` for sizes, `tcx.fn_abi_of_instance` for conventions):

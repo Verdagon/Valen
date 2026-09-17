@@ -51,6 +51,10 @@ pub enum Coercion {
     /// A small struct rustc passes as two register scalars (`ScalarPair`), e.g. `{i32, i32}`: it
     /// crosses as two integers of these bit-widths, reassembled into the struct on the far side.
     Pair(u32, u32),
+    /// The hidden `&Location` argument a `#[track_caller]` Rust fn carries at the ABI level (absent from
+    /// its type signature). It is declared as a `ptr` param but has no corresponding Vale argument: the
+    /// boundary synthesizes a null pointer for it (TCHAPZ). Always the trailing arg when present.
+    LocationPtr,
 }
 
 impl Coercion {
@@ -62,6 +66,7 @@ impl Coercion {
             Coercion::Indirect => CoercionFFI { kind: 3, bits: 0, bits2: 0 },
             Coercion::Cast(bits) => CoercionFFI { kind: 4, bits: *bits, bits2: 0 },
             Coercion::Pair(bits0, bits1) => CoercionFFI { kind: 5, bits: *bits0, bits2: *bits1 },
+            Coercion::LocationPtr => CoercionFFI { kind: 6, bits: 0, bits2: 0 },
         }
     }
 }

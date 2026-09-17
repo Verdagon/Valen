@@ -1090,6 +1090,7 @@ where
 {
   match kind {
     KindT::Int(i) if i.bits == 32 => Some(compiler.keywords.int),
+    KindT::Int(i) if i.bits == 64 => Some(compiler.keywords.i64),
     KindT::Bool(_) => Some(compiler.keywords.bool),
     KindT::Void(_) => Some(compiler.keywords.void),
     KindT::USize(_) => Some(compiler.keywords.usize),

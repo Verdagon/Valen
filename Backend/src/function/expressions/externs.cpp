@@ -137,6 +137,17 @@ Ref buildCallOrSideCall(
         sendValeObjectIntoHost(globalState, functionState, builder, valeArgRefMT, valeArg));
   }
 
+  // A `#[track_caller]` fn's hidden trailing &Location arg (see @TCHAPZ) has no Vale argument, so the loop
+  // above doesn't reach it. We track it in the ExternAbi with a CoercionKind::LocationPtr.
+  // Since Valen only compiles with panic=abort, we can feed a null pointer at runtime for this argument.
+  if (hasAbi) {
+    auto ptrLT = LLVMPointerType(LLVMInt8TypeInContext(globalState->context), 0);
+    for (size_t j = valeArgRefs.size(); j < abi->args.size(); j++) {
+      assert(abi->args[j].kind == CoercionKind::LocationPtr);
+      hostArgsLE.push_back(LLVMConstNull(ptrLT));
+    }
+  }
+
   auto externFuncIter = globalState->externFunctions.find(prototype->name->name);
   assert(externFuncIter != globalState->externFunctions.end());
   auto externFuncL = externFuncIter->second;

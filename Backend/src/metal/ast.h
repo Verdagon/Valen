@@ -544,6 +544,8 @@ enum class CoercionKind {
               // struct is a memory-class aggregate, and the integer needs its own alignment on reassembly.
   Pair,       // a small struct rustc passes as two register scalars (ScalarPair), e.g. {i32,i32}: it
               // crosses as two integers (`directIntBits`, `directIntBits2`), reassembled into the struct.
+  LocationPtr,// the hidden `&Location` arg of a `#[track_caller]` Rust func. Has no corresponding Vale
+              // argument. We pass a null ptr for it, because Valen uses panic=abort anyway (see @TCHAPZ).
 };
 struct Coercion {
   CoercionKind kind;

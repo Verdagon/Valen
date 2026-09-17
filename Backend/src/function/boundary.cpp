@@ -107,7 +107,6 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
       // Per @EACBIPZ, an Indirect return crosses through this hidden sret out-pointer.
       paramTypesL.push_back(ptrLT);  // first parameter
     }
-    assert(abi->args.size() == prototypeM->params.size());
     for (const Coercion& c : abi->args) {
       switch (c.kind) {
         case CoercionKind::Ignore: break;  // zero-sized: not passed at all
@@ -117,7 +116,10 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
           paramTypesL.push_back(LLVMIntTypeInContext(globalState->context, c.directIntBits)); break;
         // Per @EACBIPZ, an Indirect arg (like a DirectPtr borrow) is a plain pointer, no byval.
         case CoercionKind::DirectPtr:
-        case CoercionKind::Indirect: paramTypesL.push_back(ptrLT); break;
+        case CoercionKind::Indirect:
+        case CoercionKind::LocationPtr: // implicit `#[track_caller]` (see @TCHAPZ).
+          paramTypesL.push_back(ptrLT);
+          break;
         // A ScalarPair struct crosses as two separate integer register params.
         case CoercionKind::Pair:
           paramTypesL.push_back(LLVMIntTypeInContext(globalState->context, c.directIntBits));
@@ -125,6 +127,11 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
           break;
       }
     }
+    // Every coercion maps 1:1 to a Vale param, except a `#[track_caller]` fn's hidden &Location
+    // (see @TCHAPZ). Valen doesn't have it as a param, but rustc does.
+    // Here we take that into account when comparing the params' length.
+    bool hasLocationArg = !abi->args.empty() && abi->args.back().kind == CoercionKind::LocationPtr;
+    assert(abi->args.size() - (hasLocationArg ? 1u : 0u) == prototypeM->params.size());
     LLVMTypeRef returnLT;
     switch (abi->ret.kind) {
       case CoercionKind::Ignore:

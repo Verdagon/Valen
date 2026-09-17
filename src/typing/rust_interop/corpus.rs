@@ -64,6 +64,46 @@ exported func main() int {
   expect: Expect::Returns(42),
 };
 
+/// Passes+returns 64-bit ints.
+pub const CALLS_A_RUST_I64_FUNCTION: Case = Case {
+  fixture: "fixtures",
+  name: "free-function-i64",
+  vale: r#"
+import rust.mycrate.add_i64;
+exported func main() i64 {
+  return add_i64(20i64, 22i64);
+}
+"#,
+  expect: Expect::Returns(42),
+};
+
+/// Exercises an imported struct with `i64`s.
+pub const CALLS_AN_I64_STRUCT_METHOD: Case = Case {
+  fixture: "fixtures",
+  name: "i64-struct-method",
+  vale: r#"
+import rust.mycrate.Delta;
+exported func main() i64 {
+  d = Delta.seconds(42i64);
+  return d.num_seconds();
+}
+"#,
+  expect: Expect::Returns(42),
+};
+
+/// Exercises Rust functions with `#[track_caller]`, see @TCHAPZ.
+pub const CALLS_A_TRACK_CALLER_FUNCTION: Case = Case {
+  fixture: "fixtures",
+  name: "track-caller",
+  vale: r#"
+import rust.mycrate.tracked_sum;
+exported func main() int {
+  return tracked_sum(20, 22);
+}
+"#,
+  expect: Expect::Returns(42),
+};
+
 /// A Rust **trait** imports as a synthesized interface — the first step toward a Vale struct
 /// implementing a Rust trait so Rust can call back in. The import alone must resolve and compile;
 /// the trait is unused here, exactly as an imported-but-uncalled function is.

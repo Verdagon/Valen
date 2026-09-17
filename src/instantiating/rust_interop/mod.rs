@@ -1263,7 +1263,16 @@ fn compute_extern_abi<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> Opti
     }
   };
   let ret = coercion_of(&fn_abi.ret);
-  let args = fn_abi.args.iter().map(|a| coercion_of(a)).collect();
+  let mut args: Vec<Coercion> = fn_abi.args.iter().map(|a| coercion_of(a)).collect();
+  // Per @TCHAPZ, a `#[track_caller]` fn's `fn_abi` has a hidden trailing `&Location` arg that its
+  // `fn_sig`, and so the Vale prototype, lacks. Detect it via `requires_caller_location` and mark that
+  // trailing coercion `LocationPtr`, so the backend declares a ptr param and passes null for it.
+  if instance.def.requires_caller_location(tcx) {
+    match args.last_mut() {
+      Some(last) => *last = Coercion::LocationPtr,
+      None => panic!("requires_caller_location is true but fn_abi has no args"),
+    }
+  }
   Some(ExternAbi { ret, args })
 }
 

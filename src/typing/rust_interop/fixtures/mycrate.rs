@@ -16,6 +16,33 @@ pub fn add_two_numbers(a: i32, b: i32) -> i32 {
     a + b
 }
 
+/// A `#[track_caller]` free function, to test @TCHAPZ.
+#[track_caller]
+pub fn tracked_sum(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+/// Like `add_two_numbers` but exercising `i64`s.
+pub fn add_i64(a: i64, b: i64) -> i64 {
+    a + b
+}
+
+/// An imported struct with an `i64` field, inspired by `chrono::TimeDelta`.
+pub struct Delta {
+    secs: i64,
+    nanos: i32,
+}
+
+impl Delta {
+    pub fn seconds(secs: i64) -> Delta {
+        Delta { secs, nanos: 0 }
+    }
+
+    pub fn num_seconds(&self) -> i64 {
+        self.secs
+    }
+}
+
 /// A Rust type for Vale to hold and call methods on.
 ///
 /// No `Drop` impl on purpose: the importer must synthesize a `drop` for every imported type
