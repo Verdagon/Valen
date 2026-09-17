@@ -12,25 +12,18 @@ Our plans for Valen:
  * **Safety:** For memory safety and data-race safety, it is the uses the new [group borrowing](https://verdagon.dev/blog/group-borrowing) technique, which is like a more flexible borrow checking, with mutable aliasing.
  * **Flexibility:** We'll be adding generational references and reference counting, which should be usable without `Cell`, `RefCell`, etc.
 
-## Under Construction
+## Running a Valen Program
 
-Check back later today for a more filled out readme =)
-
-### Building a Valen Program
-
-(WIP)
-
-### Learning Valen
-
-(WIP)
-
-### Building the compiler itself
-
-(WIP)
+ 1. Clone the repo, `git clone https://github.com/valen-lang/valen`
+ 2. `cd valen`
+ 3. Make a simple Valen file: `exported func main() int { return 42; }`
+ 4. Run the compiler: `cargo run --bin valec -- build --no-std --builtins-dir-override src/builtins/resources main=test.vale`
+ 5. Run the program: `build/main`
+ 6. See the result: `echo $?` (42)
 
 This compiler uses a patched version of rustc for its Rust interop, see [fork here](https://github.com/valen-lang/rust).
 
-## Built on Vale
+## Historical Notes
 
 Valen is the successor to the [Vale programming language](https://vale.dev/).
 
