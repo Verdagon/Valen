@@ -1,45 +1,38 @@
 
-# Vale
+# Valen 
 
-Vale is a programming language that's aims to be not only **fast** and **memory-safe**, but also **easy and flexible**.
+Valen is a programming language that's aims to be not only **fast** and **memory-safe**, but also **easy and flexible**.
 
-* **Fast:** Vale is AOT compiled to LLVM, statically-typed, and uses the new [generational references](https://verdagon.dev/blog/generational-references) technique for memory safety with speed and flexibility, and will soon have [region borrow checking](https://verdagon.dev/blog/zero-cost-refs-regions) to make it even faster.
- * **Safe:** It is the [safest native language](https://vale.dev/memory-safe), thanks to [generational references](https://verdagon.dev/blog/generational-references).
- * **Easy:** Vale has memory-safe single ownership without garbage collection or a borrow checker, which makes it easy to write safe, fast code.
+NOTE: Valen is _still a prototype_ and barely past the proof-of-concept stage. There are holes and sharp edges. We'll release a 0.1 version once it's stable enough to use, stay tuned!
 
+Our plans for Valen:
 
-See http://vale.dev/ for more information on the language, and see our [treasure trove of working examples](https://github.com/Ivo-Balbaert/Vale_Examples), grouped by functionality.
+ * **Ecosystem:** Valen is also able to call into existing Rust libraries, see [The Golden Spike, and Resurrecting the Vale(n) Programming Language](https://verdagon.dev/blog/golden-spike-reviving-vale-valen)
+ * **Speed:** Valen is AOT compiled to LLVM, statically-typed, and aims to be the fastest native language, by giving more fine-grained aliasing information to LLVM. 
+ * **Safety:** For memory safety and data-race safety, it is the uses the new [group borrowing](https://verdagon.dev/blog/group-borrowing) technique, which is like a more flexible borrow checking, with mutable aliasing.
+ * **Flexibility:** We'll be adding generational references and reference counting, which should be usable without `Cell`, `RefCell`, etc.
 
+## Under Construction
 
-## Building a Vale Program
+Check back later today for a more filled out readme =)
 
- 1. Download the latest binary from https://github.com/ValeLang/Vale/releases
- 1. Unzip it into, for example, `~/Vale`, and `cd` into it.
- 1. Make a file `hello.vale` containing some vale code, like `exported func main() { println("Hello world!"); }`
- 1. Compile a program: `./valec build mymod=hello.vale --output_dir target`
- 1. Run the program: `target/main`, and you should see the output `Hello world!`
+### Building a Valen Program
 
+(WIP)
 
-## Learning Vale
+### Learning Vale
 
-See [the Guide](https://vale.dev/guide/introduction) for how to use Vale.
+(WIP)
 
+### Building the compiler itself
 
-## Building the compiler itself
+(WIP)
 
-For instructions for building the compiler itself, see [Building the Compiler](build-compiler.md).
+## Built on Vale
 
+Valen is the successor to the [Vale programming language](https://vale.dev/).
 
-For an overview of the project structure, see [Compiler Overview](compiler-overview.md).
-
-
-## Editor plugins
-
-- [VSCode plugin](https://marketplace.visualstudio.com/items?itemName=pacifio.vale-lang): Syntax-highlighting and basic autocompletion.
-- [Vim plugin](https://github.com/jfecher/vale.vim): Syntax-highlighting
-
-
-# Thank you to all of our sponsors!
+Thank you to everyone who sponsored Vale! Vale existed because of your support, and Valen exists because Vale existed. Thank you!
 
  * [Arthur Weagel](https://github.com/aweagel)
  * [Kiril Mihaylov](https://github.com/KirilMihaylov)
@@ -64,7 +57,3 @@ For an overview of the project structure, see [Compiler Overview](compiler-overv
  * [J. Ryan Stinnett](https://github.com/jryans)
  * [Cristian Dinu](https://github.com/cdinu)
  * [Florian Plattner](https://github.com/lasernoises)
-
-# Notes
-
-Vale started in January 2013, and back then we called it "VLang", though there's now another language with that name. We then called it GelLLVM, in honor of Gel, the first language to offer constraint references. Since then, we've settled on the name "Vale". Note that Vale and Vala are two different languages.
