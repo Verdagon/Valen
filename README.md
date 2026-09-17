@@ -20,7 +20,7 @@ Check back later today for a more filled out readme =)
 
 (WIP)
 
-### Learning Vale
+### Learning Valen
 
 (WIP)
 
