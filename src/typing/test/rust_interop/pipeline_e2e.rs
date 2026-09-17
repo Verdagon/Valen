@@ -382,12 +382,17 @@ fn copy_tree_skipping_target(from: &Path, to: &Path) {
   }
 }
 
-// The reverse-callback pipeline: the vendored `driver-check` project (a Vale struct implementing an
-// imported Rust trait, called back by a generic Rust caller) builds and links end to end through the
-// real `valen build`. This automates what was previously a manual README repro. Its stubbed
-// `nobiliav` bodies are `unimplemented!()`, so the honest assertion is a clean build + link (which
-// exercises stub-gen for the trait impl, the callback-wrapper emission, and single-symbol linking),
-// not a run-to-exit.
+// The reverse-callback pipeline: the vendored `driver-check` project (NobiliaV's frame-loop callback,
+// called back by a generic Rust caller) builds, links, AND runs end to end through the real
+// `valen build`. `nobiliav`'s headless bodies are real and deterministic — `main_loop` runs a bounded
+// frame loop (hard-capped, no wall clock / windowing) that dispatches into the callback each frame until
+// it asks to exit at frame 30 — so the honest assertion is run-to-exit-7, not just link.
+//
+// This test's `driver_check.valen` currently uses a HAND-WRITTEN forwarder struct; the endeavor's goal
+// is to swap it to the auto-generated form `MainLoopCallback((win,inp) => {...})` (the ready-to-apply
+// patch is staged in docs/handoffs/rust-interop-handoff.md, blocked on the Guardian AFEOX `.valen`
+// allowlist). Either form returns 7, so this assertion holds across the swap; after the swap it becomes
+// the orchestrator-parity proof of the auto-generated forwarder.
 #[test]
 fn automates_driver_check_reverse_callback() {
   let valenc_rs = require_valenc_rs!();
@@ -395,9 +400,76 @@ fn automates_driver_check_reverse_callback() {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/typing/test/rust_interop/driver-check");
   let project = TempDir::new().unwrap();
   copy_tree_skipping_target(&template, project.path());
-  let run = valen_build(project.path(), &valenc_rs, "driver_check");
-  assert_eq!(run.build_rc, 0, "driver-check should build + link through valen build");
+  // `--no-borrow-check`: `on_tick(&mut self, w: &mut NobiliaWindow, …)` and the lambda churns the window
+  // (`rotate_camera`/`request_exit`, `&mut self`). The auto-generated anon substruct renders `&mut`, but
+  // churn enforcement through the `where func` bound is unbuilt, so the borrow checker is stepped around —
+  // NobiliaV's real `valen build --no-borrow-check` shape.
+  let run =
+    valen_build_ex(project.path(), &valenc_rs, "driver_check", /*clear_incremental=*/ true, /*borrow_check=*/ false);
+  assert_eq!(run.build_rc, 0, "driver-check should build + link through valen build --no-borrow-check");
   assert!(run.exe.exists(), "the driver_check binary should be produced");
+  assert_eq!(run_binary(&run.exe), 7, "driver-check should run the frame loop and exit 7");
+}
+
+// A warm rebuild of the AUTO-GENERATED reverse-callback path (the driver-check's
+// `MainLoopCallback((win,inp) => {...})` lambda, no hand-written forwarder) must not panic and must run
+// to the same value. The clean build is green, but a warm rebuild starts `monouts` empty and fix A
+// (`lang_collect_and_partition_mono_items`) is its sole re-populator — re-firing `per_instance_mir` in
+// rustc's CGU order. When the callback's `per_instance_mir` (which READS `monouts` to build the typeid
+// universe, in `collect_callback`) re-fires before the export's (which POPULATES `monouts`), the universe
+// is empty and the universe-presence assert panics.
+//
+// That order is baked into the CGU layout at COLD-build time and then reused by every warm rebuild of the
+// same incremental cache — so the nondeterminism is PER-LINEAGE (~50% of cold builds produce a "bad"
+// callback-before-export layout), not per warm rebuild. Looping warm rebuilds of ONE cache therefore
+// can't catch it (a good lineage passes forever, a bad one panics on its first warm build). So this test
+// loops many FRESH lineages (a new TempDir → fresh cold build → one warm rebuild each), sampling enough
+// cold-build layouts that a live bug reds reliably (P(all pass | broken) ≈ 0.5^N). `cold_edit_warm_exits`
+// and the forward warm-rebuild tests only cover hand-written/forward paths, so this is the auto-gen
+// path's guard. Same `--no-borrow-check` shape as `automates_driver_check_reverse_callback`.
+#[test]
+fn warm_rebuild_of_auto_generated_forwarder_runs_seven() {
+  let valenc_rs = require_valenc_rs!();
+  let template =
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/typing/test/rust_interop/driver-check");
+
+  for iteration in 0..10 {
+    // Fresh lineage: a new TempDir gets its own cold-build CGU layout (the nondeterministic variable).
+    let project = TempDir::new().unwrap();
+    copy_tree_skipping_target(&template, project.path());
+
+    // Cold build — establishes the incremental cache (the clear is a no-op, nothing cached yet). Cold
+    // never panics: the collector reaches the callback only after instantiating the export, so `monouts`
+    // is populated in causal order regardless of layout.
+    let cold = valen_build_ex(
+      project.path(),
+      &valenc_rs,
+      "driver_check",
+      /*clear_incremental=*/ true,
+      /*borrow_check=*/ false,
+    );
+    assert_eq!(cold.build_rc, 0, "cold driver-check build #{iteration} should succeed");
+    assert_eq!(run_binary(&cold.exe), 7, "cold driver-check #{iteration} should exit 7");
+
+    // Warm rebuild WITHOUT clearing — the bug's trigger. If this lineage's cached layout puts the
+    // callback's CGU before the export's, fix A re-fires the reader before the writer and it panics.
+    let warm = valen_build_ex(
+      project.path(),
+      &valenc_rs,
+      "driver_check",
+      /*clear_incremental=*/ false,
+      /*borrow_check=*/ false,
+    );
+    assert_eq!(
+      warm.build_rc, 0,
+      "warm rebuild (lineage #{iteration}) should link (no universe-presence panic)"
+    );
+    assert_eq!(
+      run_binary(&warm.exe),
+      7,
+      "warm rebuild (lineage #{iteration}) should run the frame loop and exit 7"
+    );
+  }
 }
 
 /// Write the runnable reverse-callback Rust dep crate `reverse` into `<project>/reverse`: a `Callback`
@@ -532,7 +604,9 @@ fn warm_rebuild_after_callback_outbound_swap() {
 
 // Merged in from the release-mode link fix (main). A `--release` `valen build` stages the workspace
 // then builds release directly (not through `run_build`), so `clear_incremental` is immaterial here —
-// `stage_workspace` does not read it.
+// `stage_workspace` does not read it. `VALEN_BORROW_CHECK=0` is set on the cargo spawn (the release path
+// does not go through `run_build`, which is what normally sets it) so the driver-check churn is stepped
+// around, matching the debug pipeline build.
 fn valen_build_release(project: &Path, valenc_rs: &Path, bin_name: &str) -> (i32, PathBuf) {
   let build_dir = project.join("target").join("valen-build");
   stage_workspace(&BuildInputs {
@@ -540,13 +614,14 @@ fn valen_build_release(project: &Path, valenc_rs: &Path, bin_name: &str) -> (i32
     build_dir: build_dir.clone(),
     valenc_rs: valenc_rs.to_path_buf(),
     clear_incremental: false,
-    borrow_check: true,
+    borrow_check: false,
   })
   .expect("stage_workspace should succeed");
   let status = Command::new("cargo")
     .current_dir(&build_dir)
     .args(["build", "--release"])
     .env("RUSTC_WORKSPACE_WRAPPER", valenc_rs)
+    .env("VALEN_BORROW_CHECK", "0")
     .env_remove("RUSTC")
     .status()
     .expect("could not spawn cargo");
@@ -554,9 +629,10 @@ fn valen_build_release(project: &Path, valenc_rs: &Path, bin_name: &str) -> (i32
   (status.code().unwrap_or(1), exe)
 }
 
-// A `--release` `valen build` of the vendored `driver-check` project must link and produce a binary,
-// the same as the debug build does. Its stubbed `nobiliav` bodies are `unimplemented!()`, so the
-// honest assertion is a clean build + link, not a run-to-exit.
+// A `--release` `valen build --no-borrow-check` of the vendored `driver-check` project must link and
+// produce a binary, the same as the debug build does. `driver-check`'s `on_tick` is `&mut self` and the
+// lambda churns the window, so the borrow checker is off (churn enforcement is unbuilt); the honest
+// assertion is a clean build + link.
 #[test]
 fn release_build_of_driver_check_links() {
   let valenc_rs = require_valenc_rs!();

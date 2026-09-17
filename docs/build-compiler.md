@@ -130,18 +130,38 @@ present.
 `+rustc-fork`. Build and link it once:
 
 ```sh
-git clone https://github.com/Verdagon/rust ~/rust
-cd ~/rust && git checkout per-instance-mir && ./x build   # builds stage1 (~hours)
+git clone https://github.com/valen-lang/rust ~/rust
+cd ~/rust && git checkout per-instance-mir
+./x build              # stage1 compiler + std; builds LLVM from source the first time (~hours)
+./x build --stage 2    # stage2 compiler, which is what puts the rustc-dev rlibs into stage1's sysroot
 rustup toolchain link rustc-fork ~/rust/build/host/stage1
 ln -sf ~/rust/build/aarch64-apple-darwin/stage0/bin/cargo \
        ~/rust/build/host/stage1/bin/cargo                 # give the toolchain its own cargo
 ```
 
-Link **stage1**, not stage2: a plain `./x build` populates stage1 with the `rustc-dev` component, whereas
-`./x build --stage 2` regenerates the stage2 sysroot *without* it. The fork's sysroot ships the
-`rustc_private` libraries and `rust-src`, so there is **no** `rustup component add rustc-dev` step. Under
-`+rustc-fork`, `build.rs`'s sibling-llvm-config derivation finds the fork's shared libLLVM automatically,
-which the interop build must share with rustc's own (two libLLVMs in one process is duplicate-symbol UB).
+**Both builds are required, and the toolchain links stage1.** Bootstrap copies a compiler's `rustc_private`
+rlibs into a sysroot only when that sysroot's compiler *builds* the next stage (the `RustcLink` step). So
+`./x build` alone leaves stage1 with std but no `rustc-dev`, and `./x build --stage 2` is what deposits the
+stage2-built rlibs into stage1. Stage2's own sysroot never gets them (nothing builds stage3), which is why
+the toolchain links stage1. The interop build then compiles with the stage1 `rustc` against those rlibs and
+links the `librustc_driver` dylib in stage1's `rustlib/<target>/lib` (a different hash from the one in
+`stage1/lib`). The fork's sysroot ships the `rustc_private` libraries and `rust-src`, so there is **no**
+`rustup component add rustc-dev` step. Under `+rustc-fork`, `build.rs`'s sibling-llvm-config derivation
+finds the fork's shared libLLVM automatically, which the interop build must share with rustc's own (two
+libLLVMs in one process is duplicate-symbol UB).
+
+**After any change to the fork's `compiler/` sources, rerun both `./x build` and `./x build --stage 2`**, or
+the stage1 sysroot is left with a fresh `rustc` and stale (or missing) `rustc-dev` rlibs. Then force Valen
+to recompile against the new sysroot — cargo does not fingerprint sysroot crates, and the rlib filenames
+keep their hashes across rebuilds, so it will not notice on its own:
+
+```sh
+cargo +rustc-fork clean --manifest-path Cargo.toml -p frontend_rust
+```
+
+Run `./x` from the fork root (`cd ~/rust`), or pass `--src ~/rust --build-dir ~/rust/build --config
+~/rust/config.toml` explicitly. Invoked from another directory without those flags, bootstrap creates a
+fresh `build/` under your cwd and rebuilds LLVM from scratch into it, leaving `~/rust/build` untouched.
 
 ### Build and test
 

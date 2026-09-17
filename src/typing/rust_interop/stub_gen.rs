@@ -20,13 +20,25 @@ use crate::parse_arena::ParseArena;
 use crate::parsing::ast::ast::{
   FileP, FunctionP, GenericParametersP, IAttributeP, IDenizenP, ImplP, ImportP, StructP,
 };
-use crate::typing::rust_interop::typeid::typeid;
+use crate::typing::rust_interop::typeid::{anon_substruct_rust_name, typeid};
 use crate::parsing::ast::pattern::ParameterP;
 use crate::parsing::ast::templex::{BorrowRefPT, EffectP, GroupP, ITemplexPT, RegionP};
 use crate::postparsing::ScoutCompilation;
 use crate::scout_arena::ScoutArena;
-use crate::typing::rust_interop::RUST_MODULE;
+use crate::postparsing::rules::types::{EffectS, ITypeST, RegionS};
+use crate::typing::ast::ast::{EdgeT, PrototypeT};
+use crate::typing::compiler_outputs::CompilerOutputs;
+use crate::typing::hinputs_t::HinputsT;
+use crate::typing::names::names::{
+  AnonymousSubstructTemplateNameT, IdT, IFunctionNameT, IInterfaceTemplateNameT, INameT,
+  IStructTemplateNameT,
+};
+use crate::typing::compiler::Compiler;
+use crate::typing::rust_interop::reserved::{citizen_id, is_rust_backed, is_rust_backed_kind, RUST_MODULE};
+use crate::typing::typing_interner::TypingInterner;
+use crate::typing::types::types::KindT;
 use crate::utils::code_hierarchy::FileCoordinateMap;
+use crate::StrI;
 
 /// A shape the interim generator cannot yet express (the permanent, `HinputsT`-driven form does).
 #[derive(Debug, Clone)]
@@ -82,7 +94,7 @@ impl std::fmt::Display for StubGenError {
 /// `per_instance_mir` reads (via `has_attrs_with_path`), so changing it flips that query red and forces
 /// re-collection of the fresh leaves/callbacks. FNV-1a is deterministic (no hasher seed), as the
 /// compiler requires.
-fn source_digest(src: &str) -> u64 {
+pub fn source_digest(src: &str) -> u64 {
   let mut hash: u64 = 0xcbf29ce484222325;
   for byte in src.as_bytes() {
     hash ^= *byte as u64;
@@ -463,4 +475,242 @@ fn render_import(import: &ImportP) -> String {
   segments.extend(import.package_steps.iter().map(|s| s.as_str()));
   segments.push(import.importee_name.as_str());
   segments.join(".")
+}
+
+// ---------------------------------------------------------------------------
+// The pass-2, HinputsT-driven stub generator (arch §30 / design line 302).
+//
+// The anon-substruct macro synthesizes a forwarder substruct + `impl <ImportedTrait>` for a lambda
+// handed to an imported Rust trait (`SomeTrait((..) => {..})`) — but only DURING typing, so the
+// parse-driven pass-1 generator above cannot see it. This generator walks the TYPED program
+// (`HinputsT`) after typing and emits the appended pass-2 declarations for each such substruct, which
+// a second rustc pass compiles. It mirrors the pass-1 reverse projection (a wrapper-as-field
+// `pub struct` + an `impl` whose override bodies Valen fills), sourced from `EdgeT` instead of the
+// parse tree.
+// ---------------------------------------------------------------------------
+
+/// Generate the appended pass-2 stub declarations for every anonymous substruct that implements an
+/// imported Rust trait. Returns `""` when there are none (the crate then stays one-pass). Deterministic:
+/// the substructs and their methods are sorted by name, so no `HashMap` iteration order reaches the
+/// output (@P0 no-nondeterminism).
+pub fn generate_pass2_stub<'s, 't>(
+  hinputs: &HinputsT<'s, 't>,
+  // The retained postparsed outputs, read for the abstract methods' `mut(g)` effects to render `&mut`
+  // (the typed `KindT` carries no borrow mutability, @BCHATZ).
+  coutputs: &CompilerOutputs<'s, 't>,
+  // Canonicalizes the abstract method's super-template id, the key its postparsed `FunctionS` (holding
+  // the effects) is looked up by.
+  interner: &TypingInterner<'s, 't>,
+  src_digest: u64,
+) -> Result<String, StubGenError> {
+  // Collect (trait name, edge) for each anon substruct that implements an imported trait. Edges are in
+  // `interface_template_to_sub_citizen_to_edge` (the `sub_citizen_to_*` twin isn't populated by a pure
+  // typing pass); the edge's sub-citizen is the anon-substruct TEMPLATE, and its super-interface is
+  // what must be rust-backed (the substruct itself lives in the native `rust_trait_anon` package).
+  let mut entries: Vec<(String, &EdgeT<'s, 't>)> = Vec::new();
+  for sub_to_edge in hinputs.interface_template_to_sub_citizen_to_edge.values() {
+    for edge in sub_to_edge.values() {
+      if !is_rust_backed(&edge.super_interface) {
+        continue;
+      }
+      if !matches!(
+        edge.sub_citizen.id().local_name,
+        INameT::AnonymousSubstruct(_) | INameT::AnonymousSubstructTemplate(_)
+      ) {
+        continue;
+      }
+      let trait_name = id_citizen_human_name(&edge.super_interface).ok_or_else(|| {
+        StubGenError::UnsupportedCallbackType(format!("imported trait {:?}", edge.super_interface))
+      })?;
+      entries.push((trait_name.as_str().to_string(), edge));
+    }
+  }
+  entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+  let mut out = String::new();
+  for (trait_name, edge) in entries {
+    let mangled = anon_substruct_rust_name(&trait_name);
+    // The edge's sub-citizen is the anon-substruct template; find its instance for the generic arity.
+    let sub_template = match edge.sub_citizen.id().local_name {
+      INameT::AnonymousSubstructTemplate(t) => t,
+      INameT::AnonymousSubstruct(asn) => asn.template,
+      // Filtered above; keep exhaustive.
+      _ => continue,
+    };
+    // The struct's generic arity = interface generics + one functor Kind per method. Read it off the
+    // anon-substruct INSTANCE in `hinputs.structs` (the edge's sub is the arg-less template). The Rust
+    // generic names are synthetic (`T0..Tn`); only the count matters, and it must match
+    // `citizen_def_id_and_args`, which fills the same slots from the instantiated substruct's template
+    // args (the functor lowers to `__ValeOpaque<typeid(functor)>`, exactly the `MyCb<F>` shape).
+    let generic_count = anon_substruct_arity(hinputs, sub_template).ok_or_else(|| {
+      StubGenError::UnsupportedCallbackType(format!("no anon-substruct instance for {trait_name}"))
+    })?;
+    let generic_names: Vec<String> = (0..generic_count).map(|i| format!("T{i}")).collect();
+    let generic_refs: Vec<&str> = generic_names.iter().map(|s| s.as_str()).collect();
+    let generics_clause = render_generic_clause(&generic_refs);
+    // Wrapper-as-field opaque shape, identical to the pass-1 projection of a hand-written forwarder:
+    // `pub struct <mangled><T..>(__ValeOpaque<HASH>, PhantomData<(T..)>)`. Do NOT re-emit the
+    // `__ValeOpaque` predeclaration — the pass-1 stub already has it (this is appended after it).
+    out.push_str(&format!(
+      "pub struct {mangled}{generics_clause}(__ValeOpaque<{hash}>, \
+       ::std::marker::PhantomData<({params})>);\n\n",
+      hash = typeid(&mangled),
+      params = generic_names.join(", "),
+    ));
+    out.push_str(&format!("impl{generics_clause} {trait_name} for {mangled}{generics_clause} {{\n"));
+    let mut methods: Vec<(String, String)> = Vec::new();
+    for (abstract_id, override_) in edge.abstract_func_to_override_func.iter() {
+      // Per-parameter `&mut` flags come from the abstract method's postparsed effects (the override's
+      // typed `KindT` dropped borrow mutability, @BCHATZ). The override renders `&mut` where set.
+      let mut_flags = abstract_method_mut_flags(coutputs, interner, abstract_id);
+      methods.push(render_impl_method_typed(&override_.override_prototype, &mut_flags, src_digest)?);
+    }
+    methods.sort_by(|a, b| a.0.cmp(&b.0));
+    for (_name, rendered) in methods {
+      out.push_str(&rendered);
+    }
+    out.push_str("}\n\n");
+  }
+  Ok(out)
+}
+
+/// The generic arity of the anonymous substruct identified by `sub_template`, read off its INSTANCE in
+/// `hinputs.structs` (its template args = interface generics + one functor Kind per method). The edge's
+/// sub-citizen is the arg-less template, so the count lives on the instance instead. Matched by
+/// structural equality on the (interned) substruct template — not by human name (@ATAFLBZ).
+fn anon_substruct_arity<'s, 't>(
+  hinputs: &HinputsT<'s, 't>,
+  sub_template: &AnonymousSubstructTemplateNameT<'s, 't>,
+) -> Option<usize> {
+  for s in hinputs.structs.iter() {
+    if let INameT::AnonymousSubstruct(asn) = s.instantiated_citizen.id.local_name {
+      if asn.template == sub_template {
+        return Some(asn.template_args.len());
+      }
+    }
+  }
+  None
+}
+
+/// The human name of the citizen an id denotes (struct or interface, template or instance form).
+fn id_citizen_human_name<'s, 't>(id: &IdT<'s, 't>) -> Option<StrI<'s>> {
+  match id.local_name {
+    INameT::InterfaceTemplate(t) => Some(t.human_namee),
+    INameT::Interface(inm) => Some(inm.template.human_namee),
+    INameT::StructTemplate(t) => Some(t.human_name),
+    INameT::Struct(sn) => match sn.template {
+      IStructTemplateNameT::StructTemplate(t) => Some(t.human_name),
+      _ => None,
+    },
+    INameT::AnonymousSubstructTemplate(t) => {
+      let IInterfaceTemplateNameT::InterfaceTemplate(iface) = t.interface;
+      Some(iface.human_namee)
+    }
+    _ => None,
+  }
+}
+
+/// Render one concrete override as a Rust trait-impl method whose body Valen fills, returning
+/// `(method name, rendered method)` — the name so the caller can sort deterministically. Mirrors the
+/// pass-1 `render_impl_method`, but sourced from the typed `PrototypeT`: param 0 is the receiver, and
+/// each remaining `KindT` renders to its Rust type. `mut_flags[i]` says whether parameter `i` is `&mut`
+/// (read from the abstract method's `mut(g)` effects, since the typed `KindT` dropped that, @BCHATZ) — a
+/// borrow's `KindT` is the same shared `BorrowRef` either way, so a `&mut` param re-renders its inner
+/// behind `&mut`. A trait with no `&mut` yields all-`false`/empty flags and renders every borrow shared.
+fn render_impl_method_typed<'s, 't>(
+  proto: &PrototypeT<'s, 't>,
+  mut_flags: &[bool],
+  src_digest: u64,
+) -> Result<(String, String), StubGenError> {
+  let fname = IFunctionNameT::try_from(proto.id.local_name).map_err(|_| {
+    StubGenError::UnsupportedCallbackType(format!("override name {:?}", proto.id.local_name))
+  })?;
+  let name = fname.template().human_name().as_str().to_string();
+  let mut rendered: Vec<String> = Vec::new();
+  for (i, kind) in proto.param_types().iter().enumerate() {
+    let is_mut = mut_flags.get(i).copied().unwrap_or(false);
+    if i == 0 {
+      // The receiver: `&mut self` when the trait method churns it, else `&self`.
+      rendered.push(if is_mut { "&mut self".to_string() } else { "&self".to_string() });
+    } else if is_mut {
+      // The `KindT` is a shared `BorrowRef` (mutability erased); re-render its inner behind `&mut`.
+      match kind {
+        KindT::BorrowRef(b) => rendered.push(format!("_p{i}: &mut {}", render_rust_kind(b.inner)?)),
+        other => {
+          return Err(StubGenError::UnsupportedCallbackType(format!(
+            "&mut on non-borrow parameter {i}: {other:?}"
+          )))
+        }
+      }
+    } else {
+      rendered.push(format!("_p{i}: {}", render_rust_kind(*kind)?));
+    }
+  }
+  let ret = match proto.return_type {
+    KindT::Void(_) => String::new(),
+    other => format!(" -> {}", render_rust_kind(other)?),
+  };
+  let out = format!(
+    "    #[vale::emit_consumer_body(digest = \"{src_digest:016x}\")]\n    \
+     fn {name}({}){ret} {{\n        unreachable!()\n    }}\n",
+    rendered.join(", ")
+  );
+  Ok((name, out))
+}
+
+/// Per-parameter `&mut` flags for an override, read off the corresponding abstract method's postparsed
+/// `FunctionS`. Parameter `i` (including parameter 0, the receiver) is `&mut` iff its `tyype` is a
+/// `BorrowRef` whose region group the method's `mut(g)` effects mark mutable — mutability the synthesizer
+/// records on the effect clause + region, never on the typed `KindT` (@BCHATZ). The abstract method is
+/// found by its super-template id (the key its postparse is seeded under). An empty result (no postparse
+/// found) renders every borrow shared, unchanged from before.
+fn abstract_method_mut_flags<'s, 't>(
+  coutputs: &CompilerOutputs<'s, 't>,
+  interner: &TypingInterner<'s, 't>,
+  abstract_id: &IdT<'s, 't>,
+) -> Vec<bool> {
+  let template_id = Compiler::get_super_template(interner, abstract_id);
+  match coutputs.peek_postparsed_function(template_id) {
+    Some(func) => func.params.iter().map(|p| param_tyype_is_mut(&p.tyype, func.effects)).collect(),
+    None => Vec::new(),
+  }
+}
+
+/// Whether a parameter's `tyype` is a `&mut` borrow: a `BorrowRef` whose region group is marked `mut(g)`
+/// by the method's effect clause. The synthesizer allocates one group per borrow parameter and pushes
+/// `EffectS::Mut(group)` for the `&mut` ones; that same group is the param's region, so they match
+/// structurally (`GroupS: PartialEq`) — no human-name keying (@ATAFLBZ).
+fn param_tyype_is_mut<'s>(tyype: &ITypeST<'s>, effects: &[EffectS<'s>]) -> bool {
+  let ITypeST::BorrowRef(b) = tyype else {
+    return false;
+  };
+  let RegionS::Group(group) = b.region else {
+    return false;
+  };
+  effects.iter().any(|e| matches!(e, EffectS::Mut(g) if **g == *group))
+}
+
+/// Lower a typed `KindT` to its Rust rendering for a projected override signature: a shared borrow, the
+/// scalars a boundary crosses, and an imported Rust citizen (by its short name — the stub `pub use`s or
+/// projects it). Errors on any other shape (the interim renderer; `&mut`, arrays, non-imported citizens
+/// are not reachable through a supported callback boundary).
+fn render_rust_kind(kind: KindT) -> Result<String, StubGenError> {
+  match kind {
+    KindT::BorrowRef(b) => Ok(format!("&{}", render_rust_kind(b.inner)?)),
+    KindT::Int(i) if i.bits == 32 => Ok("i32".to_string()),
+    KindT::Int(i) if i.bits == 64 => Ok("i64".to_string()),
+    KindT::Bool(_) => Ok("bool".to_string()),
+    KindT::USize(_) => Ok("usize".to_string()),
+    other => {
+      if is_rust_backed_kind(other) {
+        let id = citizen_id(other)
+          .ok_or_else(|| StubGenError::UnsupportedCallbackType(format!("{other:?}")))?;
+        let name = id_citizen_human_name(id)
+          .ok_or_else(|| StubGenError::UnsupportedCallbackType(format!("{other:?}")))?;
+        Ok(name.as_str().to_string())
+      } else {
+        Err(StubGenError::UnsupportedCallbackType(format!("{other:?}")))
+      }
+    }
+  }
 }

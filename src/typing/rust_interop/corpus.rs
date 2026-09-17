@@ -105,6 +105,25 @@ exported func main() int {
   expect: Expect::Returns(7),
 };
 
+/// A lambda handed to an imported Rust trait's **anonymous-substruct constructor** typechecks: the
+/// anon-substruct macro fires on the imported `Callback` trait (exactly as it does for a native
+/// interface like `Bork`), synthesizing a forwarder substruct + constructor keyed under `Callback`,
+/// so `Callback({ 7 })` compiles with no hand-written struct/impl/override and `on_call` resolves
+/// through the generated forwarder. This is the typing half of "NobiliaV writes
+/// `MainLoopCallback((w,input)=>{...})` instead of a hand-written forwarder."
+pub const A_LAMBDA_IMPLEMENTS_A_RUST_TRAIT_VIA_ANON_SUBSTRUCT: Case = Case {
+  fixture: "fixtures",
+  name: "anon-substruct-rust-trait",
+  vale: r#"
+import rust.mycrate.Callback;
+exported func main() int {
+  c = Callback({ 7 });
+  return c.on_call();
+}
+"#,
+  expect: Expect::Returns(7),
+};
+
 /// An `impl` of a Rust trait that provides no override for the trait's method must be rejected: the
 /// trait projects an abstract `on_call` into the interface, so `impl Callback for MyCb` with no
 /// `on_call` leaves an abstract method unimplemented and fails to compile. This guards that the
@@ -324,6 +343,52 @@ exported func main() int {
   a = Alpha.new();
   cb = MyCb();
   return a.run_cb(&cb);
+}
+"#,
+  expect: Expect::Returns(7),
+};
+
+/// The anonymous-substruct path for the two-imported-borrow-param (`on_tick`-shaped) trait: instead of
+/// a hand-written `struct MyCb / impl Cb / func go`, the callsite writes `Cb((x, y) => { x.touch(); })`
+/// and the compiler synthesizes the forwarder. This is the real NobiliaV shape — a lambda handed to a
+/// trait whose method takes two imported-type borrows — and it exercises the value-position param types
+/// the anon macro's `where func __call` bound needs (a Rust citizen borrow, `&Alpha`/`&Beta`, resolved
+/// by short name). Shares the `fixtures_two_imported_params` crate with the hand-written case, so both
+/// the hand-written and auto-generated forwarder paths stay covered.
+pub const A_LAMBDA_IMPLEMENTS_A_TWO_IMPORTED_PARAM_TRAIT: Case = Case {
+  fixture: "fixtures_two_imported_params",
+  name: "anon-two-imported-params",
+  vale: r#"
+import rust.mycrate.Alpha;
+import rust.mycrate.Beta;
+import rust.mycrate.Cb;
+exported func main() int {
+  a = Alpha.new();
+  cb = Cb((x, y) => { x.touch(); });
+  return a.run_cb(&cb);
+}
+"#,
+  expect: Expect::Returns(7),
+};
+
+/// The anon-substruct path for a **`&mut`-signature** trait — NobiliaV's real `on_tick(&mut self, w:
+/// &mut NobiliaWindow, input: &FrameInput)` shape, where the receiver and one param are `&mut` and a
+/// third param is a shared `&`. The callsite writes `MainLoop((win, inp) => {…})` and the compiler
+/// synthesizes the forwarder for a `&mut` trait, which the pass-2 stub must render as
+/// `fn on_tick(&mut self, _w: &mut Window, _input: &Frame)` — the mutability lives on the abstract
+/// method's `mut(g)` effect clause, not the type, so the HinputsT-driven generator must read the
+/// retained postparsed effects. Shares the `fixtures_mut_callback` crate.
+pub const A_LAMBDA_IMPLEMENTS_A_MUT_TRAIT: Case = Case {
+  fixture: "fixtures_mut_callback",
+  name: "anon-mut-trait",
+  vale: r#"
+import rust.mycrate.Window;
+import rust.mycrate.Frame;
+import rust.mycrate.MainLoop;
+exported func main() int {
+  w = Window.new();
+  cb = MainLoop((win, inp) => { });
+  return w.run(&cb);
 }
 "#,
   expect: Expect::Returns(7),

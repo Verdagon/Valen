@@ -14,38 +14,37 @@ import rust.nobiliav.key_arrow_right;
 import rust.nobiliav.key_arrow_up;
 import rust.nobiliav.key_arrow_down;
 
-struct MyMainLoopCallback { }
-impl MainLoopCallback for MyMainLoopCallback;
-
-func on_tick(self &MyMainLoopCallback, w &NobiliaWindow, input &FrameInput) {
-  key = input.key();
-  if (key == key_arrow_left()) {
-    w.rotate_camera(-4, 0);
-  } else if (key == key_arrow_right()) {
-    w.rotate_camera(4, 0);
-  } else if (key == key_arrow_up()) {
-    w.rotate_camera(0, 4);
-  } else if (key == key_arrow_down()) {
-    w.rotate_camera(0, -4);
-  }
-
-  if (input.mouse_x() != -1) {
-    w.report_pick(input.mouse_x(), input.mouse_y());
-  }
-
-  // The one line driver.vale lacks: end the run after 30 frames instead of waiting for a human.
-  if (w.frame_index() >= 30) {
-    w.request_exit();
-  }
-}
-
 exported func main() int {
   w = NobiliaWindow.new(1200, 900);
 
   w.load_terrain();
   w.fit_camera(37, 42);
 
-  mmlcb = MyMainLoopCallback();
-  w.main_loop(&mmlcb);
+  // The whole point of the endeavor: hand the frame-loop callback as a lambda directly to the imported
+  // `MainLoopCallback` trait, with NO hand-written forwarder struct/impl/override. The compiler runs the
+  // anonymous-substruct macro on the imported trait and projects the synthesized substruct all the way
+  // to Rust codegen, so `w.main_loop(&cb)` dispatches into this lambda every frame.
+  cb = MainLoopCallback((win, inp) => {
+    key = inp.key();
+    if (key == key_arrow_left()) {
+      win.rotate_camera(-4, 0);
+    } else if (key == key_arrow_right()) {
+      win.rotate_camera(4, 0);
+    } else if (key == key_arrow_up()) {
+      win.rotate_camera(0, 4);
+    } else if (key == key_arrow_down()) {
+      win.rotate_camera(0, -4);
+    }
+
+    if (inp.mouse_x() != -1) {
+      win.report_pick(inp.mouse_x(), inp.mouse_y());
+    }
+
+    // The one line driver.vale lacks: end the run after 30 frames instead of waiting for a human.
+    if (win.frame_index() >= 30) {
+      win.request_exit();
+    }
+  });
+  w.main_loop(&cb);
   return 7;
 }

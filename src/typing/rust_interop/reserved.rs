@@ -15,6 +15,16 @@ use crate::typing::types::types::*;
 /// access at every seam.
 pub const RUST_MODULE: &str = "rust";
 
+/// The reserved module that owns compiler-generated siblings of an imported Rust trait — the
+/// anonymous-substruct forwarder/constructor/drop the anon-substruct macro synthesizes so
+/// `SomeRustTrait((x) => {…})` compiles. These MUST NOT live in the `rust` module: the
+/// function-compile loop skips `rust` (it postparses Rust methods lazily), so a forwarder there
+/// would never compile. And they must be a real (non-builtin, non-`rust`) native package so
+/// `citizen_def_id_and_args` routes the substruct through `resolve_local_type` (the projected-type
+/// path), exactly like a hand-written forwarder struct. It is a single canonical package so a trait
+/// imported from several files yields one substruct, not one per import site.
+pub const RUST_TRAIT_ANON_MODULE: &str = "rust_trait_anon";
+
 /// Is this id's package the reserved `rust` package?
 pub fn is_rust_backed(id: &IdT) -> bool {
   id.package_coord.module.0 == RUST_MODULE

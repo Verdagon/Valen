@@ -42,7 +42,7 @@ use crate::postparsing::rules::rules::{
   BorrowRefSR, CallSR, EqualsSR, IRulexSR, ImplBoundS, LookupSR, RegionSR, RuneUsage,
 };
 use crate::postparsing::rules::types::{
-  BorrowRefST, EffectS, GroupS, ITypeST, RegionS, RuneUsageST,
+  BorrowRefST, CallST, EffectS, GroupS, ITypeST, NameST, RegionS, RuneUsageST,
 };
 use crate::scout_arena::ScoutArena;
 use crate::typing::compiler::Compiler;
@@ -455,6 +455,115 @@ where
   }
 }
 
+/// The value-position `ITypeST` for a synthesized abstract method's param or return type — what the
+/// anonymous-substruct macro's `where func __call` bound needs so `resolve_citizen_bounds` can reify
+/// it. That resolver evaluates each param/return with only the citizen's env + generic-substitution
+/// map — never the method's header rules — so the type must be self-contained: a concrete type name as
+/// a zero-arg template `Call` (resolved by name lookup, @TNLTZACZ), a generic as a bare substitution
+/// rune. This is exactly the shape the parser produces for a hand-written native method's param/return
+/// (verified: a native `interface IH { func handle(virtual self &IH, w &W) }` used via `IH((w)=>{})`
+/// compiles), so the synthesizer must mirror it rather than emit the internal value-runes it uses for
+/// the method's own header (a shape the parser never produces, which is why the bound choked before).
+///
+/// Params and the return go through this same builder — "a param is just another parameter"; the only
+/// difference is the return has no borrow-group. `None` means "not expressible in value position",
+/// which for a realistic (non-generic) Rust trait does not occur — every param/return is a primitive,
+/// void, or a Rust citizen (or a borrow of one). The caller gates the whole macro off a trait if any
+/// method returns `None`, so the bound is never emitted with a hole.
+fn value_position_type_st<'s, 't>(
+  compiler: &Compiler<'s, '_, 't>,
+  sig_type: &ValeSigType<'s, 't>,
+  range: RangeS<'s>,
+  generic_runes: &[RuneUsage<'s>],
+) -> Option<ITypeST<'s>>
+where
+  's: 't,
+{
+  let scout_arena = compiler.scout_arena;
+  match sig_type {
+    // A declared generic *is* its rune; a bare rune is exactly what `resolve_citizen_bounds` reifies
+    // against the citizen's generic-param substitution.
+    ValeSigType::Generic(index) => generic_runes
+      .get(*index as usize)
+      .map(|ru| ITypeST::Rune(scout_arena.alloc(RuneUsageST { rune: *ru }))),
+    // A primitive (`int`, `void`, `bool`, `usize`) is a bare builtin name → the value-position zero-arg
+    // Call form the parser and the macro's drop bound both use, resolved by name lookup in the env.
+    ValeSigType::Kind(kind) => {
+      let name = vale_type_name(compiler, kind)?;
+      Some(value_position_name_call(scout_arena, range, name, Vec::new()))
+    }
+    // A borrow wraps its inner value-position type. `is_mut` isn't read here (a nested borrow's
+    // mutation isn't mirrored into a group, per `bind_sig_type`'s borrow arm); a top-level param
+    // borrow's group lives on the param's own `tyype`, added by the caller.
+    ValeSigType::Borrow { inner, .. } => {
+      let inner_st = value_position_type_st(compiler, inner, range, generic_runes)?;
+      Some(ITypeST::BorrowRef(scout_arena.alloc(BorrowRefST {
+        range,
+        inner: scout_arena.alloc(inner_st),
+        region: RegionS::Unspecified,
+      })))
+    }
+    // A Rust citizen resolves by its SHORT single-segment name: the importer seeds it in the `rust`
+    // package under its `CodeName`, and cross-package lookup is unconditional (every package's store is
+    // in `global_namespaces`), so a bare `Name{NobiliaWindow}` resolves from the substruct's env even
+    // without the user's `import` in scope. (bind_sig_type uses the multi-segment path only to
+    // disambiguate two crates exporting the same short name; that ambiguity does not arise here, and if
+    // it ever does the fallback is that same multi-segment mechanism.) Generic citizens carry their arg
+    // value-position types.
+    ValeSigType::Citizen { name, args, .. } => {
+      let arg_sts: Option<Vec<ITypeST<'s>>> = args
+        .iter()
+        .map(|a| value_position_type_st(compiler, a, range, generic_runes))
+        .collect();
+      Some(value_position_name_call(scout_arena, range, *name, arg_sts?))
+    }
+  }
+}
+
+/// A value-position type name applied to (possibly zero) args — a `Lookup`'s name wrapped in a `Call`,
+/// per @TNLTZACZ (a type name never lowers to a bare name; it is always applied). Zero args is the bare
+/// name case (`int`, `NobiliaWindow`); N args a generic instantiation (`Vec<int>`).
+fn value_position_name_call<'s>(
+  scout_arena: &ScoutArena<'s>,
+  range: RangeS<'s>,
+  name: StrI<'s>,
+  args: Vec<ITypeST<'s>>,
+) -> ITypeST<'s> {
+  let imprecise =
+    scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS { name }));
+  let arg_refs: Vec<&'s ITypeST<'s>> =
+    args.into_iter().map(|st| &*scout_arena.alloc(st)).collect();
+  ITypeST::Call(scout_arena.alloc(CallST {
+    range,
+    template: scout_arena.alloc(ITypeST::Name(scout_arena.alloc(NameST { range, name: imprecise }))),
+    args: scout_arena.alloc_slice_from_vec(arg_refs),
+  }))
+}
+
+/// Whether every param and the return of a synthesized trait method is expressible in value position,
+/// so the anonymous-substruct macro can build a `where func` bound the resolver can reify. Used to gate
+/// the macro off a trait whose signatures it cannot yet project (the method still projects for the
+/// hand-written-forwarder path; only the auto-substruct is withheld).
+fn sig_is_anon_representable<'s, 't>(
+  compiler: &Compiler<'s, '_, 't>,
+  sig: &ValeSig<'s, 't>,
+) -> bool
+where
+  's: 't,
+{
+  let range = RangeS::new(
+    CodeLocationS::internal(compiler.scout_arena, SYNTHESIZED_RANGE_OFFSET),
+    CodeLocationS::internal(compiler.scout_arena, SYNTHESIZED_RANGE_OFFSET),
+  );
+  let generic_runes: Vec<RuneUsage<'s>> = Vec::new();
+  // `&mut` borrows are now anon-eligible: the pass-2 stub reads the abstract method's `mut(g)` effects to
+  // render `&mut` (mutability lives on the effect clause + region, not the type, @BCHATZ). The borrow
+  // checker still ignores that mutability for now — a churning callback runs under `--no-borrow-check`.
+  let representable =
+    |t: &ValeSigType<'s, 't>| value_position_type_st(compiler, t, range, &generic_runes).is_some();
+  sig.params.iter().all(representable) && representable(&sig.ret)
+}
+
 /// A distinct rune for one of the intermediate positions a generic citizen needs.
 fn fresh_rune<'s>(
   scout_arena: &ScoutArena<'s>,
@@ -755,10 +864,18 @@ where
             // Unspecified on the outer rule: the group lives on the `tyype`, matching the postparser.
             region: RegionSR::Unspecified,
           })];
+          // The `tyype` is what the anon-substruct macro copies into its `where func __call` bound, and
+          // `resolve_citizen_bounds` reifies it with no access to these header rules — so it must be the
+          // self-contained value-position form (a name-`Call`, mirroring the parser), NOT the internal
+          // `value_rune`. The value_rune + rules above still drive the method's own header solve. If the
+          // inner type isn't value-position-expressible (does not occur for a representable trait — the
+          // caller gates the macro off such traits), fall back to the rune so the method still compiles
+          // for the hand-written-forwarder path.
+          let inner_st = value_position_type_st(compiler, inner, range, &generic_runes)
+            .unwrap_or_else(|| ITypeST::Rune(scout_arena.alloc(RuneUsageST { rune: value_rune })));
           let tyype = ITypeST::BorrowRef(scout_arena.alloc(BorrowRefST {
             range,
-            inner: scout_arena
-              .alloc(ITypeST::Rune(scout_arena.alloc(RuneUsageST { rune: value_rune }))),
+            inner: scout_arena.alloc(inner_st),
             region: RegionS::Group(group),
           }));
           (full_type_rune, value_rune, outer, tyype)
@@ -773,7 +890,10 @@ where
             &mut value_type_rules,
             &mut next_synthetic,
           )?;
-          let tyype = ITypeST::Rune(scout_arena.alloc(RuneUsageST { rune }));
+          // Value-position form for the bound (see the borrow arm); rune fallback for the method's own
+          // compile if not expressible.
+          let tyype = value_position_type_st(compiler, sig_type, range, &generic_runes)
+            .unwrap_or_else(|| ITypeST::Rune(scout_arena.alloc(RuneUsageST { rune })));
           (rune, rune, Vec::new(), tyype)
         }
       };
@@ -809,6 +929,13 @@ where
     &mut header_rules,
     &mut next_synthetic,
   )?;
+  // The value-position return type the anon-substruct macro's `where func __call` bound needs (a
+  // native abstract method gets it from the parser; a synthesized one must build it, or the bound
+  // panics with `maybe_return_type: None`). `None` for a return not yet expressible in value position
+  // (a Rust citizen) — the method still projects (the hand-written-forwarder path never reads this),
+  // but the anon macro's bound won't compile for it, so the macro is gated off such traits at its call
+  // site.
+  let maybe_return_type_st = value_position_type_st(compiler, &sig.ret, range, &generic_runes);
 
   let template_type = TemplateTemplataType {
     param_types: scout_arena.alloc_slice_from_vec::<ITemplataType<'s>>(Vec::new()),
@@ -830,7 +957,7 @@ where
     template_type,
     scout_arena.alloc_slice_from_vec(params),
     Some(ret_rune),
-    None, // no user-written return group
+    maybe_return_type_st,
     // One `mut(g)` per `&mut` borrow, mirroring Rust's mutation — the faithful representation scope C
     // enforces. Inert until then (an abstract method is not groupified). Empty when nothing is `&mut`.
     scout_arena.alloc_slice_from_vec(effects),
@@ -852,7 +979,7 @@ pub fn synthesize_extern_trait<'s, 'ctx, 't>(
   package_coord: &'s PackageCoordinate<'s>,
   human_name: StrI<'s>,
   methods: &[(StrI<'s>, ValeSig<'s, 't>)],
-) -> &'s InterfaceS<'s>
+) -> (&'s InterfaceS<'s>, bool)
 where
   's: 't,
 {
@@ -867,6 +994,12 @@ where
   };
 
   let mut internal_methods: Vec<&'s FunctionS<'s>> = Vec::new();
+  // Whether the anonymous-substruct macro can project this trait: every method must project AND its
+  // (mapped) params + return must be expressible in value position, so the generated `where func`
+  // bound is reifiable. Checked on the MAPPED sig — after Self becomes the interface citizen — because
+  // that is what the method's params are actually built from (the raw sig's `self` is `&Generic(Self)`,
+  // which has no value-position form and would spuriously mark the trait ineligible).
+  let mut anon_eligible = true;
   for (method_name, sig) in methods {
     let mapped_params: Vec<ValeSigType<'s, 't>> = sig
       .params
@@ -881,19 +1014,30 @@ where
       ret: mapped_ret,
     };
     // A method that fails to project (an unsupported generic) is skipped; an override for it then
-    // fails to resolve, surfacing the gap at the impl rather than as a silent hole here.
-    if let Some(m) = synthesize_abstract_interface_method(compiler, *method_name, &mapped_sig) {
-      internal_methods.push(m);
+    // fails to resolve, surfacing the gap at the impl rather than as a silent hole here. A skipped or
+    // non-value-position-representable method also makes the trait anon-ineligible (the auto-substruct
+    // can't validly/compilably forward it), so the macro is withheld and the hand-written path stands.
+    match synthesize_abstract_interface_method(compiler, *method_name, &mapped_sig) {
+      Some(m) => {
+        internal_methods.push(m);
+        if !sig_is_anon_representable(compiler, &mapped_sig) {
+          anon_eligible = false;
+        }
+      }
+      None => anon_eligible = false,
     }
   }
 
-  scout_arena.alloc(InterfaceS::new(
+  let interface = scout_arena.alloc(InterfaceS::new(
     range,
     scout_arena.alloc(TopLevelInterfaceDeclarationNameS { name: human_name, range }),
-    scout_arena.alloc_slice_from_vec(vec![
-      ICitizenAttributeS::Extern(ExternS { package_coord }),
-      ICitizenAttributeS::Sealed(SealedS),
-    ]),
+    // NOT `Sealed`, unlike the enum analog (`synthesize_extern_interface`). Sealing would make the
+    // anonymous-substruct macro bail (it early-returns on a sealed interface), and we want that macro
+    // to fire so `Callback((x) => {…})` synthesizes a forwarder. De-sealing is safe: the only reader
+    // of the sealed flag is the #374 "an open interface can't have externally-defined abstract
+    // methods" check, which is gated behind `!is_internal_method` — and a synthesized trait's abstract
+    // methods are all `is_internal_method: true`, so the check never fires for them.
+    scout_arena.alloc_slice_from_vec(vec![ICitizenAttributeS::Extern(ExternS { package_coord })]),
     &[],   // no generic parameters
     SharednessP::Single,
     tyype,
@@ -901,7 +1045,8 @@ where
     scout_arena.alloc_slice_from_vec(internal_methods),
     &[], // impl_bounds
     &[], // func_bounds
-  ))
+  ));
+  (interface, anon_eligible)
 }
 
 /// A citizen's `LookupSR` path: its package coordinate's segments, then its short name.

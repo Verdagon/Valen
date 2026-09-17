@@ -48,6 +48,7 @@ use crate::parse_arena::ParseArena;
 use crate::postparsing::ScoutCompilation;
 use crate::scout_arena::ScoutArena;
 use crate::typing::compilation::TypingPassCompilation;
+use crate::typing::compiler_outputs::CompilerOutputs;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::oracles::Oracles;
 use crate::typing::rust_interop::drive::{
@@ -213,7 +214,7 @@ struct CaseCallbacks<'a, F, R> {
 
 impl<'a, F, R> Callbacks for CaseCallbacks<'a, F, R>
 where
-  F: for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
+  F: for<'s, 't> Fn(&HinputsT<'s, 't>, &CompilerOutputs<'s, 't>, &TypingInterner<'s, 't>) -> R + Send,
   R: Send,
 {
   fn after_expansion<'tcx>(&mut self, _compiler: &RustcCompiler, tcx: TyCtxt<'tcx>) -> Compilation {
@@ -288,34 +289,42 @@ where
       Oracles::with_rust(&logging),
     );
     let mut instantiation: Option<InstantiationSummary> = None;
-    let compiled = match compile.get_compiler_outputs() {
-      Ok(coutputs) => {
-        let extracted = (self.extract)(coutputs);
-        if self.instantiate {
-          // The pass past typing: monomorphize the typed program to `HinputsI`. No oracle, no backend
-          // — that is `pass_manager::build`'s job downstream. A program that typechecks but cannot be
-          // instantiated panics inside `translate`, which fails the test loudly. That is the coverage.
-          let instantiating_bump = Bump::new();
-          let instantiating_interner = InstantiatingInterner::new(&instantiating_bump);
-          let monouts = instantiator::translate(
-            &global_options,
-            &instantiating_interner,
-            &typing_interner,
-            &scout_arena,
-            &keywords,
-            coutputs,
-          );
-          instantiation = Some(InstantiationSummary {
-            functions: monouts.functions.len(),
-            structs: monouts.structs.len(),
-            interfaces: monouts.interfaces.len(),
-          });
-        }
-        Ok(extracted)
-      }
-      Err(e) => Err(CompileFailure::from_debug(format!("{e:?}"))),
-    };
-    self.outcome = Some(CaseOutcome { compiled, oracle_log: logging.calls(), instantiation });
+    // Populate the hinputs + coutputs caches (a typing error becomes the outcome). Discarding this
+    // call's borrow before reading the caches lets us hold `&HinputsT` and `&CompilerOutputs` together
+    // via the `&self` accessors below — the extractor gets both, mirroring the generate-step's design.
+    if let Err(e) = compile.get_compiler_outputs() {
+      self.outcome = Some(CaseOutcome {
+        compiled: Err(CompileFailure::from_debug(format!("{e:?}"))),
+        oracle_log: logging.calls(),
+        instantiation,
+      });
+      return Compilation::Stop;
+    }
+    let hinputs = compile.cached_compiler_outputs();
+    let coutputs = compile.cached_coutputs();
+    let extracted = (self.extract)(hinputs, coutputs, &typing_interner);
+    if self.instantiate {
+      // The pass past typing: monomorphize the typed program to `HinputsI`. No oracle, no backend —
+      // that is `pass_manager::build`'s job downstream. A program that typechecks but cannot be
+      // instantiated panics inside `translate`, which fails the test loudly. That is the coverage.
+      let instantiating_bump = Bump::new();
+      let instantiating_interner = InstantiatingInterner::new(&instantiating_bump);
+      let monouts = instantiator::translate(
+        &global_options,
+        &instantiating_interner,
+        &typing_interner,
+        &scout_arena,
+        &keywords,
+        hinputs,
+      );
+      instantiation = Some(InstantiationSummary {
+        functions: monouts.functions.len(),
+        structs: monouts.structs.len(),
+        interfaces: monouts.interfaces.len(),
+      });
+    }
+    self.outcome =
+      Some(CaseOutcome { compiled: Ok(extracted), oracle_log: logging.calls(), instantiation });
 
     Compilation::Stop
   }
@@ -445,8 +454,10 @@ pub fn run_case_in_package<R: Send>(
   package_module: &str,
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
 ) -> CaseOutcome<R> {
-  try_run_case_in_package(case, package_module, false, extract)
-    .expect("rustc returned without ever reaching after_expansion")
+  try_run_case_in_package(case, package_module, false, move |hinputs, _coutputs, _interner| {
+    extract(hinputs)
+  })
+  .expect("rustc returned without ever reaching after_expansion")
 }
 
 /// `run_case`, but also runs the instantiator (monomorphizer) on the typing output, recording the
@@ -456,7 +467,7 @@ pub fn run_case_instantiated<R: Send>(
   case: &Case,
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
 ) -> CaseOutcome<R> {
-  try_run_case_in_package(case, "test", true, extract)
+  try_run_case_in_package(case, "test", true, move |hinputs, _coutputs, _interner| extract(hinputs))
     .expect("rustc returned without ever reaching after_expansion")
 }
 
@@ -466,7 +477,22 @@ pub fn try_run_case<R: Send>(
   case: &Case,
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
 ) -> Option<CaseOutcome<R>> {
+  try_run_case_in_package(case, "test", false, move |hinputs, _coutputs, _interner| {
+    extract(hinputs)
+  })
+}
+
+/// `run_case`, but the extractor also receives the retained postparsed `CompilerOutputs` and the typing
+/// interner — for the pass-2 stub generator, which reads the abstract methods' `mut(g)` effects off the
+/// postparseds to render `&mut` (the typed `KindT` carries no borrow mutability, @BCHATZ) and needs the
+/// interner to canonicalize the interface template id it looks the postparsed interface up by.
+pub fn run_case_with_coutputs<R: Send>(
+  case: &Case,
+  extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>, &CompilerOutputs<'s, 't>, &TypingInterner<'s, 't>) -> R
+    + Send,
+) -> CaseOutcome<R> {
   try_run_case_in_package(case, "test", false, extract)
+    .expect("rustc returned without ever reaching after_expansion")
 }
 
 /// The result of a rustc-driven run: the provider's per-item firing log, rustc's own exit code
@@ -571,7 +597,8 @@ fn try_run_case_in_package<R: Send>(
   case: &Case,
   package_module: &str,
   instantiate: bool,
-  extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
+  extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>, &CompilerOutputs<'s, 't>, &TypingInterner<'s, 't>) -> R
+    + Send,
 ) -> Option<CaseOutcome<R>> {
   let fixture_dir = fixtures_dir(case.fixture);
   // One scratch dir per run, unique and self-cleaning (see compile_check_fixture): keying on

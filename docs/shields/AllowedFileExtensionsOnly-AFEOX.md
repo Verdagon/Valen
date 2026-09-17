@@ -10,7 +10,7 @@ g_read_when: Read when an AI agent is about to edit a file with an unfamiliar ex
 
 # Allowed File Extensions Only (AFEOX)
 
-This project restricts AI-driven edits to a fixed set of file extensions: `.rs`, `.md`, `.cpp`, `.c`, `.h`, and `.vale`. Any edit to a file whose path doesn't end in one of these extensions is a violation, regardless of what the edit contains.
+This project restricts AI-driven edits to a fixed set of file extensions: `.rs`, `.md`, `.cpp`, `.c`, `.h`, `.vale`, and `.valen`. Any edit to a file whose path doesn't end in one of these extensions is a violation, regardless of what the edit contains.
 
 One exception: ALLOW a `.py` file when its path is under a `tmp/scripts/` directory (whether the path is relative like `tmp/scripts/foo.py` or absolute like `/…/worktree/tmp/scripts/foo.py`). That directory is the staging area for safe-script-runner bulk-edit transforms (see the scripting skill), so writing Python scripts there is sanctioned. This exception is narrow: DENY a `.py` file anywhere else, and DENY any other disallowed extension even inside `tmp/scripts/`.
 

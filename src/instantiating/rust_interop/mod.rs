@@ -14,7 +14,7 @@
 // there.
 
 use rustc_codegen_llvm::ModuleLlvm;
-use rustc_codegen_ssa::traits::ExtraModuleAllocator;
+use rustc_codegen_ssa::ModuleCodegen;
 use rustc_hir::Safety;
 use rustc_index::IndexVec;
 use rustc_middle::mir::{
@@ -67,7 +67,7 @@ use crate::scout_arena::ScoutArena;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::rust_interop::reserved::RUST_MODULE;
 use crate::typing::rust_interop::tyctxt_oracle::resolve_crate_qualified_path;
-use crate::typing::rust_interop::typeid::typeid;
+use crate::typing::rust_interop::typeid::{anon_substruct_rust_name, typeid};
 use crate::typing::typing_interner::TypingInterner;
 
 // The instantiator state the provider drives, reached through a scoped raw pointer rather than a
@@ -213,6 +213,15 @@ impl<'s, 'ctx, 't, 'i> DriverState<'s, 'ctx, 't, 'i> {
   /// rustc-mangled symbol. The body is instantiated through the ordinary `translate_prototype` +
   /// `drain` — a callback is an ordinary non-generic function whose only distinction is *who* calls
   /// it, so no override/vtable machinery is needed (Rust dispatched statically to the concrete impl).
+  ///
+  /// Scope — single-level reverse callbacks only. This reads `monouts` (the typeid universe) *before* it
+  /// writes to it (the override instantiation + drain below). On a warm rebuild the exports-first phase in
+  /// `lang_collect_and_partition_mono_items` guarantees every *export* has populated `monouts` before any
+  /// callback reads it. It does NOT order callback-to-callback: a *nested* reverse callback — a callback
+  /// whose body hands another lambda to a Rust trait, producing a functor a second callback then reads —
+  /// is not covered and could hit the same empty-universe race. No fixture exercises this today (`on_tick`
+  /// calls only Rust leaves and constructs no new functor). If one is added, extend the populate-then-read
+  /// ordering to callback dependencies (topological), not just exports-before-callbacks.
   fn collect_callback<'tcx>(
     &self,
     tcx: TyCtxt<'tcx>,
@@ -270,6 +279,15 @@ impl<'s, 'ctx, 't, 'i> DriverState<'s, 'ctx, 't, 'i> {
             .0
             .id();
           if citizen_or_opaque_to_rustc_ty(tcx, &sub_id) == Some(self_ty) {
+            // Exactly one impl must project to this rustc Self. Keeping the last match (the old
+            // behavior) would make the pick order-dependent if two ever matched; assert uniqueness so an
+            // ambiguous reverse-callback program fails loud rather than dispatching arbitrarily (@P0
+            // no-order-dependent-decisions).
+            assert!(
+              matched.is_none(),
+              "rust interop: callback {item_name:?} Self matches more than one recorded Valen impl \
+               (ambiguous reverse-callback dispatch)"
+            );
             matched = Some((*impl_t, *impl_i));
           }
         }
@@ -283,12 +301,23 @@ impl<'s, 'ctx, 't, 'i> DriverState<'s, 'ctx, 't, 'i> {
     // The typed abstract method header this override implements: reach it through the impl's edge and
     // the interface's blueprint (typing owns the abstract method set + order).
     let impl_template = Compiler::get_impl_template(self.typing_interner, matched_impl_t);
-    let edge = hinputs
+    // `interface_template_to_sub_citizen_to_edge` is a std HashMap (nondeterministic iteration), so a
+    // `.find()` that took the first of several matches would be order-dependent. Collect and assert
+    // exactly one match: when the pick is unique, iteration order is irrelevant; if it ever isn't, fail
+    // loud (@P0 no-order-dependent-decisions) instead of choosing an arbitrary edge.
+    let matching_edges: Vec<_> = hinputs
       .interface_template_to_sub_citizen_to_edge
       .values()
       .flat_map(|m| m.values().copied())
-      .find(|edge| Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template)
-      .expect("no edge for the matched impl");
+      .filter(|edge| Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template)
+      .collect();
+    assert_eq!(
+      matching_edges.len(),
+      1,
+      "rust interop: expected exactly one edge for the matched impl, found {}",
+      matching_edges.len()
+    );
+    let edge = matching_edges[0];
     let interface_template_id = get_interface_template(self.typing_interner, edge.super_interface);
     let blueprint = hinputs
       .interface_template_to_edge_blueprints
@@ -702,28 +731,38 @@ fn citizen_def_id_and_args<'tcx>(
   tcx: TyCtxt<'tcx>,
   id: &IdI,
 ) -> Option<(DefId, Vec<Ty<'tcx>>)> {
-  let (human_name, template_args) = match id.local_name {
+  let (human_name, template_args): (String, _) = match id.local_name {
     INameI::StructName(sn) => match sn.template {
-      IStructTemplateNameI::StructTemplate(t) => (t.human_name.as_str(), sn.template_args),
+      IStructTemplateNameI::StructTemplate(t) => (t.human_name.as_str().to_string(), sn.template_args),
       _ => return None,
     },
     INameI::InterfaceName(inm) => {
       let IInterfaceTemplateNameI::InterfaceTemplate(t) = inm.template;
-      (t.human_namee.as_str(), inm.template_args)
+      (t.human_namee.as_str().to_string(), inm.template_args)
+    }
+    // The anonymous substruct auto-generated for an imported trait — a lambda handed to
+    // `SomeTrait((..) => {..})`. Its Vale name (`<interface>.anonymous`) is not a Rust identifier, so it
+    // crosses under the mangled `<interface>__anon` the pass-2 stub generator also emits (the one
+    // name-agreement seam, `anon_substruct_rust_name`), resolved locally like a hand-written forwarder
+    // struct rather than as an opaque blob — so only the functor it wraps is opaque, not the whole
+    // substruct.
+    INameI::AnonymousSubstruct(asn) => {
+      let IInterfaceTemplateNameI::InterfaceTemplate(t) = asn.template.interface;
+      (anon_substruct_rust_name(t.human_namee.as_str()), asn.template_args)
     }
     _ => return None,
   };
   // A rust-backed citizen (reserved `rust` module) lives in a loaded dependency crate; a Valen-defined
-  // citizen — e.g. a struct that implements a Rust trait — is projected into the stub crate under
-  // compilation, which `resolve_crate_qualified_path` (dependency crates only) can't see, so resolve
-  // it locally by name.
+  // citizen — e.g. a struct that implements a Rust trait, or an auto-generated anon substruct — is
+  // projected into the stub crate under compilation, which `resolve_crate_qualified_path` (dependency
+  // crates only) can't see, so resolve it locally by name.
   let def_id = if id.package_coord.module.0 == RUST_MODULE {
     let mut segments: Vec<&str> =
       id.package_coord.packages.as_slice().iter().map(|s| s.as_str()).collect();
-    segments.push(human_name);
+    segments.push(&human_name);
     resolve_crate_qualified_path(tcx, &segments.join("."))?.0
   } else {
-    resolve_local_type(tcx, human_name)?
+    resolve_local_type(tcx, &human_name)?
   };
   let arg_tys: Vec<Ty<'tcx>> =
     template_args.iter().map(|t| templata_to_rustc_ty(tcx, t)).collect::<Option<_>>()?;
@@ -844,6 +883,43 @@ fn lang_collect_and_partition_mono_items<'tcx>(
     }
   };
 
+  // Exports-first (warm-rebuild determinism). Re-fire `per_instance_mir` for every Vale EXPORT before the
+  // CGU loop below re-fires any callback. An export's provider instantiates its body and drains, which
+  // POPULATES `monouts` (structs/interfaces/impls); a callback's provider (`collect_callback`) READS
+  // `monouts` to build the typeid universe and asserts every crossed type is present. On a warm rebuild
+  // the upstream partitioner served `items_of_instance` from the incremental cache and never called
+  // `per_instance_mir`, so `monouts` starts empty and this fn is its sole re-populator — but the CGU
+  // order rustc hands us does not guarantee the export precedes the callback, so a callback-first order
+  // reads an empty universe and panics (~half of warm builds, per the baked cold-build layout). Cold gets
+  // populate-then-read for free: the collector discovers a callback only after the export's body reifies
+  // the caller that reaches it. We restore that invariant by seeding from the authoritative export list
+  // (sorted for a byte-stable order among exports), resolving each `__vale_<name>` stub to its instance
+  // directly — which also covers a non-`main` export that has no Rust caller and so is in no CGU. The
+  // later CGU-loop re-fires of these same exports are memoized no-ops (`per_instance_mir` is never
+  // disk-cached and is in-memory-cached, so at most once per instance per build).
+  {
+    let state_ptr = DRIVER_STATE.with(|c| c.get());
+    if !state_ptr.is_null() {
+      // SAFETY: same scoped-pointer contract as `lang_per_instance_mir` — `DriverState` outlives every
+      // provider call on this thread. We drop the `hinputs` borrow (collecting owned names) before any
+      // `per_instance_mir` call, which itself borrows `DriverState`'s `monouts`/`hinputs`.
+      let state: &DriverState = unsafe { &*(state_ptr as *const DriverState) };
+      let mut export_names: Vec<String> = state
+        .hinputs
+        .borrow()
+        .as_ref()
+        .map(|h| h.function_exports.iter().map(|e| e.exported_name.0.to_string()).collect())
+        .unwrap_or_default();
+      export_names.sort();
+      for name in export_names {
+        if let Some(def_id) = resolve_local_fn(tcx, &format!("__vale_{name}")) {
+          let instance = ty::Instance::new_raw(def_id, build_generic_args(tcx, def_id, &[]));
+          let _ = tcx.per_instance_mir(instance);
+        }
+      }
+    }
+  }
+
   let mut filtered_cgus: Vec<CodegenUnit<'tcx>> = Vec::with_capacity(upstream_cgus.len());
   for cgu in upstream_cgus.iter() {
     let mut new_cgu = CodegenUnit::new(cgu.name());
@@ -855,10 +931,11 @@ fn lang_collect_and_partition_mono_items<'tcx>(
         // `items_of_instance` — so on a *warm* rebuild the collector never calls it and the emit comes
         // out empty (undefined `__vale_main` at link). This query (`collect_and_partition_mono_items`)
         // is `eval_always`, so it runs every build; calling `per_instance_mir` here forces the side
-        // effect to fire. Safe against double-firing: `per_instance_mir` is `cache_on_disk_if{false}`
-        // and rustc's in-memory query cache runs its provider at most once per instance per build — so
-        // on a cold build, where the default partitioner above already called it, this is a cache-hit
-        // no-op. We discard the body; only the side effect matters here.
+        // effect to fire. Safe against double-firing: `per_instance_mir` declares no disk-cache
+        // modifier, so it is never served from disk, and rustc's in-memory query cache runs its
+        // provider at most once per instance per build — so on a cold build, where the default
+        // partitioner above already called it, this is a cache-hit no-op. We discard the body; only
+        // the side effect matters here.
         if let MonoItem::Fn(instance) = mono_item {
           let _ = tcx.per_instance_mir(instance);
         }
@@ -981,18 +1058,15 @@ fn lang_per_instance_mir<'tcx>(
 /// `config()`. rustc calls it once per `codegen_crate`, synchronously on the main thread, before
 /// `start_async_codegen` (arch §5.1) — by which point every `per_instance_mir` call has run, so the
 /// instantiator state reached through `DRIVER_STATE` is complete. When `emit_backend` is set it lowers
-/// the Vale program and emits its bodies into a rustc-lent module (Stage 2+); otherwise it only
-/// records that it fired (Stage 1 / the Milestone-M driven tests that assert on resolution, not
-/// emission).
-pub fn consumer_fill_modules<'tcx>(
-  tcx: TyCtxt<'tcx>,
-  allocator: &ExtraModuleAllocator<ModuleLlvm>,
-) {
+/// the Vale program, emits its bodies into a fresh module, and returns that module for rustc to own
+/// (Stage 2+); otherwise it only records that it fired and returns no modules (Stage 1 / the
+/// Milestone-M driven tests that assert on resolution, not emission).
+pub fn consumer_fill_modules<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<ModuleCodegen<ModuleLlvm>> {
   let state_ptr = DRIVER_STATE.with(|c| c.get());
   if state_ptr.is_null() {
     // No driven run active (the hook is a process-global `OnceLock`, but only does anything when a
-    // driven `DriverState` is armed); nothing to do.
-    return;
+    // driven `DriverState` is armed); nothing to contribute.
+    return Vec::new();
   }
   // SAFETY: same scoped-pointer contract as the provider (see `lang_per_instance_mir`) — the
   // `DriverState` lives in the `run_compiler`-calling frame and this fires on the same thread within
@@ -1001,31 +1075,35 @@ pub fn consumer_fill_modules<'tcx>(
 
   if !state.emit_backend {
     state.firings.borrow_mut().push("consumer_fill_modules fired".to_string());
-    return;
+    return Vec::new();
   }
 
-  let rc = emit_vale_into_borrowed_module(state, tcx, allocator);
+  let (rc, module) = emit_vale_into_fresh_module(state, tcx);
   state.firings.borrow_mut().push(format!("consumer_fill_modules emitted rc={rc}"));
   // A nonzero rc means the C++ backend rejected its own emission (e.g. LLVMVerifyModule failed on the
-  // Vale IR in rustc's module). Fail loudly rather than let rustc link a silently-broken module.
+  // Vale IR in the module). Fail loudly rather than let rustc link a silently-broken module.
   assert_eq!(rc, 0, "backend_compile_program_into returned {rc}");
+  match module {
+    Some(m) => vec![m],
+    None => Vec::new(),
+  }
 }
 
-/// Lower the instantiated Vale program and emit its bodies into a module rustc lends us. Reached only
-/// with `emit_backend` set. Returns the C++ backend's rc (0 = emitted + verified).
+/// Lower the instantiated Vale program and emit its bodies into a fresh module, which the caller hands
+/// to rustc. Reached only with `emit_backend` set. Returns the C++ backend's rc (0 = emitted +
+/// verified) and the filled module (`None` only if nothing was typed, which the driven path never hits).
 ///
 /// The Vale bodies come purely from `hinputs` (the typing output) via the ordinary `translate_program`
 /// — the same finalized `HinputsI` owned-mode produces. rustc's `per_instance_mir` drive is a separate
 /// concern (it makes rustc reify/codegen the *Rust* leaves); it does not feed the Vale bodies here.
-fn emit_vale_into_borrowed_module<'tcx>(
+fn emit_vale_into_fresh_module<'tcx>(
   state: &DriverState,
   tcx: TyCtxt<'tcx>,
-  allocator: &ExtraModuleAllocator<ModuleLlvm>,
-) -> i32 {
+) -> (i32, Option<ModuleCodegen<ModuleLlvm>>) {
   let hinputs_ref = state.hinputs.borrow();
   let hinputs = match hinputs_ref.as_ref() {
     Some(h) => h,
-    None => return 0, // nothing typed (shouldn't happen on the driven path) — nothing to emit.
+    None => return (0, None), // nothing typed (shouldn't happen on the driven path) — nothing to emit.
   };
   let instantiator = InstantiatorI {
     opts: state.opts,
@@ -1057,15 +1135,11 @@ fn emit_vale_into_borrowed_module<'tcx>(
   let empty_code_map: FileCoordinateMap<String> = FileCoordinateMap::new();
   let program = populate_metal_cache(&cache, &hinputs_i, &empty_code_map, &struct_layouts, &extern_abis);
 
-  // Ask rustc for one fresh module (a fresh LLVMContext + LLVMModule) and take its raw handles. Only
-  // one CGU for now; the realloc caveat (fill before requesting the next) is moot with a single call.
+  // Mint one fresh module (a fresh LLVMContext + LLVMModule + TargetMachine) the way rustc mints its
+  // own per-CGU modules, and take its raw handles for the C++ backend. Only one CGU for now. The
+  // module is returned to rustc, which owns it from then on and disposes it after codegen.
   let name = "vale_cgu";
-  // SAFETY: `allocator.allocate` is rustc's `#[repr(C)]` fn pointer; `allocator.state` is its paired
-  // state; both are valid for this synchronous hook call. It returns a `*mut ModuleLlvm` owned by
-  // rustc (pushed into its extras vec) — we borrow it, never free it.
-  let module_ptr = unsafe { (allocator.allocate)(allocator.state, name.as_ptr(), name.len()) };
-  assert!(!module_ptr.is_null(), "rustc's extra-module allocator returned null");
-  let module: &mut ModuleLlvm = unsafe { &mut *module_ptr };
+  let mut module = ModuleLlvm::new(tcx, name);
   let llcx = module.llcx_raw_mut();
   let llmod = module.llmod_raw();
 
@@ -1079,9 +1153,9 @@ fn emit_vale_into_borrowed_module<'tcx>(
     .map(|c| Callback { symbol: c.symbol.as_str(), vale_name: c.vale_name.as_str() })
     .collect();
   callbacks.sort_by(|a, b| a.symbol.cmp(b.symbol));
-  // `llcx`/`llmod` are rustc's live borrowed handles for this call; the C++ side emits into
-  // the module and disposes nothing (rustc owns their lifecycle and disposes them after the hook).
-  compile(BackendInputs {
+  // `llcx`/`llmod` are the module's live handles for this call; the C++ side emits into the module
+  // and disposes nothing (`ModuleLlvm`'s own Drop disposes them once rustc is done with the module).
+  let rc = compile(BackendInputs {
     cache: &cache,
     program: &program,
     options: opts,
@@ -1093,7 +1167,8 @@ fn emit_vale_into_borrowed_module<'tcx>(
     }),
     // Interop (rustc) debugging is out of scope; the rust-interop lowerer passes an empty code map.
     absolute_source_paths: vec![],
-  })
+  });
+  (rc, Some(ModuleCodegen::new_regular(name, module)))
 }
 
 /// Ask rustc (`tcx.layout_of`) for the size/align of each imported Rust struct the program uses, keyed

@@ -6,7 +6,7 @@ struct ProgramInput {
     file_path: String,
 }
 
-const ALLOWED_EXTENSIONS: &[&str] = &[".rs", ".md", ".cpp", ".c", ".h", ".vale"];
+const ALLOWED_EXTENSIONS: &[&str] = &[".rs", ".md", ".cpp", ".c", ".h", ".vale", ".valen"];
 
 // Python scripts staged for safe-script-runner live in tmp/scripts/ (see docs/skills/scripting.md);
 // the hook may pass the path as either relative or absolute.

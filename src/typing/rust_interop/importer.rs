@@ -52,7 +52,12 @@ use crate::utils::range::CodeLocationS;
 /// synthesizes lazily on first call.
 pub enum RustImportSeed<'s, 't> {
   Struct(&'t IdT<'s, 't>, &'s StructS<'s>),
-  Interface(&'t IdT<'s, 't>, &'s InterfaceS<'s>),
+  /// A synthesized interface (a Rust trait or enum), plus whether the anonymous-substruct macro can
+  /// project it — true iff every abstract method's params and return are expressible in value position
+  /// (see `sig_is_anon_representable`). The `evaluate` loop fires the macro only when this is true, so a
+  /// trait whose signatures the macro can't yet build a `where func` bound for still imports and works
+  /// through a hand-written forwarder — the auto-substruct is simply withheld.
+  Interface(&'t IdT<'s, 't>, &'s InterfaceS<'s>, bool),
 }
 
 /// Turn one resolved Rust import into its top-level env entry for the reserved `rust` package.
@@ -132,7 +137,7 @@ where
       let template_name =
         interner.intern_interface_template_name(InterfaceTemplateNameT { human_namee: human_name });
       let interface_local_name = INameT::InterfaceTemplate(template_name);
-      let interface_s = if name.kind == ImportedItemKind::Trait {
+      let (interface_s, anon_eligible) = if name.kind == ImportedItemKind::Trait {
         // The trait's abstract methods, read structurally, become the interface's internal methods,
         // so an `impl Callback for MyCb` overrides each one by ordinary matching.
         let method_sigs: Vec<(StrI<'s>, ValeSig<'s, 't>)> = oracle
@@ -146,13 +151,20 @@ where
             Some((compiler.scout_arena.intern_str(&mname), sig))
           })
           .collect();
+        // `synthesize_extern_trait` computes anon-eligibility on the mapped sigs (Self → the interface
+        // citizen), which is what its methods are actually built from.
         synthesize_extern_trait(compiler, package_coord, human_name, &method_sigs)
       } else {
-        synthesize_extern_interface(
-          compiler,
-          package_coord,
-          human_name,
-          oracle.type_generic_params(item, interner),
+        // An enum synthesizes a Sealed interface with no abstract methods; the anon macro bails on a
+        // Sealed interface anyway, so it is never anon-eligible.
+        (
+          synthesize_extern_interface(
+            compiler,
+            package_coord,
+            human_name,
+            oracle.type_generic_params(item, interner),
+          ),
+          false,
         )
       };
       let interface_template_id = package_id.add_step(interner, interface_local_name);
@@ -162,7 +174,7 @@ where
           template_id: interface_template_id,
           tyype: interface_s.tyype,
         }),
-        Some(RustImportSeed::Interface(interface_template_id, interface_s)),
+        Some(RustImportSeed::Interface(interface_template_id, interface_s, anon_eligible)),
       )
     }
   }

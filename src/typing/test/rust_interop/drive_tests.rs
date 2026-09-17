@@ -509,6 +509,55 @@ exported func main() int {
   assert_eq!(exit, 7);
 }
 
+// Slice 5: the AUTO-GENERATED forwarder, end to end. Same as the stateless-lambda test above, but with
+// NO hand-written `struct MyCb / impl MainLoop / func on_tick` — the callsite writes
+// `MainLoop((w2) => { w2.poke(); })` and the compiler synthesizes the anon substruct, projects its
+// `pub struct MainLoop__anon<F> + impl` through the HinputsT-driven pass-2 stub, and drives it to exit 7.
+// This is the whole endeavor's goal (NobiliaV writes the lambda, not the forwarder). Requires the
+// two-pass driver (the anon substruct exists only post-typing, so its stub is pass-2).
+#[test]
+fn wrapper_drives_an_auto_generated_forwarder_to_exit_seven() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+
+  let noblike_rs = out_dir.join("noblike.rs");
+  fs::write(
+    &noblike_rs,
+    "pub struct Window { pub ticks: i32 }\n\
+     pub trait MainLoop {\n\
+     \x20   fn on_tick(&self, w: &Window);\n\
+     }\n\
+     impl Window {\n\
+     \x20   pub fn new() -> Window { Window { ticks: 0 } }\n\
+     \x20   pub fn poke(&self) {}\n\
+     \x20   pub fn run<C: MainLoop>(&self, cb: &C) -> i32 {\n\
+     \x20       cb.on_tick(self);\n\
+     \x20       7\n\
+     \x20   }\n\
+     }\n",
+  )
+  .expect("could not write noblike.rs");
+  build_dep_rlib("noblike", &noblike_rs, out_dir);
+  let rlib = out_dir.join("libnoblike.rlib");
+
+  let vale = r#"
+import rust.noblike.Window;
+import rust.noblike.MainLoop;
+exported func main() int {
+  w = Window.new();
+  cb = MainLoop((w2) => { w2.poke(); });
+  return w.run(&cb);
+}
+"#;
+
+  let exit = wrapper_run_binary(
+    out_dir,
+    vale,
+    vec![format!("--extern=noblike={}", rlib.display()), format!("-L{}", out_dir.display())],
+  );
+  assert_eq!(exit, 7);
+}
+
 // Build a `noblike` rlib in `out_dir` shaped like NobiliaV's window: a `&mut self` trait method, a
 // `&mut self` window method (`push`), and a generic `&mut self` caller whose return exposes whether
 // the callback's churn actually happened (`ticks + 6`, so one `push` → 7).
@@ -565,6 +614,33 @@ fn wrapper_with_borrow_check_off_drives_a_churning_lambda_forwarder_to_exit_seve
   let out_dir = out.path();
   let extra = build_churning_noblike_rlib(out_dir);
   let result = wrapper_drive(out_dir, CHURNING_FORWARDER_VALE, extra, /*borrow_check=*/ false)
+    .expect("run_wrapper should succeed with the borrow checker off");
+  assert_eq!(result.rustc_exit, 0, "firings: {:?}", result.firings);
+  assert_eq!(run_produced_binary(out_dir), 7);
+}
+
+// S2: the AUTO-GENERATED anon substruct for a `&mut`-signature trait runs → 7 with the borrow checker
+// off — NobiliaV's real shape with NO hand-written `MyCb<F>` forwarder. `MainLoop((w2, input) => {
+// w2.push(); })` is handed straight to a `&mut self` / `&mut Window` trait, and the closure churns the
+// window. The pass-2 stub renders `&mut` (S1) so rustc accepts the impl; `--no-borrow-check` steps around
+// the unbuilt churn enforcement, exactly as the hand-written churning forwarder above does. `run`'s
+// `ticks + 6` return means one `push` → 7, so a 7 proves the churn reached the real window.
+#[test]
+fn wrapper_drives_an_auto_generated_mut_forwarder_to_exit_seven() {
+  let out = TempDir::new().expect("could not create scratch dir");
+  let out_dir = out.path();
+  let extra = build_churning_noblike_rlib(out_dir);
+  let vale = r#"
+import rust.noblike.Window;
+import rust.noblike.Frame;
+import rust.noblike.MainLoop;
+exported func main() int {
+  w = Window.new();
+  cb = MainLoop((w2, input) => { w2.push(); });
+  return w.run(&cb);
+}
+"#;
+  let result = wrapper_drive(out_dir, vale, extra, /*borrow_check=*/ false)
     .expect("run_wrapper should succeed with the borrow checker off");
   assert_eq!(result.rustc_exit, 0, "firings: {:?}", result.firings);
   assert_eq!(run_produced_binary(out_dir), 7);

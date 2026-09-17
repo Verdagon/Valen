@@ -22,6 +22,10 @@ S2. Valen typechecks a struct's `impl` of an imported Rust trait, signature matc
 
 S3. The inbound wrapper for a Rust→Valen callback is built during backend codegen, not by a separate pass. This is needed because Rust is going to try to call us with Rust ABI, and we might not be using that ABI. So we need a wrapper they can call that will do the right conversions.
 
+S4. A lambda handed to an imported Rust trait — `SomeTrait((args) => {…})` — gets a compiler-generated forwarder substruct, so no hand-written struct/impl/override is needed. The typing pass fires the same anonymous-substruct macro it fires for a native interface, so the synthesized `InterfaceS` (S1) needs nothing beyond what a native interface has. This covers abstract methods with `&self`, `&mut self`, `&T`, and `&mut T` parameters.
+
+S5. A lambda in a position whose expected type is an imported Rust trait — `w.main_loop((win, inp) => {…})` where `main_loop` is generic over `C: MainLoopCallback` — gets the same forwarder substruct as S4, with no trait name written at the callsite. The typing pass decides which trait the lambda implements from the expected type.
+
 ## Details
 
 ## Test cases

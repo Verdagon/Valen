@@ -685,6 +685,76 @@ exported func main() int {
 }
 
 #[test]
+fn native_anon_substruct_with_multi_param_abstract_method_compiles() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+interface TwoArg {
+  func apply(virtual self &TwoArg, a int, b int) int;
+}
+
+exported func main() int {
+  f = TwoArg((a, b) => { 5 });
+  return f.apply(3, 4);
+}
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
+}
+
+#[test]
+fn native_anon_substruct_with_concrete_citizen_borrow_param_compiles() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+#!DeriveStructDrop
+struct W { }
+
+interface IH {
+  func handle(virtual self &IH, w &W) void;
+}
+
+exported func main() {
+  h = IH((w) => { });
+}
+";
+  let code_source = CodeSource::new(vec![
+    Source::builtin_module(&parse_arena, &parser_keywords, "drop"),
+    new_test_code_map(&parse_arena, code),
+    Source::Fn(empty_v_builtins_stub),
+  ]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation_without_borrow_check(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
+}
+
+#[test]
 fn generic_forwarder_with_churning_closure_param_compiles() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

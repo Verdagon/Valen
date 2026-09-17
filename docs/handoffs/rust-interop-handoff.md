@@ -49,9 +49,24 @@ names and lacks two of its pieces. Tracked here so neither doc has to carry the 
   (`codegen_crate`/`join_codegen`/`link`) to the inner backend — it never emits Vale IR itself; the
   `fill_extra_modules` hook does. The tree instead installs overrides unconditionally via
   `config.override_queries` and injects bodies via `set_fill_extra_modules_hook(consumer_fill_modules)` on
-  the stock backend (`DrivenCallbacks::config`, `drive.rs`), with no marker gating — fine for a single-crate
-  driven test, but the
-  pass-through gating is exactly what the real cargo build (many pure-Rust crates) will need.
+  the stock backend (`DrivenCallbacks::config`, `drive.rs`), with no marker gating; the pure-Rust
+  pass-through is gated on the crate root's extension in `run_wrapper` instead, and the design doc's
+  deviations list ratifies that. A wrapper backend would not remove the global hook either:
+  `codegen_crate<B>` is monomorphized with `B = LlvmCodegenBackend`, so only rustc's own LLVM backend can
+  answer `fill_extra_modules`. The design-conformant install is a field on `LlvmCodegenBackend` set through
+  `Config::make_codegen_backend` (short-term Next #6).
+- **Two passes and the pass-1 root.** The design compiles every Valen crate in two passes with an
+  imports-only pass-1 root; the code stays one-pass when the pass-2 stub is empty and its pass-1 root already
+  carries the marker, `__vale_main`, `__vale_drop`, and the hand-written projections. Short-term Next #4.
+- **Opaque wrapper shape.** The design's `__ValeOpaque<const OID: u128>(PhantomData<*mut ()>, PhantomPinned)`
+  carries a per-OID `impl Drop` (monomorphized per OID, so static dispatch), and a Valen struct Rust can name
+  (exported, or implementing a Rust trait) carries the markers directly with no `__ValeOpaque` field. The code
+  has `pub struct __ValeOpaque<const T: u64>;` as a unit struct (`stub_gen.rs`, `drive.rs`), a 64-bit FNV-1a
+  typeid (`typeid.rs`), projects every such struct as `pub struct <S><F>(__ValeOpaque<HASH>, PhantomData<(F)>)`,
+  and routes drops through the `__vale_drop<T>` shim with no `Drop` impl. The design's own crate-root flow
+  still writes `struct Ship { contents: __ValeOpaque<OID> }`, which contradicts its Opacity section; the
+  architect has not ruled which passage wins. The `layout_of` override that would make the design's shape
+  real is short-term Next #5. The design's comptime-generic-argument-as-integer table has no code yet.
 - **Entry symbol capture.** The design shows a general capture — `record_export_symbol(export_name, symbol)`
   run for every exported function in `per_instance_mir`. The tree instead special-cases only the entry:
   `if stub_name == "__vale_main" { *state.entry_symbol.borrow_mut() = Some(tcx.symbol_name(instance)…) }`
@@ -79,17 +94,26 @@ inert until the cross-abstract/override enforcement (exp-2 owns it, core) reads 
 
 **Developing the compiler uses stock Rust nightly** — there is no `rust-toolchain.toml` pin. A default
 build compiles as plain Rust; `build.rs` links a standalone **LLVM 21** for the C++ backend (Homebrew
-`llvm@21`, or whatever `$LLVM_CONFIG` names). The Vale rustc **fork** (`github.com/Verdagon/rust` @
+`llvm@21`, or whatever `$LLVM_CONFIG` names). The Vale rustc **fork** (`github.com/valen-lang/rust` @
 `per-instance-mir`, setup in `docs/build-compiler.md`) is used **only** for `--features rust_interop`,
 selected explicitly with `+rustc-fork`. The fork builds LLVM 21 **from source as one shared
 `libLLVM.dylib`** (its `config.toml`: `download-ci-llvm = false`, `link-shared = true`) so that under
 interop the C++ backend and rustc share a single libLLVM (arch §3.6/§5.7 — two libLLVMs in one process is
 duplicate-symbol UB); under `+rustc-fork`, `build.rs` finds that shared libLLVM via its sysroot-sibling
-derivation. The fork carries the interop patches (the `per_instance_mir` query + `fill_extra_modules`) and
-ships the `rustc_private` libraries + `rust-src`, so interop needs **no** `rustup component add rustc-dev`.
-The `rustc-fork` toolchain is linked to the fork's **stage1** sysroot, not stage2: a plain `./x build`
-populates stage1 with the `rustc-dev` component, but a `./x build --stage 2` regenerates the stage2
-sysroot *without* it (see the Lessons trap), so stage1 is the complete one. Build/test from the repo root:
+derivation. The fork carries exactly two patches, committed on `per-instance-mir` (`git -C ~/rust log
+--oneline -1` for the tip): the `per_instance_mir` query (declaration in `rustc_middle`, default `None`
+provider in `rustc_mir_transform`, consulted by `collect_items_of_instance` in `rustc_monomorphize`) and the
+`fill_extra_modules` hook (`ExtraBackendMethods::fill_extra_modules` in `rustc_codegen_ssa`, a process-global
+`OnceLock` plus `ModuleLlvm::new`/`llcx_raw_mut`/`llmod_raw` in `rustc_codegen_llvm`, and the `extra_modules`
+plumbing in `back/write.rs`). Everything else interop does to rustc is a stock `Config::override_queries`
+override. The fork ships the `rustc_private` libraries + `rust-src`, so interop needs **no** `rustup
+component add rustc-dev`. The `rustc-fork` toolchain is linked to the fork's **stage1** sysroot, and stage1
+gets its `rustc-dev` rlibs only from a stage2 build: run `./x build` **and then** `./x build --stage 2`, both
+from the fork root (or with `--src ~/rust --build-dir ~/rust/build --config ~/rust/config.toml`; from any
+other cwd bootstrap builds a fresh LLVM into `./build` under that cwd). After any change to the fork's
+`compiler/` sources, rerun both, then `cargo +rustc-fork clean --manifest-path Cargo.toml -p frontend_rust`:
+cargo does not fingerprint sysroot crates and the rlib hashes are stable across rebuilds, so it will not
+notice on its own. Full recipe in `docs/build-compiler.md`. Build/test from the repo root:
 
 - default (stock nightly): `cargo test --manifest-path ./Cargo.toml --lib`
 - interop (fork): `cargo +rustc-fork test --manifest-path ./Cargo.toml --lib --features rust_interop`
@@ -326,7 +350,8 @@ build` against the real multi-crate `nobiliav` graph and run. Two things make it
 
 - **The stub generator projects the Vale struct + its trait impl.** `generate_stub_source` emits a `pub
   struct <S> {}` + `impl <ImportedTrait> for <S> { #[vale::emit_consumer_body] fn <m>(...) { unreachable!() } }`
-  per Vale struct that implements an imported trait (see the `valen build` section). Without it,
+  per Vale struct that implements an imported trait (see the `valen build` section). That it does so in
+  pass 1 is a design-vs-code gap — the design puts every such projection in pass 2 (Next #4). Without it,
   `resolve_local_type(<S>)` finds nothing → the outbound `main_loop::<S>` leaf is ARGS-UNCONVERTIBLE → no
   `FunctionExternI` is materialized → the backend aborts on an undeclared extern (`buildCallOrSideCall` in
   `externs.cpp`). Do not read that backend assert as a backend bug — it faithfully reports a leaf the stub
@@ -375,7 +400,8 @@ AI-editable, in `src/typing/rust_interop/`:
 - **`generate_stub_source`** (`stub_gen.rs`) — the `vale-stub-gen` seed (arch §6.4, @RTMEIZ), **parse-driven**:
   from the parse tree (`FileP.denizens`, via `ScoutCompilation::get_parseds()`, no scout/rustc) it emits one
   `pub use` per `import rust.X.Y`, a `#[vale::emit_consumer_body]` `__vale_<export>` root per exported func,
-  the marker, the `__vale_drop` shim, and — for the reverse direction — a `pub struct <S> {}` + `impl
+  the marker, the `__vale_drop` shim, and — for the reverse direction, against the design, which puts this in
+  pass 2 (Next #4) — a `pub struct <S> {}` + `impl
   <ImportedTrait> for <S>` per Vale struct that implements an imported trait, each override rendered from the
   Vale `func <m>(self &<S>, ...)` (a `self &<S>` receiver → `&self`, or `&mut self` when its region is in the
   override's `mut(g)` set; a `&T` param → `&T`/`&mut T` by its region's mutability; `int` → `i32`) with
@@ -414,49 +440,167 @@ multi-piece `Cast` (`[N x i64]`), and on-stack byval (`Indirect { on_stack: true
 ## Next
 
 The `valen build` pipeline works for the binary + rust-dependency case (above). Reference implementation
-`/Volumes/V/Harmonious/toylangc/` (`src/build.rs` orchestrator + `src/main.rs` wrapper dispatch). Remaining:
+`/Volumes/V/Harmonious/toylangc/` (`src/build.rs` orchestrator + `src/main.rs` wrapper dispatch).
 
-NobiliaV's **entire real program builds and runs** through `valen build`: the windowed `driver.vale` (winit +
-wgpu, loops until the window closes / Esc) and the bounded twin `driver_check.vale` (auto-exits after 30
-frames → 7). It builds the actual fork graph (winit, wgpu, objc2-*, geometry, render, app, nobiliav) under
-`rustc-fork` and links the Vale-through-Rust callback loop — the reverse-callback endeavor is proven on the
-real target. The `Valen.toml` lives in the NobiliaV repo at `crates/nobiliav/valen/Valen.toml` (two `[[bin]]`s
-for `driver`/`driver_check`, `[rust-dependencies] nobiliav = { path = "../../.." }`), with the `.valen` crate
-roots under `valen/src/`.
+**NobiliaV's entire real program builds and runs** through `valen build` — the reverse-callback endeavor is
+proven on the real target. maple's windowed `driver.valen` (the full winit/wgpu/objc2-*/geometry/render/app/
+nobiliav graph) builds and runs headless to a clean composite with the **auto-generated lambda form** (no
+hand-written forwarder; see the auto-substruct section above), and warm-rebuilds cleanly. The `Valen.toml`
+lives in the NobiliaV repo at `crates/nobiliav/valen/Valen.toml` (two `[[bin]]`s for `driver`/`driver_check`,
+`[rust-dependencies] nobiliav = { path = "../../.." }`), with the `.valen` crate roots under `valen/src/`. The
+open work is below — churn *enforcement* (the `--no-borrow-check` gap), `Deref`-reached imports, pulling the
+stdlib into the interop compilation, release-mode linking, and Phase 3 libraries.
 
-**Active thread — hand a lambda / generic data-carrying functor to a rust-trait callback (the NobiliaV
-game team's ask).** Goal: `w.run(&MyCb((w, input) => {...}))` where `MyCb<F>` is a forwarder struct that
-implements an imported rust trait and wraps a functor `F`, so rust calls back into the Vale override whose
-body does `(&self.f)(...)`. The blessed static-dispatch reverse path — a *named ZST* Vale struct
-implementing a rust trait — already runs (see "Reverse direction"); this endeavor is the data-carrying +
-generic extension of it. Both **typing** walls are LANDED on `main` (value-position `ITypeST` names → zero-arg
-`Call`s @TNLTZACZ, guarded by `where_func_bound_can_name_a_concrete_citizen`; undeclared-generic ICE → clean
-error, guarded by `undeclared_generic_in_signature_errors`), so the forwarder typechecks when its generic is
-declared (`func on_tick<F>(self &MyCb<F>, ...)`).
+**Foundation (landed `8e2459c5`) — a hand-written generic forwarder wrapping a lambda.** `w.run(&MyCb((w,
+input) => {...}))` where `MyCb<F>` is a *user-written* forwarder struct implementing an imported rust trait
+and wrapping a functor `F`, so rust calls back into the Vale override whose body does `(&self.f)(...)`. The
+generic lambda-forwarder reverse callback works end to end (`wrapper_drives_a_stateless_lambda_forwarder_to_exit_seven`
+→ 7). The value-position-`ITypeST`/@TNLTZACZ and undeclared-generic typing walls are landed. This is the
+foundation the auto-generated substruct (above) builds on — it removes the hand-written `MyCb`.
 
-Slices 1–2, the extern-bound work (parts 1–2), and slice 3 (the crux) are all **done and green** for a
-**non-churning** forwarder: the generic lambda-forwarder reverse callback works end to end (interop probe
-`wrapper_drives_a_stateless_lambda_forwarder_to_exit_seven` → 7), and NobiliaV's real callback shape builds,
-links, and runs → 7 through `valen build` (the vendored `driver_check`, `src/typing/test/rust_interop/driver-check/`).
-All uncommitted interop WIP on top of `main`; run the suites and read the counts rather than trusting a figure:
-`cargo +rustc-fork test --manifest-path ./Cargo.toml --lib --features rust_interop` (interop),
-`cargo nextest run --manifest-path Cargo.toml` (native) and `VALE_TEST_BACKEND=wasi cargo nextest run --manifest-path Cargo.toml` (wasi).
+## Auto-generated anonymous substruct for imported Rust traits (built end to end)
 
-**FIRST THING NEXT SESSION: make a CHURNING generic forwarder expressible.** NobiliaV's real `on_tick` churns the
-window (`rotate_camera` is `&mut self`, the override sits on `mut(r) mut(s)`); moving that body into a generic
-forwarder needs the wrapped closure to churn its borrowed window param — a churn region `mut(r)` on the forwarder's
-`where func __call` bound. **Root cause: a `where func` bound prototype has no mechanism to introduce a region (or
-any) generic parameter.** `parse_prototype` (`src/parsing/templex_parser.rs`, the `func …` templex parser used for
-bound prototypes) parses `func <name> ( <tuple> ) <return>` with **no `<…>` generics slot**, so declaring the region
-(`func __call<r'>(&F, &Win in r, &Inp) mut(r)`) is a parse error (`ParseError::BadPrototypeParams`), and leaving it
-free (`func __call(&F, &Win in r, &Inp) mut(r)`) leaves the region an undetermined `ImplicitRune`, so the bound's
-parameter-type `KindList` is unsolved → `CouldntSolveRuneTypesT`. The non-churning `&self` forwarder works precisely
-because it needs no region on the bound. Investigate region-parametric `where func` bounds — per-call region
-quantification (HRTB-shaped, `for<'r>`-like), spanning the grammar (`parse_prototype`) and rune-scouting (introduce +
-type the region runes a bound's `in r` / `mut(r)` reference). This is a **feature**, not a syntax users missed. The
-red target that turns green when it lands: `generic_forwarder_with_churning_closure_param_compiles`
-(`src/typing/test/after_regions_tests.rs`) — a pure-Vale distillation of NobiliaV's `driver.valen` wall; maple's
-own repro is `docs/repros/valen-generic-forwarder-churn/` in the NobiliaV `gamedev-wip` worktree.
+A lambda handed directly to an imported Rust trait — `SomeTrait((args) => {…})` — now compiles, links, and
+runs with **no hand-written forwarder struct/impl/override**. The compiler fires the existing
+anonymous-substruct macro on the imported trait (exactly as it does for a native interface), and projects
+the synthesized substruct all the way to Rust codegen through a two-pass driver. Proven end to end by
+`wrapper_drives_an_auto_generated_forwarder_to_exit_seven` (`drive_tests.rs`, → 7): `MainLoop((w2) =>
+{ w2.poke(); })` with the hand-written `MyCb`/`impl`/`on_tick` deleted, driven through `run_wrapper` against
+a real rlib. This is the feature NobiliaV asked for (write the lambda, not the forwarder). It covers
+**`&mut`-signature (churning) callbacks** too — NobiliaV's real `on_tick(&mut self, w: &mut NobiliaWindow,
+…)` — under `--no-borrow-check` (churn *enforcement* is still deferred; see below).
+
+**How it works (all code in the sites below):**
+- **Typing (fire the macro).** `Compiler::evaluate`'s `RustImportSeed::Interface` arm (`compiler.rs`, core)
+  fires `get_interface_sibling_entries_anonymous_interface` on the imported trait when the trait is
+  *anon-eligible* (a bool threaded on `RustImportSeed::Interface`, computed by `sig_is_anon_representable`).
+  The generated denizens are minted in the reserved native package `RUST_TRAIT_ANON_MODULE`
+  (`"rust_trait_anon"`, `reserved.rs`) — NOT the `rust` package (the function-compile loop skips `rust`, and
+  `citizen_def_id_and_args` must see the substruct as a local type). They are threaded into package stores
+  **grouped by full nesting** (`{coord + init_steps}`), the same way the native denizen loop does — the
+  constructor/forwarders land top-level, the substruct's `drop` nested under `[AnonymousSubstructTemplate]`,
+  each in the store its id names. Flattening them to the package top level (an early `per_crate` attempt)
+  mis-nests the drop and breaks its instantiation (see Lessons).
+- **De-Seal.** `synthesize_extern_trait` (`declarations.rs`) no longer stamps `Sealed` (the anon macro bails
+  on a sealed interface); safe because the #374 sealed check is gated behind `!is_internal_method` and a
+  trait's abstract methods are internal. Enums (`synthesize_extern_interface`) stay sealed.
+- **Value-position `where func __call` bound.** The macro's bound is reified by `resolve_citizen_bounds`
+  with only the citizen env + generic-substitution map, so `synthesize_abstract_interface_method`
+  (`declarations.rs`) builds each param's `tyype` AND `maybe_return_type` in **value-position** form
+  (`value_position_type_st`: a primitive → zero-arg `Call(Name)` @TNLTZACZ, a Rust citizen → its **short**
+  single-segment name resolved by unconditional cross-package lookup, a borrow → wraps its inner), mirroring
+  what the parser produces for a native method — NOT the internal value-runes (a shape the parser never
+  produces, which is why the bound choked before). Params and the return go through the same builder ("a
+  param is just another parameter").
+- **Named projection, not opaque-self.** `citizen_def_id_and_args` (`src/instantiating/rust_interop/mod.rs`)
+  has an `INameI::AnonymousSubstruct` arm that resolves the substruct to the deterministic mangled Rust name
+  `anon_substruct_rust_name(interface) = "<Interface>__anon"` via `resolve_local_type`, so only the *functor*
+  crosses opaque (`__ValeOpaque<typeid(functor)>`), exactly the hand-written `MyCb<F>` shape.
+- **The one name-agreement seam (P0).** `anon_substruct_rust_name` (`typeid.rs`) is the single definition of
+  the substruct's Rust name, called by BOTH the stub generator and `citizen_def_id_and_args`. If they ever
+  disagreed the callback is silently dropped (`collect_callback` finds no impl, no diagnostic).
+- **Pass-2 (HinputsT-driven) stub.** `generate_pass2_stub` (`stub_gen.rs`) walks the typed program's
+  `interface_template_to_sub_citizen_to_edge`, finds each anon substruct implementing a rust-backed trait
+  (`is_rust_backed(edge.super_interface)`), and emits `pub struct <I>__anon<T..>(__ValeOpaque<HASH>,
+  PhantomData<..>)` + `impl<T..> <I> for <I>__anon<T..>` with `#[vale::emit_consumer_body]` override bodies
+  (each param's `KindT` rendered by `render_rust_kind`). A `&mut self`/`&mut T` param renders `&mut` from the
+  abstract method's `mut(g)` **effects**, read off the retained postparse — `abstract_method_mut_flags` finds
+  the abstract method's `FunctionS` via `Compiler::get_super_template(interner, abstract_id)` +
+  `peek_postparsed_function`, and `param_tyype_is_mut` matches each param's `BorrowRef` region group against the
+  method's `EffectS::Mut` groups structurally (`GroupS: PartialEq`, no human-name keying @ATAFLBZ); the typed
+  `KindT` alone carries no mutability (@BCHATZ). Deterministic (sorted; no HashMap iteration order reaches
+  output). It exists only post-typing, so it can't be the parse-driven pass-1 stub.
+- **Two-pass driver.** `run_driven_rustc` (`drive.rs`) allocates the arenas/interners/slots ONCE spanning
+  both `run_compiler` calls. Pass 1 types the `.valen`; if `generate_pass2_stub` is non-empty it stashes the
+  appended stub and returns `Compilation::Stop` before arming/codegen; pass 2 (a `skip_typing` callbacks)
+  reuses pass-1's `HinputsT` (tcx-free — survives the second `tcx`), skips typing, and codegens the appended
+  stub. **Design-vs-code gap:** when the appended stub is empty the code short-circuits to one pass; the
+  design (`rust-interop-design.md`, the two-pass deviation bullet) says every Valen crate compiles in two
+  passes, no exceptions, so that short-circuit is to be removed. `debug_assert`s that the codegen slots are
+  pristine at pass-2 entry. The appended stub is
+  written to `--out-dir` (never next to the crate root — that pollutes checked-in fixtures) and predeclares
+  `__ValeOpaque` only when the pass-1 stub lacks it; it is *appended* after the pass-1 text so
+  `#![register_tool(vale)]` stays at the crate-root top.
+- **Warm-rebuild determinism (exports-first).** On a warm rebuild rustc serves mono items from the
+  incremental cache and skips `per_instance_mir`, so `monouts` starts empty and
+  `lang_collect_and_partition_mono_items` (`mod.rs`, `eval_always`) is its sole re-populator — but it
+  re-fires in rustc's *unordered* CGU order, so a callback (which READS `monouts` to build the typeid
+  universe) can re-fire before the export (which WRITES it), reading an empty universe → the
+  `collect_callback` universe-presence panic. This is a @P0 nondeterminism (bites ~half of cold-build
+  layouts; see the per-lineage Lessons entry). Fix: before the CGU loop, re-fire `per_instance_mir` for
+  every export first, seeded from the **sorted** `hinputs.function_exports` (resolved directly via
+  `resolve_local_fn` + `Instance::new_raw`, which also covers a non-`main` export that is in no CGU) —
+  populate-then-read, the invariant cold gets for free (Sky's "B6" cure). Two defensive @P0 hardenings in
+  `collect_callback` alongside: the impl match asserts a *unique* match (was last-match-wins) and the edge
+  lookup asserts *exactly one* edge (was `.find()` over a std HashMap), so an ambiguous program fails loud
+  rather than order-dependent. Deferred (architect OK'd): swap the core `HashMap`
+  `interface_template_to_sub_citizen_to_edge` to an ordered map — the uniqueness assert makes it safe meanwhile.
+- **Humanizer.** `compiler_error_humanizer.rs` now renders `AnonymousSubstructConstructor` /
+  `AnonymousSubstructConstructorTemplate` (were `panic!("implement: …")`) via
+  `humanize_anonymous_substruct_constructor_template` — so a failed anon-constructor resolution reports
+  cleanly instead of masking the real error with a humanizer panic.
+
+**Anon-eligibility gate (what's supported).** A trait is anon-eligible iff every method's params and return
+are value-position-representable (primitives, `void`, imported Rust citizens by borrow — **shared or `&mut`**
+— and generics), checked by `sig_is_anon_representable` (`declarations.rs`) on the Self-mapped sig. An
+ineligible trait still imports and works through a **hand-written** forwarder; its anon constructor just
+isn't available. `&mut` signatures ARE supported: the pass-2 stub renders `&mut self`/`&mut T` by reading the
+abstract method's `mut(g)` effects off the retained postparse (see the pass-2 bullet). What is **not** built
+is churn *enforcement* (below) — a churning `&mut` callback compiles and runs only under `--no-borrow-check`.
+Tested `&mut` shapes are `&mut self`, `&mut <ImportedCitizen>`, and mixes with `&`. Exotic shapes fail LOUD,
+not silently: `render_impl_method_typed` renders `&mut` only on a `KindT::BorrowRef` param and ignores return
+mutability, so a `&mut` return renders shared → rustc E0053, and a `&mut` generic → `StubGenError`. If one
+must work, it is a named follow-up, not a covered case.
+
+**Two passes for every Valen crate is ratified design.** `rust-interop-design.md`'s deviation list says a
+Valen crate compiles in two rustc passes (pass 1 types and emits the stub, pass 2 codegens it), binary or
+library, with or without an anon substruct. The code's empty-stub one-pass short-circuit in
+`run_driven_rustc` is the remaining gap (see the two-pass driver bullet above).
+
+**Driver-check through real `valen build` — DONE and verified.** `driver_check.valen` uses the auto-generated
+`MainLoopCallback((win, inp) => {…})` form — no hand-written forwarder — and
+`automates_driver_check_reverse_callback` (`pipeline_e2e.rs`) builds it AND **runs it to exit 7** through the
+real `valen build --no-borrow-check` orchestrator on NobiliaV's exact driver-check shape (bins built, test
+green). The vendored `nobiliav` (`driver-check/nobiliav/src/window.rs`) is NobiliaV's real **`&mut` churn**
+shape: `on_tick(&mut self, w: &mut NobiliaWindow, input: &FrameInput)`, `rotate_camera`/`request_exit` as
+`&mut self`, and a deterministic bounded `&mut self` frame loop (plain fields + a `MAX_FRAMES` cap, no wall
+clock/windowing). `--no-borrow-check` because the lambda churns the window (enforcement is the gap below);
+`release_build_of_driver_check_links` builds it release the same way (`valen_build_release` sets
+`VALEN_BORROW_CHECK=0`). **Confirmed in the wild:** maple's real windowed `driver.valen` (the full
+winit/wgpu/objc2/geometry/render/app/nobiliav graph) builds and runs headless to a clean composite via
+`valen build --no-borrow-check` on these bins, with the hand-written `TickForwarder` deleted — the lambda
+form is NobiliaV's real deliverable.
+
+*Guardian note:* AFEOX's editable-extension allowlist now includes `.valen` (added beside `.vale`; the earlier
+omission was stale from the vale→valen rename), so editing `.valen` fixtures needs no Guardian disable.
+
+**Churn enforcement — still the gap (`&mut` representation is done, enforcement is not).** A `&mut`-signature
+trait auto-generates and its stub renders `&mut`, but the borrow checker does not yet *enforce* the churn: a
+`where func` bound prototype has no mechanism to introduce a region generic parameter — `parse_prototype`
+(`src/parsing/templex_parser.rs`) parses `func <name>(<tuple>)<return>` with no `<…>` slot, so a churn region
+on the bound (`func __call<r'>(&F, &Win in r, &Inp) mut(r)`) is a parse error and leaving it free leaves an
+undetermined `ImplicitRune` → `CouldntSolveRuneTypesT`. So a churning `&mut` callback builds and runs only
+under `--no-borrow-check` (which NobiliaV/maple use); with the checker ON it is rejected.
+`generic_forwarder_with_churning_closure_param_compiles` (`after_regions_tests.rs`) PASSES via
+`compiler_test_compilation_without_borrow_check` (the `&Win mut` sugar) — it documents the borrow-check-OFF
+path, NOT a red marker for enforcement (a checker-ON test is unwritten). Enforcement is a **feature**
+(per-call region quantification on the `where func` bound, HRTB-shaped), not a syntax anyone missed — and it
+is orthogonal to the `&mut`-signature support, which is complete.
+
+**Tests guarding this feature.** Native (`after_regions_tests.rs`):
+`native_anon_substruct_with_multi_param_abstract_method_compiles`,
+`native_anon_substruct_with_concrete_citizen_borrow_param_compiles`. Interop (`cases.rs` / `drive_tests.rs`):
+`a_lambda_typechecks_against_a_rust_trait`, `a_lambda_typechecks_against_a_two_imported_param_trait`,
+`pass2_stub_projects_the_anon_substruct_for_an_imported_trait`,
+`pass2_stub_projects_mut_borrows_for_an_imported_trait` (the `&mut` stub render),
+`wrapper_drives_an_auto_generated_forwarder_to_exit_seven`,
+`wrapper_drives_an_auto_generated_mut_forwarder_to_exit_seven` (auto-gen `&mut` churn → 7,
+`--no-borrow-check`). Pipeline (`pipeline_e2e.rs`): `automates_driver_check_reverse_callback` (run → 7) and
+`warm_rebuild_of_auto_generated_forwarder_runs_seven` (the exports-first P0 guard — loops 10 fresh cold-build
+lineages). All uncommitted on `exp-4-wipbx`; run the suites and
+read the counts: `cargo +rustc-fork test --manifest-path ./Cargo.toml --lib --features rust_interop`
+(interop), `cargo nextest run --manifest-path Cargo.toml` (native), `VALE_TEST_BACKEND=wasi cargo nextest
+run --manifest-path Cargo.toml` (wasi).
 
 *Landed slice 1 — the stub projects the forwarder as the design's opaque wrapper.* Contrary to an earlier
 "the functor is opaque bytes, not a separate rust type" framing (which was WRONG — corrected by deep-reading
@@ -525,9 +669,9 @@ case, @NNGZ):
   *virtual*-dispatch path — was the earlier misstep: it instantiated the abstract dispatcher method
   `on_tick(&MainLoop, …)` into `monouts.functions`, whose body virtual-dispatches, and the backend then aborted
   building an `&MainLoop` interface fat pointer (a synthesized extern interface has no interface-ref-struct
-  layout). `resolve_override_prototype` sidesteps all of it. Deferred, unchanged: the `layout_of` override (Sky
-  `rustc-lang-facade/src/queries/layout.rs:43-206`) is only needed once a *stateful* forwarder crosses by value;
-  maple's callback is by-borrow. The design-literal §10.9 typeid→kind universe *table* stored on `DriverState` is
+  layout). `resolve_override_prototype` sidesteps all of it. The `layout_of` override (Sky
+  `rustc-lang-facade/src/queries/layout.rs:43-206`) is needed the moment a Valen struct crosses to Rust by
+  value; that is now short-term Next #5 (high priority). The design-literal §10.9 typeid→kind universe *table* stored on `DriverState` is
   deferred to when `layout_of` needs it; identification currently reverse-decodes without a persisted table.
 
 **Next feature — import methods reached through `Deref`.** Rust parameter mutation (`&mut` → `mut(g)`)
@@ -595,6 +739,71 @@ arg, plus its return group). Tracked by the ignored `a_real_vec_element_accessor
    hard-coding `target/debug/incremental` (`orchestrator.rs`); (c) permanent, fork-side ("fire core edits") —
    make the `fill_extra_modules` output participate in the partitioner's reachability/linkage. (This is a
    fork route; the landed incremental fix's no-fork `per_instance_mir` re-fire did not need it.)
+4. **Align the two-pass driver with `rust-interop-design.md` — do this first.** The design's deviation
+   list says every Valen crate compiles in two rustc passes, and that pass 2 projects every Vale struct that
+   implements a Rust trait. The code deviates in two ways, both in AI-editable `rust_interop/`:
+   (a) `run_driven_rustc` (`drive.rs`) short-circuits to one pass when the appended stub is empty — remove
+   the short-circuit so pass 2 always runs; (b) `generate_stub_source` (`stub_gen.rs`, parse-driven, pass 1)
+   projects hand-written `struct` + `impl <RustTrait>` pairs, while `generate_pass2_stub` (`HinputsT`-driven,
+   pass 2) projects only the anon substruct — move the hand-written projection into `generate_pass2_stub`
+   and delete pass 1's impl renderer (`render_impl_method`, `render_param_type`, `render_rust_type`,
+   `map_scalar_name`, `render_receiver`, `borrow_region_is_mut`, and the `StructP`/`ImplP` walk);
+   (c) the design's pass-1 root is imports only — the `fn main` + `__vale_main` root (a binary) or the
+   exported-function roots (a library) are appended in pass 2 alongside the impl projections, so move the
+   `__vale_main` emission out of `generate_stub_source` too. Nothing in pass 1 consumes any of it: Valen
+   types the struct from the `.valen`, and rustc's typeck, mono collection, and `resolve_local_type` all run
+   in pass 2. The design puts `#![feature(register_tool)]` + `#![register_tool(vale)]`, `__VALE_STUBS_MARKER`,
+   and the `__vale_drop` shim in pass 2 as well, so pass 1's file is literally the `use` lines. When
+   assembling the pass-2 file, the two inner attributes must be its first items (Rust rejects an inner
+   attribute after any item), so they go before the carried-over `use` lines, not after. The design's
+   `after_expansion` sketch still gates on the marker, which pass 1's file no longer carries; the code
+   gates on the `.valen` extension instead, and the sketch is the stale side. One renderer instead of two
+   (see the simplicity lesson). The typed renderer must then handle a
+   hand-written struct's own generic params (read them off the `StructDefinitionT`, not `hinputs.structs`
+   instances as `anon_substruct_arity` does) — the one piece of new work.
+5. **High priority: rustc believes every projected Valen struct is zero bytes.** A Vale struct crossing to
+   Rust is projected as `pub struct <S>(__ValeOpaque<HASH>, PhantomData<..>)`, and `__ValeOpaque<const T: u64>`
+   is a unit struct (`stub_gen.rs`, `drive.rs`), so rustc's `layout_of(<S>)` is size 0 / align 1 while Valen's
+   backend emits the real fields. The two LLVM types never *collide* (types are not symbols; each module has
+   its own), but they must *agree* on size wherever a value crosses, and today they don't. It is harmless only
+   because every crossing so far is by borrow (`run(&self, cb: &C)`, `main_loop(&mut cb)`): a pointer is a
+   pointer whatever rustc thinks is behind it. The first Rust API that takes, returns, stores, or copies a
+   Valen struct **by value** gets a silent memory error — `fn_abi_of_instance` classifies the ZST as
+   `PassMode::Ignore`, so the argument is not even passed. Two steps, in order:
+   (a) **Fail loud now.** In `citizen_or_opaque_to_rustc_ty` / `compute_extern_abi`
+   (`src/instantiating/rust_interop/mod.rs`), assert that a Valen-defined citizen never appears in a by-value
+   position of a resolved Rust leaf or callback signature until (b) lands; today's `Ignore` path must not be
+   reachable for a Valen type. (b) **Build the `layout_of` override** (arch §10.3–§10.5; design-of-record
+   `instantiating-rust-interop-design.md`; Sky reference `rustc-lang-facade/src/queries/layout.rs:43-206`):
+   install it in `vale_override_queries`, and for a `__ValeOpaque<typeid>` or a projected Vale struct answer
+   with Valen's real size + align as `BackendRepr::Memory { sized: true }` with no visible fields. The size
+   comes from the C++ backend's LLVM layout of the instantiated struct (Vale computes sizes nowhere else),
+   which means the query needs a size table populated at instantiation time — the §10.9 typeid→kind universe
+   table on `DriverState` that the reverse-callback landing deferred (see "Landed slice 3" above).
+6. **Retire the fork's process-global `fill_extra_modules` hook.** `valenc-rs` installs its hook by calling
+   `rustc_codegen_llvm::set_fill_extra_modules_hook`, which stores it in a `static OnceLock`; nothing else in
+   rustc lets a driver set a static that changes compilation, and it is the one piece of patch 2 an upstream
+   reviewer would refuse. The replacement is per-backend-instance state: `LlvmCodegenBackend` gains a `pub
+   extra_modules: Option<FillExtraModulesHook>` field, and `DrivenCallbacks::config` (`drive.rs`) constructs
+   that backend with the hook and installs it via `Config::make_codegen_backend` — the same seam miri uses
+   (`rustc_interface::util::DummyCodegenBackend`). Fork-only plus one Valen call site; the existing hook tests
+   pin the behavior. Full plan, with the RFIGA and the four `// DO NOT SUBMIT` markers it also resolves:
+   `docs/handoffs/rust-interop-backend-hook-plan.md`. What an upstream pitch of patch 2 would then still
+   face, in the order a reviewer would raise it: "why not `-Clinker-plugin-lto`?" (answer: Valen is in-process,
+   not a second toolchain; plugin LTO cannot reach the bitcode in rustup-shipped std rlibs so std becomes a call
+   boundary; rustc's plugin-LTO path has no Darwin branch and is tested only on linux-x86_64 with lld; neither
+   architecture doc evaluates it by name yet); the trait method should return `Vec<Self::Module>` and let
+   `rustc_codegen_ssa` name and wrap them as it does for `codegen_allocator`, with a `ModuleKind` variant so the
+   LTO policy for extra modules is explicit; and the raw handles (`ModuleLlvm::new` pub, `llcx_raw_mut`,
+   `llmod_raw`) need a sanctioned `unsafe` API story. `traits/backend.rs` has had about four reviewed PRs in
+   three years, nearly all through bjorn3, and rust-gpu's out-of-tree `target_override` was deleted once
+   already, so frame it as "a backend contributes pre-built CGUs" and pre-negotiate on Zulip. No rust-lang
+   maintainer has seen any of the fork; `Harmonious/convo-with-rustc.md` is a model roleplaying a reviewer.
+7. **Small stale spots to clear when nearby.** The header comment on `automates_driver_check_reverse_callback`
+   (`pipeline_e2e.rs`) still says the fixture uses a hand-written forwarder and is blocked on Guardian; both are
+   false. `fixtures_mut_callback/stub.rs` carries a hand-written `MyCb` impl nothing references (the corpus case
+   uses the lambda form). `render_rust_kind`'s doc comment (`stub_gen.rs`) says `&mut` is unreachable through a
+   callback boundary; its caller renders `&mut` above it.
 
 **Debugging under interop (source-level DWARF for Valen code in a rustc build).** Standalone Valen
 binaries emit real DWARF — function/statement/local DIEs, and (new) a real `DW_AT_comp_dir` so lldb
@@ -644,11 +853,11 @@ Durable facts:
   Guardian for a `.toml` edit.
 - **Pure-Rust byte-identity (@PRCCBIVRZ) is dispatch-gated, and built.** `run_wrapper` routes a non-`.valen`
   crate to `NoopCallbacks` + `run_compiler` with no overrides installed, structurally identical to vanilla
-  rustc. The design's `ValenCodegenBackend` (§63-105) is the design-conformant alternative; **the fork needs
-  nothing new for it** — `make_codegen_backend` is a *stock* `pub` field on `rustc_interface::Config` (honored
-  in `run_compiler`), the `CodegenBackend` trait and `LlvmCodegenBackend::new()` are public, so a delegating
-  wrapper is buildable as-is. The fork's only interop patches are the `per_instance_mir` query and the
-  `fill_extra_modules` global hook.
+  rustc. `Config::make_codegen_backend` is a *stock* `pub` field on `rustc_interface::Config` (honored in
+  `run_compiler`, and what miri uses to install `DummyCodegenBackend` with a closure field), but a delegating
+  wrapper backend does not help here: `codegen_crate<B>` is monomorphized with `B = LlvmCodegenBackend`, so
+  the hook must live on rustc's own backend type (short-term Next #6). The fork's only interop patches are
+  the `per_instance_mir` query and the `fill_extra_modules` hook.
 - **Two-pass needs no on-disk cache.** `HinputsT` is arena-bound and unserializable (no derives), but its
   arenas live in the driver frame independent of the `tcx`, so one `HinputsT` survives two `run_compiler`
   calls in one frame. Defer the design's `.vale-cache`/`after_analysis` serialization until cross-invocation
@@ -673,9 +882,12 @@ The single backend entry `backend_compile` (`vale.cpp`) dispatches by mode to tw
 `vale.cpp`: `compileStandalone` (owns context/machine/module + object emission) and the **borrowed-mode**
 `compileIntoModuleFromRustc`. `Backend/src/rust_interop/rust_interop.cpp` — which holds
 `emitInboundCallbackWrapper` (the Rust→Vale reverse-callback wrappers; see "Reverse direction") — is the one
-AI-editable corner of the otherwise-core `Backend/`. The borrowed mode takes rustc's lent `LLVMContext` + `LLVMModule` as opaque
-`void*` (from `ModuleLlvm::llcx_raw_mut()` / `llmod_raw()` on the fork — **not** the TargetMachine, which
-the fork never exposes), emits Vale IR into that module, and returns. rustc owns optimization, object emission, and disposal, so this path does
+AI-editable corner of the otherwise-core `Backend/`. The borrowed mode takes an `LLVMContext` + `LLVMModule` as
+opaque `void*`: `consumer_fill_modules` (`src/instantiating/rust_interop/mod.rs`) mints the module with rustc's
+own `ModuleLlvm::new`, hands the backend `llcx_raw_mut()` / `llmod_raw()` (**not** the TargetMachine, which the
+fork never exposes), and returns the filled module to rustc as a `ModuleCodegen::new_regular`, so it rides
+rustc's optimize/ThinLTO/emit pipeline as one more CGU (`ModuleKind::Regular`: `Finished` in debug,
+`NeedsThinLto` in release). rustc owns optimization, object emission, and disposal, so this path does
 **not** optimize, `generateOutput`, dispose the handles, or call `generateExports`. `GlobalState`
 sources its data layout from the module (`LLVMGetModuleDataLayout`), which rustc pre-set. Both paths run
 the shared `finalizeCompile` tail, which `LLVMVerifyModule`s the emitted module when `verify` is set and
@@ -718,10 +930,15 @@ A few core changes this work required are **not** interop-gated, because they co
 generic_param_types` (was `unimplemented!`; needed once an enum's drop is compiled), the extern-signature
 check permitting extern **Interfaces** so an imported Rust enum is allowed in an extern's signature (see
 the Lessons entry), the deferred-compile drain deriving each function's outer env from its id in
-`evaluate_generic_function_from_non_call`, and the single-symbol backend naming: `FunctionExternI` now
+`evaluate_generic_function_from_non_call`, the single-symbol backend naming: `FunctionExternI` now
 carries one `link_name` (the real callee symbol), `declareExternFunction` (`Backend/src/function/`) binds
 it verbatim vs. composing the `vale_abi_` shim by a `packageCoordinate->projectName == "rust"` check, and
-`makeEntryFunction` takes the entry symbol.
+`makeEntryFunction` takes the entry symbol, and — for the `&mut` stub rendering — `Compiler::evaluate`
+(`compiler.rs`) now returns `(HinputsT, CompilerOutputs)` rather than just `HinputsT`, with
+`TypingPassCompilation` (`compilation.rs`) caching both (`coutputs_cache`, `cached_coutputs`). The postparsed
+`FunctionS.effects` carry the `mut(g)` the typed `KindT` drops (@BCHATZ), so retaining `CompilerOutputs` past
+`evaluate` is what lets the pass-2 stub read them; the standalone `pass_manager` path just ignores the second
+tuple element.
 
 The AI-editable interop code is any `rust_interop/` directory: `src/typing/rust_interop/`,
 `src/instantiating/rust_interop/`, and `Backend/src/rust_interop/`. Everything else in `src/typing/`,
@@ -738,6 +955,52 @@ The `// VCOORD` on the sealed tables in `compiler_outputs.rs` records the enforc
 
 ## Lessons learned
 
+- **Prioritize simplicity very highly in rust interop; its complexity is the highest medium-term risk we
+  have.** Prefer one uniform mechanism over a fast path plus a general path, even when the fast path is
+  cheap: e.g. every Valen crate runs two rustc passes, with no one-pass short-circuit for the empty-stub
+  case. A special case is a second thing to keep correct.
+- **A nextest `leaky` flag on a `backend_ffi::metal_cache` FFI test is known noise, not the P0 nondeterminism
+  to halt on.** It lands on a *different* C++-FFI test each run because it is a leak-*timeout* heuristic; the
+  test RESULTS are deterministic (all pass), only the WARNING moves. Ignore it — do NOT stop and re-investigate
+  — unless one becomes a real `FAILED` (that would be different).
+- **The pass-2 stub renders `&mut` from the abstract method's `mut(g)` EFFECTS, never from the typed `KindT`.**
+  `KindT` drops borrow mutability (@BCHATZ), so mutability is recovered from the retained postparsed
+  `FunctionS.effects` (`param_tyype_is_mut` matches a param's `BorrowRef` region group against `EffectS::Mut`
+  groups structurally). Do not try to recover `&mut` from `KindT` or add mutability to `KindT` — retain
+  `CompilerOutputs` past `evaluate` instead.
+- **Generated denizens must be threaded into package stores by their FULL nesting (`{coord + init_steps}`),
+  never flattened to the package top level.** The anon-substruct macro nests the substruct's `drop` under
+  `[AnonymousSubstructTemplate]` (like every struct drop) while the constructor/forwarders are top-level.
+  The native denizen loop groups by `name.init_steps` (`compiler.rs` ~793), so each lands in the store its
+  id names; a flattened drain (an early `per_crate`-style `init_steps: []`) put the nested drop's env entry
+  at top level, so drop-call resolution built a top-level `drop` super_template that no nested `drop`
+  definition matched → `translate_prototype` `vassert_one` empty (instantiator.rs). Do not force-compile the
+  nested denizens either — the function-compile loop skips non-empty init_steps by design; they compile
+  on-demand at their call sites once nested correctly.
+- **Anon-eligibility (and any per-method value-position check) must run on the MAPPED sig, not the raw one.**
+  A trait method's raw sig has `self` as `&Generic(Self)`; `synthesize_extern_trait` maps `Self` → the
+  interface citizen before building params. Checking the raw sig sees `&Generic` (no value-position form)
+  and marks every trait ineligible. Compute eligibility inside `synthesize_extern_trait`, on `mapped_sig`.
+- **A synthesized abstract method's param/return `tyype` must be value-position (name-`Call`), mirroring the
+  parser — not the internal value-rune.** `resolve_citizen_bounds` evaluates a `where func` bound's types
+  with only the citizen env + substitution map (no header rules), so a bare internal `value_rune` can't be
+  substituted (`evaluate_templex: can't substitute`). Native anon substructs dodge this because their method
+  params ARE interface generics (in the substitution map); a Rust trait's concrete params are not. Build them
+  the way the parser does (`value_position_type_st`): a Rust citizen resolves by its SHORT single-segment
+  name via unconditional cross-package lookup (do not reach for the multi-segment path).
+- **The pass-2 stub is APPENDED, written to `--out-dir`, and predeclares `__ValeOpaque` only if absent.**
+  Prepending anything (even the `__ValeOpaque` predecl) pushes `#![register_tool(vale)]` off the crate-root
+  top, so `#[vale::emit_consumer_body]` stops resolving (E0433). Writing it next to the crate root pollutes
+  checked-in fixtures (the harness crate root is a source fixture) — write to `--out-dir`. The pass-1
+  generated stub already declares `__ValeOpaque`; a hand-written fixture stub does not — predeclare only when
+  the pass-1 text lacks it, or you double-define it.
+- **Never key a Rust item's identity on a human-name string (@ATAFLBZ).** Matching the anon-substruct
+  instance to its edge by `human_namee.as_str() == …` trips the `no_rust_item_identity_comes_from_a_human_name`
+  guard. Compare the interned template names structurally instead (identity/`==` on the interned name), which
+  is also correct (two crates can share a short name).
+- **Guardian AFEOX's editable-extension allowlist is stale: it has `.vale` but not `.valen`.** Editing a
+  `.valen` test fixture is refused. Do not loosen the shield yourself; the fix is a one-line AFEOX allowlist
+  addition (architect / guardian-diagnose), or a temp-disable to apply a staged patch.
 - **A Vale struct crosses to rust as an opaque `__ValeOpaque<HASH>` wrapper, NOT with real fields — and the
   nested functor IS a separate rust type (`__ValeOpaque<typeid>`), not just bytes.** Do not conclude from
   "rust sees an opaque blob" that the functor needs no rust representation: the wrapper-as-field shape is
@@ -776,15 +1039,16 @@ The `// VCOORD` on the sealed tables in `compiler_outputs.rs` records the enforc
   (`LLVMTypeOf(ptrLE) == getInterfaceRefStruct(...)`, `Backend/src/region/common/defaultlayout/structs.cpp`) on a
   static-dispatch program means something instantiated the *virtual* path (an abstract dispatcher method) where it
   should have resolved the override statically — see the reverse-callback lesson below; it is not a backend bug.
-- **A `where func` bound prototype cannot introduce a region (or any) generic parameter — a churning closure
-  forwarder is not expressible.** `parse_prototype` (`src/parsing/templex_parser.rs`) parses
+- **A `where func` bound prototype cannot introduce a region (or any) generic parameter, so a churning
+  closure forwarder cannot be borrow-CHECKED** (it builds and runs fine under `--no-borrow-check`; only
+  enforcement is missing). `parse_prototype` (`src/parsing/templex_parser.rs`) parses
   `func <name> ( <tuple> ) <return>` with no `<…>` slot, so a churn region declared on a bound
   (`func __call<r'>(&F, &Win in r, &Inp) mut(r)`) is `ParseError::BadPrototypeParams`, and left free the region is
-  an undetermined `ImplicitRune` → `CouldntSolveRuneTypesT` (unsolved param-type `KindList`). A non-churning
-  `&self` closure forwarder works because its bound needs no region. Red target (turns green when
-  region-parametric bounds land): `generic_forwarder_with_churning_closure_param_compiles`
-  (`src/typing/test/after_regions_tests.rs`). This is a feature — per-call region quantification on bound
-  prototypes — not a syntax anyone missed.
+  an undetermined `ImplicitRune` → `CouldntSolveRuneTypesT` (unsolved param-type `KindList`).
+  `generic_forwarder_with_churning_closure_param_compiles` (`src/typing/test/after_regions_tests.rs`) is GREEN
+  — it exercises the borrow-check-OFF path (`compiler_test_compilation_without_borrow_check`), not a red
+  marker for enforcement. This is a feature — per-call region quantification on bound prototypes — not a
+  syntax anyone missed. Orthogonal to `&mut`-signature support, which is complete.
 - **When the instantiator (vanilla, extensively tested) panics on a vanilla-shaped need, suspect rust_interop
   is feeding it a shape pure Valen never produces — do not remove the assert and do not assume a core gap.**
   The `rune_to_impl_bound_arg.len() == rune_to_bound_impl.len()` asserts (`instantiator.rs:659,1065`) caught a
@@ -929,11 +1193,21 @@ The `// VCOORD` on the sealed tables in `compiler_outputs.rs` records the enforc
   registries / `cl::opt`), so the fork must be built `link-shared`. A `download-ci-llvm` LLVM is
   static-only: no shared `libLLVM.dylib` and no cmake config, so it cannot be linked against. There is
   no shortcut from the prebuilt CI LLVM — `download-ci-llvm = false` plus a from-source build is required.
-- TRAP: `./x build --stage 2` on the fork regenerates the stage2 sysroot **without** the `rustc-dev`
-  component (the `rustc_private` rlibs), silently breaking interop with `can't find crate for
-  rustc_driver` on the next recompile — a compile that had passed on cached artifacts. A plain
-  `./x build` populates **stage1** with rustc-dev; link `rustc-fork` at stage1. Confirm a sysroot has
-  `librustc_middle-*.rmeta` under `lib/rustlib/<target>/lib/` before trusting it carries rustc-dev.
+- TRAP: a plain `./x build` on the fork regenerates the stage1 sysroot **without** the `rustc-dev` component
+  (the `rustc_private` rlibs): bootstrap's `RustcLink` copies a compiler's rlibs into a sysroot only when that
+  sysroot's compiler builds the next stage, so `./x build --stage 2` is what deposits them into stage1, and
+  stage2 itself never gets them. The symptom is dyld failing to load `librustc_driver-<hash>.dylib` from the
+  target libdir, or `can't find crate for rustc_driver`. Confirm a sysroot has `librustc_middle-*.rmeta` under
+  `lib/rustlib/<target>/lib/` before trusting it carries rustc-dev.
+- Do not spell "never disk-cache" as `cache_on_disk_if { false }` on `per_instance_mir` or any query: rustc's
+  query macro keys on the modifier's presence and generates the load-from-disk path whatever the value, so the
+  line is a no-op that upstream itself deleted elsewhere; omitting the modifier is the convention. The
+  architecture doc's §4.2, §22.4.1, and Appendix B.1 still show the old spelling; the design doc's deviations
+  list is the authority.
+- Do not type-erase the extra modules (`Vec<Box<dyn Any>>` plus a downcast in `codegen_crate`) to get the
+  `fill_extra_modules` hook out of the LLVM backend: rustc erases only at the dylib `Box<dyn CodegenBackend>`
+  boundary and keeps `B::Module` concrete everywhere inside `codegen_crate<B>`, and the trait method mirrors
+  `codegen_allocator`. The global is the reviewable defect, and its fix is a backend field (Next #6).
 - `generateExports` is the standalone-valec **C-ABI** export boundary: it writes C `.h`/`.c` files,
   requires an `outputDir`, and emits **no** LLVM into the module. The interop/borrowed path must not
   call it — interop exports go through single-symbol (Vale bodies under rustc-mangled names), not C
@@ -1041,12 +1315,22 @@ The `// VCOORD` on the sealed tables in `compiler_outputs.rs` records the enforc
 - A generated `Cargo.toml` needs its own `[workspace]` table, or cargo refuses it whenever the build dir is
   nested inside an existing workspace (the common real-repo case): "believes it's in a workspace when it's
   not." A scratchpad build outside any workspace hides this — always test the pipeline from inside a real repo.
+- **A warm-rebuild nondeterminism is PER-LINEAGE (per cold build), not per-warm-rebuild — test it with
+  fresh cold builds, not repeated warm ones.** rustc bakes the CGU layout at *cold* build time and reuses it
+  for every warm rebuild of that cache, so a given cache is deterministically good or bad; looping N warm
+  rebuilds within one cache samples one layout and cannot catch it (a good lineage passes forever, a bad one
+  panics on warm #1). Loop FRESH lineages (new `TempDir` → cold → one warm each) to sample cold-build
+  layouts. This is why the exports-first fix (above) was needed and why "panics every warm rebuild" (one bad
+  cache) and "~50%" (across cold builds) were the same bug. The second lesson: when the re-fire loop
+  re-populates `monouts`, anything a callback READS (the typeid universe) must be WRITTEN by an export
+  re-fired earlier in the same call — populate-then-read, seeded from the authoritative export list, not
+  rustc's CGU order.
 - **Incremental warm rebuilds are fixed — don't undo the two load-bearing pieces.** A warm `valen build`
   rebuild once linked an undefined `__vale_main`: rustc serves `items_of_instance` from disk and skips
   `per_instance_mir`, whose side effects are the emit's only inputs, so `vale_cgu` came out fresh-but-empty
   (never a stale object). The no-fork fix, now in: **(A)** `lang_collect_and_partition_mono_items` re-fires
-  `tcx.per_instance_mir(instance)` for each `is_vale_codegen_target` item (safe — `cache_on_disk_if{false}`
-  + in-memory query memoization ⇒ once per instance per build, so no double-fire), and **(B)**
+  `tcx.per_instance_mir(instance)` for each `is_vale_codegen_target` item (safe — the query declares no
+  disk-cache modifier and rustc memoizes it in memory ⇒ once per instance per build, so no double-fire), and **(B)**
   `generate_stub_source` bakes an FNV-1a digest of the `.valen` source into every
   `#[vale::emit_consumer_body]` attr (root *and* override), which `per_instance_mir` reads via
   `has_attrs_with_path`, so a body-only call-graph change flips `per_instance_mir` — hence

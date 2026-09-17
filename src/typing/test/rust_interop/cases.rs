@@ -28,6 +28,7 @@ use crate::typing::ast::ast::PrototypeT;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::names::names::{INameT, IdT};
 use crate::typing::rust_interop::corpus::*;
+use crate::typing::rust_interop::stub_gen::generate_pass2_stub;
 use crate::typing::rust_interop::{
   citizen_id, is_rust_backed, peel_refs, Case, OracleQuery, RustItemId, SigPosition,
 };
@@ -35,7 +36,7 @@ use crate::typing::templata::templata::ITemplataT;
 use crate::typing::test::rust_interop::harness::{
   compile_check_fixture, run_case, run_case_in_package, run_case_instantiated,
   run_case_rustc_driven, run_case_rustc_driven_and_run, run_case_rustc_driven_emitting,
-  run_case_rustc_driven_full, try_run_case,
+  run_case_rustc_driven_full, run_case_with_coutputs, try_run_case,
   CaseOutcome,
 };
 use crate::typing::test::traverse::NodeRefT;
@@ -188,6 +189,100 @@ fn a_struct_implements_a_rust_trait() {
     outcome.asked(|q| q.offered("Callback").is_some()),
     "the oracle never offered the implemented trait:\n{}",
     outcome.rendered_log()
+  );
+}
+
+/// A lambda handed to an imported Rust trait's anonymous-substruct constructor typechecks: the
+/// anon-substruct macro must fire on the imported `Callback` trait, so `Callback({ 7 })` resolves to
+/// a synthesized forwarder substruct with no hand-written struct/impl/override, and `on_call`
+/// resolves through it. Without the macro firing on imported traits, the constructor `Callback(...)`
+/// is never registered and this fails with `CouldntFindFunctionToCallT`.
+#[test]
+fn a_lambda_typechecks_against_a_rust_trait() {
+  // A typecheck-only case: we assert it compiles (which requires the `Callback(..)` anon-substruct
+  // constructor and `on_call` forwarder to resolve) + the oracle vacuity below. We don't walk callees
+  // — `callees_in_main`'s `describe_callee` intentionally only knows ordinary Vale functions, and this
+  // program's `Callback({ 7 })` callee is an `AnonymousSubstructConstructor`.
+  let outcome = run_case(&A_LAMBDA_IMPLEMENTS_A_RUST_TRAIT_VIA_ANON_SUBSTRUCT, |_coutputs| ());
+
+  outcome
+    .check(&A_LAMBDA_IMPLEMENTS_A_RUST_TRAIT_VIA_ANON_SUBSTRUCT)
+    .expect("the case declares it compiles");
+
+  // Vacuity: the trait must have reached Vale through the oracle for the anon-substruct to mean
+  // anything — a native `Callback` in scope would let this compile without the import.
+  assert!(
+    outcome.asked(|q| q.offered("Callback").is_some()),
+    "the oracle never offered the imported trait:\n{}",
+    outcome.rendered_log()
+  );
+}
+
+/// The anon-substruct path for the `on_tick`-shaped trait (two imported-type borrow params): a lambda
+/// handed to `Cb((x, y) => { x.touch(); })` typechecks with no hand-written forwarder. This is the real
+/// NobiliaV target and the reason the anon macro's bound must carry value-position param types (the
+/// Rust citizen borrows `&Alpha`/`&Beta`). Without the value-position param fix it fails to compile
+/// (`evaluate_templex: can't substitute` on the bound); without the macro firing, the `Cb(..)`
+/// constructor is absent (`CouldntFindFunctionToCallT`).
+#[test]
+fn a_lambda_typechecks_against_a_two_imported_param_trait() {
+  let outcome = run_case(&A_LAMBDA_IMPLEMENTS_A_TWO_IMPORTED_PARAM_TRAIT, |_coutputs| ());
+
+  outcome
+    .check(&A_LAMBDA_IMPLEMENTS_A_TWO_IMPORTED_PARAM_TRAIT)
+    .expect("the case declares it compiles");
+
+  // Vacuity: the trait must have reached Vale through the oracle for the anon-substruct to mean
+  // anything.
+  assert!(
+    outcome.asked(|q| q.offered("Cb").is_some()),
+    "the oracle never offered the imported trait:\n{}",
+    outcome.rendered_log()
+  );
+}
+
+/// Slice 3: the HinputsT-driven ("pass-2") stub generator projects the macro-synthesized anon substruct
+/// as a real Rust `pub struct + impl` — the piece the parse-driven pass-1 generator cannot emit because
+/// the substruct exists only after typing. Feeds the typed program of the `on_tick`-shaped case through
+/// `generate_pass2_stub` and asserts the emitted Rust declares `Cb__anon` (the shared
+/// `anon_substruct_rust_name` mangling), implements the imported `Cb` trait, and renders the override
+/// `go(&self, _p1: &Alpha, _p2: &Beta)` with a deferred body — the exact shape the second rustc pass
+/// compiles and Valen's backend fills.
+#[test]
+fn pass2_stub_projects_the_anon_substruct_for_an_imported_trait() {
+  let outcome =
+    run_case_with_coutputs(&A_LAMBDA_IMPLEMENTS_A_TWO_IMPORTED_PARAM_TRAIT, |hinputs, coutputs, interner| {
+      generate_pass2_stub(hinputs, coutputs, interner, /*src_digest=*/ 0)
+        .expect("pass-2 stub generation should succeed")
+    });
+  let stub = outcome.expect_compiled();
+  assert!(stub.contains("pub struct Cb__anon"), "stub:\n{stub}");
+  assert!(stub.contains("Cb for Cb__anon"), "stub:\n{stub}");
+  assert!(stub.contains("fn go(&self, _p1: &Alpha, _p2: &Beta)"), "stub:\n{stub}");
+  assert!(stub.contains("__ValeOpaque<"), "stub:\n{stub}");
+  assert!(stub.contains("unreachable!()"), "stub:\n{stub}");
+}
+
+/// S1 (`&mut` auto-gen): the pass-2 stub renders `&mut` for a **`&mut`-signature** trait's
+/// auto-generated anon substruct. `on_tick`'s receiver and its `w` param are `&mut`, `input` is a shared
+/// `&` negative control — NobiliaV's `on_tick(&mut self, w: &mut NobiliaWindow, input: &FrameInput)`
+/// shape. Mutability lives on the abstract method's `mut(g)` effect clause, not the `KindT`, so this only
+/// passes once `evaluate` retains the postparsed `CompilerOutputs` and the HinputsT-driven generator reads
+/// those effects. Positional param names (`_p1`/`_p2`) because the typed AST carries no source names,
+/// exactly like the shared-borrow pass-2 test above.
+#[test]
+fn pass2_stub_projects_mut_borrows_for_an_imported_trait() {
+  let outcome =
+    run_case_with_coutputs(&A_LAMBDA_IMPLEMENTS_A_MUT_TRAIT, |hinputs, coutputs, interner| {
+      generate_pass2_stub(hinputs, coutputs, interner, /*src_digest=*/ 0)
+        .expect("pass-2 stub generation should succeed")
+    });
+  let stub = outcome.expect_compiled();
+  assert!(stub.contains("pub struct MainLoop__anon"), "stub:\n{stub}");
+  assert!(stub.contains("MainLoop for MainLoop__anon"), "stub:\n{stub}");
+  assert!(
+    stub.contains("fn on_tick(&mut self, _p1: &mut Window, _p2: &Frame)"),
+    "stub:\n{stub}"
   );
 }
 
@@ -880,11 +975,11 @@ fn rustc_codegen_fires_our_fill_extra_modules_hook() {
 }
 
 /// Stage 2 (`#2b`) of the run-a-program path: the hook actually lowers the Vale program and emits its
-/// bodies into rustc's borrowed module. The handler builds a finalized `HinputsI` via the ordinary
-/// `translate_program`, lowers it through the existing `populate_metal_cache`, takes rustc's lent
-/// `(context, module)` from the `ExtraModuleAllocator`, and calls `backend_compile_program_into` — the
-/// first real exercise of the borrowed C++ backend path (its `LLVMVerifyModule` runs on the Vale IR in
-/// rustc's module). rc 0 = emitted and verified. Still a lib crate — not linked or run (Stage 3).
+/// bodies into a module it hands to rustc. The handler builds a finalized `HinputsI` via the ordinary
+/// `translate_program`, lowers it through the existing `populate_metal_cache`, mints a `ModuleLlvm`
+/// and takes its `(context, module)` handles, and calls `backend_compile_program_into` — the first
+/// real exercise of the borrowed C++ backend path (its `LLVMVerifyModule` runs on the Vale IR in that
+/// module). rc 0 = emitted and verified. Still a lib crate — not linked or run (Stage 3).
 #[test]
 fn rustc_codegen_emits_vale_bodies_into_borrowed_module() {
   let run = run_case_rustc_driven_emitting(&CALLS_A_RUST_FREE_FUNCTION);

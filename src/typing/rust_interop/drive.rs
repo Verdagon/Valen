@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 
@@ -36,7 +37,9 @@ use crate::scout_arena::ScoutArena;
 use crate::typing::compiler::Compiler;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::oracles::Oracles;
-use crate::typing::rust_interop::stub_gen::generate_stub_source_from_vale;
+use crate::typing::rust_interop::stub_gen::{
+  generate_pass2_stub, generate_stub_source_from_vale, source_digest,
+};
 use crate::typing::rust_interop::{LoggingOracle, TyCtxtOracle};
 use crate::typing::typing_interner::TypingInterner;
 use crate::typing::TypingPassOptions;
@@ -277,6 +280,13 @@ pub(crate) fn run_driven_rustc(
   };
   let state_ptr = &state as *const DriverState as *const ();
 
+  // The pass-1 stub's `emit_consumer_body` attrs carry this digest so rustc's incremental cache tracks
+  // the `.valen` body; the appended pass-2 decls must carry the same one.
+  let src_digest = source_digest(vale_source);
+  // Pass-1 fills this with the anon-substruct projection to compile in pass 2, or leaves it None (the
+  // one-pass common case).
+  let pass2_stub_slot: RefCell<Option<String>> = RefCell::new(None);
+
   let mut callbacks = DrivenCallbacks {
     scout_arena: &scout_arena,
     keywords: &keywords,
@@ -291,14 +301,90 @@ pub(crate) fn run_driven_rustc(
     state_ptr,
     compile_builtins,
     borrow_check,
+    emit_pass2_stub_into: &pass2_stub_slot,
+    src_digest,
+    skip_typing: false,
   };
-  let rustc_exit = rustc_driver::catch_with_exit_code(|| {
+  let pass1_exit = rustc_driver::catch_with_exit_code(|| {
     rustc_driver::run_compiler(rustc_args, &mut callbacks);
   });
-  if let Some(err) = typing_error_slot.into_inner() {
+  if let Some(err) = typing_error_slot.borrow_mut().take() {
     return Err(format!("the Vale program failed to typecheck, so no body was emitted:\n{err}"));
   }
-  Ok((rustc_exit, firings_slot.into_inner()))
+
+  let Some(pass2_decls) = pass2_stub_slot.borrow_mut().take() else {
+    // One pass: no anon substructs implementing imported traits, so pass 1 already codegened.
+    return Ok((pass1_exit, firings_slot.into_inner()));
+  };
+
+  // Two passes (design S2): pass 1 typed and returned Stop before codegen, so every codegen slot must
+  // still be pristine — instantiation runs only in pass 2. Assert it so a future change that leaks
+  // pass-1 codegen fails loud instead of silently double-processing (belt-and-suspenders).
+  debug_assert!(firings_slot.borrow().is_empty(), "pass 1 must not fire the provider before pass 2");
+  debug_assert!(callbacks_slot.borrow().is_empty(), "pass 1 must not collect callbacks");
+  debug_assert!(function_exports_slot.borrow().is_empty(), "pass 1 must not record exports");
+  debug_assert!(entry_symbol_slot.borrow().is_none(), "pass 1 must not record the entry symbol");
+
+  // Append the anon-substruct projection to the pass-1 stub and point pass 2 at the appended file. The
+  // pass-1 stub (imports + marker + `__vale_main` + hand-written projections) stays verbatim, so
+  // `__vale_main` still drives instantiation. `__ValeOpaque` is predeclared ONLY when the pass-1 stub
+  // doesn't already carry it: `run_wrapper`'s generated stub does (so we don't duplicate it), but a
+  // hand-written harness fixture stub does not, and the appended `<I>__anon` wrapper references it.
+  let stub_path = rustc_args.iter().find(|a| a.ends_with(".rs")).ok_or_else(|| {
+    "two-pass: no .rs crate root in rustc_args to append the pass-2 stub to".to_string()
+  })?;
+  let pass1_text = fs::read_to_string(stub_path)
+    .map_err(|e| format!("two-pass: could not read the pass-1 stub {stub_path}: {e}"))?;
+  let opaque_predecl = if pass1_text.contains("struct __ValeOpaque") {
+    ""
+  } else {
+    "pub struct __ValeOpaque<const T: u64>;\n"
+  };
+  // Write the appended stub into `--out-dir` (a scratch dir), NOT next to the crate root — for the test
+  // harness the crate root is a checked-in fixture whose directory must not be polluted. Fall back to
+  // the crate root's own path only if no `--out-dir` was given.
+  let out_dir = rustc_args.iter().find_map(|a| a.strip_prefix("--out-dir="));
+  let stub_basename =
+    Path::new(stub_path).file_name().and_then(|n| n.to_str()).unwrap_or("crate_root.rs");
+  let pass2_path = match out_dir {
+    Some(dir) => format!("{dir}/{stub_basename}.pass2.rs"),
+    None => format!("{stub_path}.pass2.rs"),
+  };
+  // Append (never prepend): the pass-1 text must stay at the crate root top so its inner attributes
+  // (`#![register_tool(vale)]`, which makes `#[vale::emit_consumer_body]` resolve) remain the first
+  // tokens. The `__ValeOpaque` predecl and anon decls go after it, the predecl before its first use.
+  fs::write(&pass2_path, format!("{pass1_text}\n{opaque_predecl}{pass2_decls}"))
+    .map_err(|e| format!("two-pass: could not write the pass-2 stub {pass2_path}: {e}"))?;
+  let pass2_args: Vec<String> = rustc_args
+    .iter()
+    .map(|a| if a == stub_path { pass2_path.clone() } else { a.clone() })
+    .collect();
+
+  let mut callbacks2 = DrivenCallbacks {
+    scout_arena: &scout_arena,
+    keywords: &keywords,
+    parser_keywords: &parser_keywords,
+    parse_arena: &parse_arena,
+    package_coord,
+    code_source: &code_source,
+    typing_interner: &typing_interner,
+    global_options: global_options.clone(),
+    hinputs_slot: &hinputs_slot,
+    typing_error_slot: &typing_error_slot,
+    state_ptr,
+    compile_builtins,
+    borrow_check,
+    emit_pass2_stub_into: &pass2_stub_slot,
+    src_digest,
+    skip_typing: true,
+  };
+  let pass2_exit = rustc_driver::catch_with_exit_code(|| {
+    rustc_driver::run_compiler(&pass2_args, &mut callbacks2);
+  });
+  if let Some(err) = typing_error_slot.into_inner() {
+    return Err(format!("pass 2 of the driven compile failed:\n{err}"));
+  }
+  Ok((pass2_exit, firings_slot.into_inner()))
 }
 
 /// Callbacks for the driven path — the non-test twin of the harness's `DrivenCallbacks`. The
@@ -319,6 +405,16 @@ struct DrivenCallbacks<'ctx, 's, 't, 'p> {
   state_ptr: *const (),
   compile_builtins: bool,
   borrow_check: bool,
+  // Two-pass driver (design S2 / arch §30). In PASS 1 (`skip_typing == false`) `after_expansion` types
+  // the `.valen` and then, if the typed program contains anon substructs implementing imported traits,
+  // writes their HinputsT-driven Rust projection into `emit_pass2_stub_into` and returns Stop (no
+  // codegen — pass 2 does it). If there are none, it codegens in this one pass exactly as before. In
+  // PASS 2 (`skip_typing == true`) it reuses pass 1's `HinputsT` (already in `hinputs_slot`), skips
+  // typing, and codegens the appended stub. `src_digest` is baked into the pass-2 stub's
+  // `emit_consumer_body` attrs, matching the pass-1 stub so rustc's incremental cache stays consistent.
+  emit_pass2_stub_into: &'ctx RefCell<Option<String>>,
+  src_digest: u64,
+  skip_typing: bool,
 }
 
 // SAFETY: identical to the harness's — `run_compiler` moves the callbacks onto a thread it spawns but
@@ -334,6 +430,14 @@ impl<'ctx, 's, 't, 'p> Callbacks for DrivenCallbacks<'ctx, 's, 't, 'p> {
   }
 
   fn after_expansion<'tcx>(&mut self, _compiler: &RustcCompiler, tcx: TyCtxt<'tcx>) -> Compilation {
+    // PASS 2: pass 1 already typed this program (its `HinputsT` is in `hinputs_slot`); do not re-type.
+    // Just arm the driver state so the `per_instance_mir` provider drives instantiation + codegen of
+    // the appended stub under this second `tcx` (the reused `HinputsT` is tcx-free, so this is sound).
+    if self.skip_typing {
+      arm_driver_state(self.state_ptr);
+      return Compilation::Continue;
+    }
+
     let mut scout = ScoutCompilation::new(
       self.scout_arena,
       self.keywords,
@@ -372,9 +476,42 @@ impl<'ctx, 's, 't, 'p> Callbacks for DrivenCallbacks<'ctx, 's, 't, 'p> {
       &options,
       Oracles::with_rust(&logging),
     );
-    match compiler.evaluate(&code_map, astrouts) {
-      Ok(hinputs) => *self.hinputs_slot.borrow_mut() = Some(hinputs),
-      Err(err) => *self.typing_error_slot.borrow_mut() = Some(format!("{err:?}")),
+    // Retain the postparsed `coutputs` as a frame-local: the pass-2 stub generator (called just below,
+    // still in pass 1) reads the abstract methods' `mut(g)` effects off it to render `&mut`. Pass 2
+    // reuses only `hinputs` (from the slot) to codegen the already-generated stub text, so `coutputs`
+    // need not outlive this call.
+    let coutputs = match compiler.evaluate(&code_map, astrouts) {
+      Ok((hinputs, coutputs)) => {
+        *self.hinputs_slot.borrow_mut() = Some(hinputs);
+        coutputs
+      }
+      Err(err) => {
+        *self.typing_error_slot.borrow_mut() = Some(format!("{err:?}"));
+        // Typing failed — no body to emit; `run_driven_rustc` surfaces the error. Stop before codegen.
+        return Compilation::Stop;
+      }
+    };
+
+    // If typing produced anon substructs implementing imported traits, their Rust projection can only
+    // be emitted now (they exist only post-typing) — so build the appended pass-2 stub and Stop BEFORE
+    // arming/codegen; `run_driven_rustc` then runs pass 2 over the appended stub. An empty projection
+    // (the common case: no such substructs) falls through to the ordinary one-pass codegen below, so
+    // non-feature crates are unchanged.
+    let pass2 = {
+      let borrowed = self.hinputs_slot.borrow();
+      let hinputs = borrowed.as_ref().expect("hinputs set on the Ok branch above");
+      match generate_pass2_stub(hinputs, &coutputs, self.typing_interner, self.src_digest) {
+        Ok(stub) => stub,
+        Err(e) => {
+          *self.typing_error_slot.borrow_mut() =
+            Some(format!("pass-2 stub generation failed: {e}"));
+          return Compilation::Stop;
+        }
+      }
+    };
+    if !pass2.is_empty() {
+      *self.emit_pass2_stub_into.borrow_mut() = Some(pass2);
+      return Compilation::Stop;
     }
 
     arm_driver_state(self.state_ptr);

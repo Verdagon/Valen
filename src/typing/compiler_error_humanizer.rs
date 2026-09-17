@@ -1198,6 +1198,25 @@ where
     + &humanize_name(scout_arena, typing_interner, code_map, name.local_name)
 }
 
+fn humanize_anonymous_substruct_constructor_template<'s, 't>(
+  n: AnonymousSubstructConstructorTemplateNameT<'s, 't>,
+) -> String {
+  let substruct = match n.substruct {
+    ICitizenTemplateNameT::AnonymousSubstructTemplate(astn) => {
+      let iface = match astn.interface {
+        IInterfaceTemplateNameT::InterfaceTemplate(t) => t.human_namee.0,
+      };
+      format!("<anonymous substruct of {}>", iface)
+    }
+    ICitizenTemplateNameT::StructTemplate(t) => t.human_name.0.to_string(),
+    ICitizenTemplateNameT::InterfaceTemplate(t) => t.human_namee.0.to_string(),
+    ICitizenTemplateNameT::LambdaCitizenTemplate(_) => "<lambda>".to_string(),
+    ICitizenTemplateNameT::StaticSizedArrayTemplate(_) => "<ssa>".to_string(),
+    ICitizenTemplateNameT::RuntimeSizedArrayTemplate(_) => "<rsa>".to_string(),
+  };
+  format!("asc:{}", substruct)
+}
+
 pub fn humanize_name<'s, 't>(
   scout_arena: &ScoutArena<'s>,
   typing_interner: &TypingInterner<'s, 't>,
@@ -1206,14 +1225,27 @@ pub fn humanize_name<'s, 't>(
 ) -> String {
   match name {
     INameT::AnonymousSubstructConstructor(n) => {
-      panic!("implement: humanize_name AnonymousSubstructConstructor");
-      // humanizeName(codeMap, template) +
-      //   "<" + templateArgs.map(humanizeTemplata(codeMap, _)).mkString(", ") + ">" +
-      //   "(" + parameters.map(CoordTemplataT).map(humanizeTemplata(codeMap, _)).mkString(", ") + ")"
+      let args = n
+        .template_args
+        .iter()
+        .map(|t| humanize_templata(scout_arena, typing_interner, code_map, *t))
+        .collect::<Vec<_>>()
+        .join(", ");
+      let params = n
+        .parameters
+        .iter()
+        .map(|k| humanize_kind(scout_arena, typing_interner, code_map, *k))
+        .collect::<Vec<_>>()
+        .join(", ");
+      format!(
+        "{}<{}>({})",
+        humanize_anonymous_substruct_constructor_template(*n.template),
+        args,
+        params
+      )
     }
     INameT::AnonymousSubstructConstructorTemplate(n) => {
-      panic!("implement: humanize_name AnonymousSubstructConstructorTemplate");
-      // "asc:" + humanizeName(codeMap, substruct)
+      humanize_anonymous_substruct_constructor_template(*n)
     }
     INameT::Self_(_) => "self".to_string(),
     INameT::OverrideDispatcherTemplate(n) => {

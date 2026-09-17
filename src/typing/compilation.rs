@@ -14,6 +14,7 @@ use crate::scout_arena::ScoutArena;
 use crate::typing::compiler::Compiler;
 use crate::typing::compiler_error_humanizer::humanize;
 use crate::typing::compiler_error_reporter::ICompileErrorT;
+use crate::typing::compiler_outputs::CompilerOutputs;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::oracles::Oracles;
 use crate::typing::typing_interner::TypingInterner;
@@ -45,6 +46,9 @@ where
 {
   scout_compilation: ScoutCompilation<'s, 'ctx, 'p>,
   hinputs_cache: Option<HinputsT<'s, 't>>,
+  // VCOORD: we have this because it contains the postparseds table. lets consider moving
+  // the postparseds table into HinputsT
+  coutputs_cache: Option<CompilerOutputs<'s, 't>>,
   scout_arena: &'ctx ScoutArena<'s>,
   keywords: &'ctx Keywords<'s>,
   options: TypingPassOptions,
@@ -82,6 +86,7 @@ where
     TypingPassCompilation {
       scout_compilation,
       hinputs_cache: None,
+      coutputs_cache: None,
       scout_arena,
       keywords,
       options: typing_options,
@@ -130,11 +135,16 @@ where
     );
     match compiler.evaluate(&code_map, astrouts) {
       Err(e) => Err(e),
-      Ok(hinputs) => {
+      Ok((hinputs, coutputs)) => {
         self.hinputs_cache = Some(hinputs);
+        self.coutputs_cache = Some(coutputs);
         Ok(self.hinputs_cache.as_ref().unwrap())
       }
     }
+  }
+
+  pub fn cached_coutputs(&self) -> &CompilerOutputs<'s, 't> {
+    self.coutputs_cache.as_ref().expect("compiler outputs not computed")
   }
 
   // VTRACE: hide
