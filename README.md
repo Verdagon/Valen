@@ -32,7 +32,7 @@ Check back later today for a more filled out readme =)
 
 Valen is the successor to the [Vale programming language](https://vale.dev/).
 
-Thank you to everyone who sponsored Vale! Vale existed because of your support, and Valen exists because Vale existed. Thank you!
+Thank you to everyone who sponsored Vale! Vale existed because of your support, and Valen exists because Vale existed. Thank you to all of Vale's sponsors:
 
  * [Arthur Weagel](https://github.com/aweagel)
  * [Kiril Mihaylov](https://github.com/KirilMihaylov)
