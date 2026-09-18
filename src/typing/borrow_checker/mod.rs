@@ -1,7 +1,6 @@
-pub mod aliasing_info;
-pub mod borrow_error;
-pub mod borrow_types;
-pub mod check;
-pub mod check_usages;
-pub mod grouped_ast;
-pub mod groupify;
+pub mod experimental;
+
+// The core error reporter (`crate::typing::compiler_error_reporter`) references
+// `borrow_checker::borrow_error::BorrowErrorKind` and lives in the non-AI-editable core, so re-export
+// the module to keep that path stable across the move into `experimental`.
+pub use experimental::borrow_error;

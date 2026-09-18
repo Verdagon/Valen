@@ -10,9 +10,9 @@ use crate::postparsing::ast::FunctionS;
 use crate::postparsing::rules::types::{ITypeST, RegionS};
 use crate::typing::ast::ast::{FunctionAliasingInfoT, FunctionDefinitionT};
 use crate::typing::ast::borrowing_ast::{GroupIdStepT, GroupIdT, LocKey, RestrictRegionT};
-use crate::typing::borrow_checker::borrow_types::KindGT;
-use crate::typing::borrow_checker::grouped_ast::{flatten, paths_alias, AccessEventG, GroupStep};
-use crate::typing::borrow_checker::groupify::rune_name;
+use crate::typing::borrow_checker::experimental::borrow_types::KindGT;
+use crate::typing::borrow_checker::experimental::grouped_ast::{flatten, paths_alias, AccessEventG, GroupStep};
+use crate::typing::borrow_checker::experimental::groupify::rune_name;
 use crate::typing::compiler::Compiler;
 use crate::typing::names::names::IVarNameT;
 

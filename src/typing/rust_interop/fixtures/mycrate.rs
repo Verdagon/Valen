@@ -1,3 +1,5 @@
+// VCHECK: No comments in this file except for this line.
+
 // A Rust dependency crate for the Rust-interop milestone.
 //
 // Compiled to an rlib and handed to the driver host with `--extern mycrate=<rlib>`, so the
@@ -111,6 +113,24 @@ pub fn nudge(a: &mut Counter, b: &Counter) -> i32 {
 pub fn tie<'a>(a: &'a mut Counter, b: &'a mut Counter) -> i32 {
     a.value = b.value;
     a.value
+}
+
+pub struct Slot {
+    value: Box<i64>,
+}
+
+impl Slot {
+    pub fn new() -> Slot {
+        Slot { value: Box::new(0) }
+    }
+
+    pub fn mutate(&mut self, x: i64) {
+        *self.value = x;
+    }
+
+    pub fn get(&self) -> i64 {
+        *self.value
+    }
 }
 
 /// A nested module, so path resolution is exercised below the crate root.

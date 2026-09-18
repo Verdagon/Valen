@@ -11,7 +11,7 @@ use bumpalo::Bump;
 use crate::postparsing::ast::FunctionS;
 use crate::postparsing::rules::types::{ITypeST, RegionS};
 use crate::typing::ast::ast::{FunctionAliasingInfoT, FunctionDefinitionT};
-use crate::typing::borrow_checker::borrow_error::BorrowErrorKind;
+use crate::typing::borrow_checker::experimental::borrow_error::BorrowErrorKind;
 use crate::typing::compiler::Compiler;
 use crate::typing::compiler_error_reporter::ICompileErrorT;
 use crate::typing::compiler_outputs::CompilerOutputs;

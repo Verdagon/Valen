@@ -14,12 +14,12 @@ use crate::postparsing::names::IRuneS;
 use crate::postparsing::rules::types::EffectS;
 use crate::typing::ast::ast::LocT;
 use crate::typing::ast::expressions::{ExpressionTE, FunctionCallTE};
-use crate::typing::borrow_checker::borrow_error::BorrowErrorKind;
-use crate::typing::borrow_checker::borrow_types::{group_expr_from_group_s, GroupExprG, KindGT};
-use crate::typing::borrow_checker::grouped_ast::{
+use crate::typing::borrow_checker::experimental::borrow_error::BorrowErrorKind;
+use crate::typing::borrow_checker::experimental::borrow_types::{group_expr_from_group_s, GroupExprG, KindGT};
+use crate::typing::borrow_checker::experimental::grouped_ast::{
   flatten, paths_alias, split_unions, GroupStep, IExpressionGE, JointFact,
 };
-use crate::typing::borrow_checker::groupify::{
+use crate::typing::borrow_checker::experimental::groupify::{
   effect_root_rune, expr_range, held_range, moved_local, param_group_rune, place_root_local,
   rune_name,
 };

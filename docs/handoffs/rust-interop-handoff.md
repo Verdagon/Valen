@@ -458,6 +458,13 @@ generic lambda-forwarder reverse callback works end to end (`wrapper_drives_a_st
 → 7). The value-position-`ITypeST`/@TNLTZACZ and undeclared-generic typing walls are landed. This is the
 foundation the auto-generated substruct (above) builds on — it removes the hand-written `MyCb`.
 
+**Move fixture doc-comments into the tests that use them** (architect directive, incoming from the exp-1
+borrow-checker tree). Today each item in `src/typing/rust_interop/fixtures/mycrate.rs` (and the sibling
+`fixtures_*` crates) carries a doc comment explaining what its shape probes. That explanation belongs at
+the use site, not in the fixture: whenever a test or corpus case (`corpus.rs`, `test/rust_interop/cases.rs`)
+uses a fixture, the test says what about that fixture matters to *it*, and the fixture stays bare. A fixture
+is shared across many tests, so a probe rationale living on it speaks for only one of them.
+
 ## Auto-generated anonymous substruct for imported Rust traits (built end to end)
 
 A lambda handed directly to an imported Rust trait — `SomeTrait((args) => {…})` — now compiles, links, and

@@ -783,6 +783,21 @@ fn a_mut_borrow_and_a_shared_borrow_of_distinct_locals_compiles() {
     .check(&A_MUT_BORROW_AND_A_SHARED_BORROW_OF_DISTINCT_LOCALS_IS_CLEAN);
 }
 
+/// Tests that multiple mutable aliases to one imported Rust object are legal.
+#[test]
+fn multiple_mutable_aliases_to_one_rust_object_are_legal() {
+  let outcome = run_case(&MULTIPLE_MUTABLE_ALIASES_TO_ONE_RUST_OBJECT_ARE_LEGAL, callees_in_main);
+  let callees = outcome
+    .check(&MULTIPLE_MUTABLE_ALIASES_TO_ONE_RUST_OBJECT_ARE_LEGAL)
+    .expect("the case declares it compiles");
+  for name in ["mutate", "get"] {
+    assert!(
+      callees.iter().any(|c| c.name == name && c.rust_backed),
+      "`{name}` did not resolve to a Rust callee: {callees:?}"
+    );
+  }
+}
+
 /// A Rust signature sharing one lifetime across two parameters is declined, not imported with a guess.
 /// Faithfully mirroring it needs lifetime decoding Vale doesn't do yet, so calling it is a compile error.
 #[test]

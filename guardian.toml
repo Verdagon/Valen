@@ -79,6 +79,7 @@ include_shields = [
     { name = "WorktreeRootReminder-WRRX.md" },
     { name = "CommitPreflightWorkflow-CPWX.md" },
     { name = "PhoenixHarness-PHXX.md" },
+    { name = "CaptureCargoOutputToTmp-CCOTX.md" },
 ]
 
 [review_mode]

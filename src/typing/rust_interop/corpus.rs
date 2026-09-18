@@ -1820,6 +1820,24 @@ exported func main() int {
   expect: Expect::Returns(5),
 };
 
+/// Tests that multiple mutable aliases to one imported Rust object are legal.
+pub const MULTIPLE_MUTABLE_ALIASES_TO_ONE_RUST_OBJECT_ARE_LEGAL: Case = Case {
+  fixture: "fixtures",
+  name: "multiple-mutable-aliases",
+  vale: r#"
+import rust.mycrate.Slot;
+exported func main() i64 {
+  slot = Slot.new();
+  ref_a = &slot;
+  ref_b = &slot;
+  ref_a.mutate(42i64);
+  ref_b.mutate(73i64);
+  return ref_a.get();
+}
+"#,
+  expect: Expect::Returns(73),
+};
+
 /// A Rust function that shares one lifetime across two parameters (`fn tie<'a>(a: &'a mut Counter,
 /// b: &'a mut Counter)`) is declined, not imported. Faithfully mirroring it would tie both parameters
 /// into one group, which needs lifetime decoding Vale does not do yet — so rather than guess the two

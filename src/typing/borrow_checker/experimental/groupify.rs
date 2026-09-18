@@ -11,11 +11,11 @@ use crate::postparsing::names::{IRuneS, IVarDeclarationNameS};
 use crate::postparsing::rules::types::{EffectS, GroupS, ITypeST, RegionS};
 use crate::typing::ast::ast::FunctionDefinitionT;
 use crate::typing::ast::expressions::{ExpressionTE, FunctionCallTE};
-use crate::typing::borrow_checker::borrow_types::{
+use crate::typing::borrow_checker::experimental::borrow_types::{
   group_expr_from_group_s, subst_group_expr, BorrowRefGT, GroupExprG, KindGT,
 };
 use crate::typing::compiler_error_reporter::ICompileErrorT;
-use crate::typing::borrow_checker::grouped_ast::{
+use crate::typing::borrow_checker::experimental::grouped_ast::{
   flatten, split_unions, AccessEventG, GroupStep, IExpressionGE, MutEffectPath,
 };
 use crate::typing::templata::templata::ITemplataT;

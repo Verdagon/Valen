@@ -15,7 +15,7 @@ use crate::interner::StrI;
 use crate::postparsing::names::IRuneS;
 use crate::typing::ast::ast::LocT;
 use crate::typing::ast::expressions::FunctionCallTE;
-use crate::typing::borrow_checker::borrow_types::{GroupExprG, KindGT};
+use crate::typing::borrow_checker::experimental::borrow_types::{GroupExprG, KindGT};
 use crate::typing::names::names::IVarNameT;
 use crate::utils::range::RangeS;
 
