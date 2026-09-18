@@ -30,6 +30,14 @@ LLVMValueRef makeBackendLocal(
     const std::string& name,
     LLVMValueRef valueToStore);
 
+// Store `valueToStore` into a local as its own type, then load it back as `targetTypeL`.
+LLVMValueRef bitcastViaBackendLocal(
+    FunctionState* functionState,
+    LLVMBuilderRef builder,
+    LLVMTypeRef targetTypeL,
+    const std::string& name,
+    LLVMValueRef valueToStore);
+
 // Stackifies a local, registers it, and emits its DILocalVariable (debug info).
 void makeHammerLocal(
     GlobalState* globalState,

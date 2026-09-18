@@ -30,6 +30,61 @@ Ref buildResultOrEarlyReturnOfNever(
   }
 }
 
+static LLVMValueRef coerceExternReturn(
+    GlobalState* globalState,
+    FunctionState* functionState,
+    LLVMBuilderRef builder,
+    const Coercion& ret,
+    Kind* valeReturnRefMT,
+    Kind* returnKind,
+    LLVMValueRef hostReturnLE) {
+  auto valeRetLT = globalState->getRegion(returnKind)->translateType(valeReturnRefMT);
+  switch (ret.kind) {
+    case CoercionKind::Ignore:
+      if (dynamic_cast<StructKind*>(returnKind)) {
+        // We ignore the returning of zero-sized structs.
+        return LLVMGetUndef(valeRetLT);
+      } else if (dynamic_cast<Void*>(returnKind)) {
+        return hostReturnLE;
+      } else if (dynamic_cast<BorrowRef*>(returnKind)) {
+        // We should never ignore a returned reference, AFAIK.
+        assert(false);
+        throw 0;
+      } else {
+        { assert(false); throw 1337; } // Unimplemented
+      }
+    case CoercionKind::DirectInt:
+    case CoercionKind::Cast:
+    case CoercionKind::Pair:
+      if (dynamic_cast<Int*>(returnKind) ||
+          dynamic_cast<Float*>(returnKind) ||
+          dynamic_cast<Bool*>(returnKind)) {
+        return hostReturnLE;
+      } else if (dynamic_cast<StructKind*>(returnKind)) {
+        return bitcastViaBackendLocal(functionState, builder, valeRetLT, "retStruct", hostReturnLE);
+      } else if (dynamic_cast<BorrowRef*>(returnKind)) {
+        // Borrow refs are never lowered to DirectInt/Cast/Pair
+        assert(false);
+        throw 0;
+      } else {
+        { assert(false); throw 1337; } // Unimplemented
+      }
+    case CoercionKind::DirectPtr:
+      // A borrow return (&Glyph) is a BorrowRef whose value already IS the returned pointer, so it passes
+      // through. An owned pointer-repr struct (Slot) is not a reference wrap; its returned pointer is the
+      // struct's bytes and must be wrapped into the struct value.
+      if (dynamic_cast<StructKind*>(returnKind)) {
+        return bitcastViaBackendLocal(functionState, builder, valeRetLT, "retStruct", hostReturnLE);
+      } else if (dynamic_cast<BorrowRef*>(valeReturnRefMT)) {
+        return hostReturnLE;
+      } else {
+        { assert(false); throw 1337; } // Unimplemented
+      }
+    default:
+      return hostReturnLE;
+  }
+}
+
 Ref buildCallOrSideCall(
     GlobalState* globalState,
     FunctionState* functionState,
@@ -197,36 +252,9 @@ Ref buildCallOrSideCall(
 
   auto valeReturnRefMT = prototype->returnType;
 
-  if (hasAbi
-      && (abi->ret.kind == CoercionKind::DirectInt || abi->ret.kind == CoercionKind::Cast)
-      && dynamic_cast<StructKind*>(returnKind)) {
-    // rustc returned this small struct in a single register integer (DirectInt for a scalar-repr struct,
-    // Cast for a memory-repr one). hostReturnLE is that iN; reinterpret its bytes back into the Vale
-    // struct through an integer-typed slot, whose alloca carries the integer's alignment (which the
-    // struct's natural alignment could underprovide). Its type now matches translateType(returnKind).
-    auto valeStructLT = globalState->getRegion(returnKind)->translateType(returnKind);
-    auto slot = makeBackendLocal(functionState, builder, LLVMTypeOf(hostReturnLE), "retCoerceSlot", hostReturnLE);
-    hostReturnLE = LLVMBuildLoad2(
-        builder, valeStructLT,
-        LLVMBuildBitCast(builder, slot, LLVMPointerType(valeStructLT, 0), "retCoercePtr"), "retStruct");
-  }
-
-  if (hasAbi && abi->ret.kind == CoercionKind::Pair && dynamic_cast<StructKind*>(returnKind)) {
-    // rustc returned this small struct as two register scalars, i.e. an {iN,iM} aggregate. Reinterpret
-    // it back into the Vale struct through a slot of the aggregate's own type — the two-register analog
-    // of the Cast/DirectInt return arm above.
-    auto valeStructLT = globalState->getRegion(returnKind)->translateType(returnKind);
-    auto slot =
-        makeBackendLocal(functionState, builder, LLVMTypeOf(hostReturnLE), "retPairSlot", hostReturnLE);
-    hostReturnLE = LLVMBuildLoad2(
-        builder, valeStructLT,
-        LLVMBuildBitCast(builder, slot, LLVMPointerType(valeStructLT, 0), "retPairPtr"), "retPairStruct");
-  }
-
-  if (hasAbi && abi->ret.kind == CoercionKind::Ignore && dynamic_cast<StructKind*>(returnKind)) {
-    // A zero-sized struct returned by value: nothing crosses (the extern returns void, so hostReturnLE
-    // is a void value), just conjure an undef for ut.
-    hostReturnLE = LLVMGetUndef(globalState->getRegion(returnKind)->translateType(returnKind));
+  if (hasAbi) {
+    hostReturnLE = coerceExternReturn(
+        globalState, functionState, builder, abi->ret, valeReturnRefMT, returnKind, hostReturnLE);
   }
 
   auto valeReturnRef =

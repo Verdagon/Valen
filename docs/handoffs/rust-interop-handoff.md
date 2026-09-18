@@ -20,7 +20,10 @@ small (≤8-byte) struct as a single register integer (`Cast`), and a two-scalar
 Wider `Cast`, float-HFA, and pointer-component Pairs stay deferred with no NobiliaV consumer. Rust also calls
 back into Vale (a Vale struct implements an imported Rust trait) — see "Reverse direction"; NobiliaV's entire
 real windowed program now builds and runs through this. See "The `valen build` pipeline" for compiling and
-running a Vale program against real Rust crates.
+running a Vale program against real Rust crates. A real **published crates.io crate** now works end to end:
+a program depending on `chrono = "0.4"` runs `TimeDelta.seconds(42i64).num_seconds()` → 42 through `valen
+build` with no shim — exercising imported `i64` signatures and `#[track_caller]` functions (the hidden
+`&Location` ABI arg, @TCHAPZ). See "What imports and typechecks today".
 Design
 sources of truth: `docs/architecture/vale-rust-interop-architecture.md`,
 `src/instantiating/docs/architecture/instantiating-rust-interop-design.md`, the backend's `Backend/backend-design.md` (the C-ABI /
@@ -133,8 +136,19 @@ and every disk-reading test fails.
   method returning a **borrow of a held value** (`&Glyph`) bound to a **local** resolves — the
   `domino-glyphs` case (`Domino { glyphs: HashMap<i32, Glyph> }`, driven through `&mut self` add / `&self`
   get-by-borrow / a field accessor).
-- **`usize`** — a Vale primitive `KindT::USize(USizeT)`, distinct from `int`/`i64`. Other unsigned widths
-  and floats still decline.
+- **Scalars** — Rust `i32` imports as Valen `int`, `i64` as the distinct `i64` primitive, `usize` as
+  `usize`, `bool` as `bool`, and `()` as `void`. Both `lower_ty` (`tyctxt_oracle.rs`, enumeration) and
+  `vale_type_name` (`declarations.rs`, synthesis) must name this same set — a type one accepts but the
+  other can't name `vfail`-panics rather than declining (the i64 trap; see Lessons). Everything else —
+  the other signed widths (`i8`/`i16`/`i128`/`isize`), all unsigned widths (`u8`..`u128`, except
+  `usize`), and floats — declines with a `CouldNotPostparseReason`.
+- **`#[track_caller]` functions** — a `#[track_caller]` Rust fn carries a hidden trailing `&Location` ABI
+  argument absent from its type signature (@TCHAPZ). `compute_extern_abi` marks that trailing coercion
+  `Coercion::LocationPtr` (detected via `instance.def.requires_caller_location(tcx)`); the backend
+  declares a `ptr` param and passes null for it. So panic-on-error / overflow-checked crate APIs (the
+  `.expect()`/`.unwrap()`-wrapping constructors ubiquitous in real crates) import and run — verified end
+  to end by a real `chrono = "0.4"` dependency (`TimeDelta.seconds(42i64).num_seconds()` builds and runs
+  → 42 through `valen build`).
 - **Enums** — opaque sealed interfaces (`KindT::Interface`) via `synthesize_extern_interface`. You can
   receive one, call its inherent methods, pass it, and drop it. Variants are **not** represented: no
   matching `Some`/`None`, no constructing them.
@@ -295,6 +309,12 @@ ABI); domino's struct sizes and calling conventions are read from rustc (`layout
   too — two register params for an arg, an `{iN,iM}` aggregate for a return, both directions. Multi-piece
   `Cast` (`[N x i64]`), float-HFA, pointer-component Pairs, and on-stack byval (`Indirect { on_stack: true }`)
   still `panic!`; a leaf that hits one adds its own arm.
+  A **`#[track_caller]`** callee's hidden trailing `&Location` ABI arg (@TCHAPZ) is marked
+  `Coercion::LocationPtr` rather than a plain `DirectPtr`: `buildBoundarySignature` declares it a `ptr`
+  param and `buildCallOrSideCall` synthesizes a null pointer for it (it consumes no Vale argument — safe
+  under `panic = abort`). `LocationPtr` rides the existing per-coercion FFI channel (one more `CoercionKind`
+  ordinal), so nothing new crosses the metal FFI; the old `abi->args.size() == params.size()` assert in
+  `buildBoundarySignature` is now a *non-`LocationPtr`* count check.
 
   Two boundary subtleties the domino run forced, both in the consumers:
     - **`sret` needs the LLVM `sret` attribute.** An `Indirect` return passes the out-pointer in the
@@ -438,6 +458,13 @@ confirmed no NobiliaV consumer): a `Pair` whose component is a pointer/float (fa
 multi-piece `Cast` (`[N x i64]`), and on-stack byval (`Indirect { on_stack: true }`).
 
 ## Next
+
+**Do next session** — the deferrals from the `i64` and `#[track_caller]` landings (full detail in
+Short-term #8–#10 below):
+- Lower non-`__vbi_` builtin externs (e.g. `TruncateI64ToI32`) on the interop path (#8).
+- Make `synthesize_extern_function` return `Some(Err(reason))` instead of `None`, so an
+  unnameable-but-enumerated type declines cleanly instead of `vfail`-crashing (#9).
+- Default `[[bin]]` in `Valen.toml` to `src/main.valen` + the project name when absent (#10).
 
 The `valen build` pipeline works for the binary + rust-dependency case (above). Reference implementation
 `/Volumes/V/Harmonious/toylangc/` (`src/build.rs` orchestrator + `src/main.rs` wrapper dispatch).
@@ -811,6 +838,28 @@ arg, plus its return group). Tracked by the ignored `a_real_vec_element_accessor
    false. `fixtures_mut_callback/stub.rs` carries a hand-written `MyCb` impl nothing references (the corpus case
    uses the lambda form). `render_rust_kind`'s doc comment (`stub_gen.rs`) says `&mut` is unreachable through a
    callback boundary; its caller renders `&mut` above it.
+8. **Non-`__vbi_` builtin externs don't lower on the interop path.** A builtin `extern func` that is not a
+   `__vbi_` intrinsic — e.g. `TruncateI64ToI32(x i64) int` (`src/builtins/resources/arith.vale`) — gets no
+   interop `FunctionExternI`, so calling it from a driven / `valen build` program aborts the backend at
+   `buildCallOrSideCall`'s missing-extern assert (`Backend/src/function/expressions/externs.cpp`). The
+   backend's intrinsic switch there recognizes only `__vbi_`-prefixed names, and the interop leaf path
+   materializes `rust` leaves, not builtin externs. Worked around in the corpus + the chrono sample by
+   returning `i64` from `main` directly (the backend truncates for the exit code) instead of calling
+   `TruncateI64ToI32`. Fix: lower non-`__vbi_` builtin externs on the interop path, or back them with
+   `__vbi_` intrinsics.
+9. **Synthesizing an unnameable-but-enumerated type `vfail`s instead of declining (defensive, no red test).**
+   `synthesize_extern_function` (`declarations.rs`) returns `None` when a type can't be named, and
+   `illuminate_function` (`compiler.rs`, core) treats `None` as a bug and panics. After the i64 fix no
+   current type triggers this (every scalar `lower_ty` accepts, `vale_type_name` now names), so a *future*
+   divergence between the two would crash rather than decline. Harden by returning
+   `Some(Err(CouldNotPostparseReason::…))` on an unnameable type so it surfaces as a clean
+   `CouldNotPostparseFunction` diagnostic.
+10. **`[[bin]]` in `Valen.toml` could default.** cargo only auto-discovers `src/main.rs`, never a `.valen`,
+    so the orchestrator requires an explicit `[[bin]] { name, source }` to point cargo's generated
+    `[[bin]] path` at the crate root (`generate_workspace`, `orchestrator.rs`); an empty `bins` yields no
+    cargo target and cargo builds nothing. Default it — assume `src/main.valen` with `name = <project
+    name>` when `[[bin]]` is absent (mirroring cargo's `src/main.rs` convention) — to trim the manifest
+    boilerplate.
 
 **Debugging under interop (source-level DWARF for Valen code in a rustc build).** Standalone Valen
 binaries emit real DWARF — function/statement/local DIEs, and (new) a real `DW_AT_comp_dir` so lldb
@@ -845,9 +894,20 @@ is all frontend (`rust_interop/`, AI-editable) plus one real unknown:
    interop debugging needs a rustc-driven build + lldb gate (extend the interop harness). Keep interop
    debugging parked until the step-1 spike is green.
 
-**Then:** **Phase 3 libraries** — a Valen library exports types/funcs consumed by another crate: the pass-2
-typing-driven `lib.rs` (exported declarations from `HinputsT`), two rustc passes, and per-export symbol
-capture generalized beyond `__vale_main`. The **`vale`→`valen` rename** (internal symbols — `__vale_main`,
+**Medium-term goal — a standalone Rust program calls into a Vale library** (Phase 3 libraries; demo target
+`../testproj3`). The built "Rust → Vale" today is the reverse-callback direction only, and it runs inside a
+**Valen-driven** build (a `.valen` crate root, entry `__vale_main`); there is no path where an ordinary
+cargo-built Rust program (its own `fn main`) depends on a Vale crate and calls its exported functions. Three
+gaps: (1) per-export inbound symbol capture is special-cased to `__vale_main` (recorded in
+`DriverState.entry_symbol`, `src/instantiating/rust_interop/mod.rs`) — generalize it so every export is
+emitted under its rustc-mangled name, the inbound mirror of `FunctionExternI.link_name`; (2) the pass-2 typing-driven `lib.rs` (exported
+declarations from `HinputsT`) is unbuilt — `generate_pass2_stub` (`stub_gen.rs`) projects only anon
+substructs today; (3) the build is always Valen-driven into a bin (`run_build`, `orchestrator.rs`) — a
+Rust-driven build that consumes a Vale crate as a cargo dependency does not exist. Also needs the two rustc
+passes for a library crate. A genuine `../testproj3` (a Rust `fn main` calling a Vale-exported function)
+requires all three; it is not assemblable from today's capability.
+
+The **`vale`→`valen` rename** (internal symbols — `__vale_main`,
 `__VALE_STUBS_MARKER`, `is_vale_codegen_target`, the argv[0] literals — still spell `vale`; the two bins are
 already `valenc-rs`/`valen`) is a mechanical tree-wide sweep.
 
@@ -868,8 +928,7 @@ Durable facts:
 - **Two-pass needs no on-disk cache.** `HinputsT` is arena-bound and unserializable (no derives), but its
   arenas live in the driver frame independent of the `tcx`, so one `HinputsT` survives two `run_compiler`
   calls in one frame. Defer the design's `.vale-cache`/`after_analysis` serialization until cross-invocation
-  reuse is actually needed. Also generalize per-export symbol capture: today only `__vale_main` is recorded
-  (`src/instantiating/rust_interop/mod.rs`); the design wants it per export.
+  reuse is actually needed.
 
 ## The C++ backend under interop
 
@@ -966,6 +1025,27 @@ The `// VCOORD` on the sealed tables in `compiler_outputs.rs` records the enforc
   have.** Prefer one uniform mechanism over a fast path plus a general path, even when the fast path is
   cheap: e.g. every Valen crate runs two rustc passes, with no one-pass short-circuit for the empty-stub
   case. A special case is a second thing to keep correct.
+- **`lower_ty` (enumeration) and `vale_type_name` (synthesis) must agree on the scalar surface.** `lower_ty`
+  accepted rust `i64` but `vale_type_name` named only 32-bit ints, so an `i64` import was offered as an
+  overload candidate then `vfail`-panicked at `illuminate_function` (`compiler.rs`) when materialized — the
+  `None` synthesis returns is the "genuine bug" path there, not a decline. When a plausibly-supported import
+  panics with "no postparsed function," suspect an enumeration-vs-synthesis disagreement over a type, not a
+  missing feature.
+- **A `#[track_caller]` Rust fn's `fn_abi` has one more argument than its `fn_sig`** — a hidden trailing
+  `&Location` (@TCHAPZ) — so building the Vale prototype from `fn_sig` and the ABI descriptor from
+  `fn_abi_of_instance` disagree on arg count for every such callee. Detect via
+  `instance.def.requires_caller_location(tcx)` and *keep* the arg (`LocationPtr`, a null ptr); dropping it to
+  match the signature is ABI-level UB (the callee reads one arg more than the caller provides). Common:
+  panic-on-error / overflow-checked constructors across real crates are `#[track_caller]`.
+- **Reduce a real-crate interop bug against the exact declaration — attributes included, not just the type
+  shape.** A local fixture mirroring `chrono::TimeDelta`'s struct shape did NOT reproduce the
+  `buildBoundarySignature` abort, because the cause was the `#[track_caller]` *attribute*, not the 16-byte
+  struct. A shape-only repro passing is not evidence the bug is elsewhere.
+- **Only `__vbi_`-prefixed builtin externs lower on the interop path.** A builtin `extern func` without that
+  prefix (e.g. `TruncateI64ToI32`, `arith.vale`) has no interop `FunctionExternI` and aborts the backend at
+  `buildCallOrSideCall`'s missing-extern assert. Don't reach for such a builtin in an interop / `valen build`
+  program until Next #8 lands — e.g. return `i64` from `main` directly (the backend truncates for the exit
+  code) instead of calling `TruncateI64ToI32`.
 - **A nextest `leaky` flag on a `backend_ffi::metal_cache` FFI test is known noise, not the P0 nondeterminism
   to halt on.** It lands on a *different* C++-FFI test each run because it is a leak-*timeout* heuristic; the
   test RESULTS are deterministic (all pass), only the WARNING moves. Ignore it — do NOT stop and re-investigate

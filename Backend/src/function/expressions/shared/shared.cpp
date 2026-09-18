@@ -50,6 +50,18 @@ LLVMValueRef makeBackendLocal(
   return localAddr;
 }
 
+// LLVM doesn't check whether we're loading it as a different type, but that is the intent here.
+// People use this when they want to store something as one type and load it as another.
+LLVMValueRef bitcastViaBackendLocal(
+    FunctionState* functionState,
+    LLVMBuilderRef builder,
+    LLVMTypeRef targetTypeL,
+    const std::string& name,
+    LLVMValueRef valueToStore) {
+  auto slot = makeBackendLocal(functionState, builder, LLVMTypeOf(valueToStore), name, valueToStore);
+  return LLVMBuildLoad2(builder, targetTypeL, slot, (name + "_loaded").c_str());
+}
+
 void makeHammerLocal(
     GlobalState* globalState,
     FunctionState* functionState,

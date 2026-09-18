@@ -1152,6 +1152,22 @@ fn rustc_driven_bin_small8_cast_arg_returns_ten() {
   );
 }
 
+/// Tier-2 counterpart to `multiple_mutable_aliases_to_one_rust_object_are_legal`: drives the same
+/// `Slot` program through codegen and runs it → 73. Exercises the by-value `Coercion::DirectPtr`
+/// **return** (`Slot`'s whole ABI is one pointer, a `Box<i64>` field), which `coerceExternReturn`
+/// reassembles into `%Slot{ptr}`; before that arm existed, the bare `ptr` reached `toRef` and aborted.
+/// The aliasing itself is incidental to the return path — it's just what the shared case exercises.
+#[test]
+fn rustc_driven_bin_multiple_mutable_aliases_returns_73() {
+  let run = run_case_rustc_driven_and_run(&MULTIPLE_MUTABLE_ALIASES_TO_ONE_RUST_OBJECT_ARE_LEGAL);
+  assert_eq!(
+    run.process_exit,
+    Some(73),
+    "the driven multiple-mutable-aliases bin did not exit 73 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
 /// Regression guard for the driven harness's diagnostics, not an interop feature. When a driven Vale
 /// program fails to typecheck, the harness must surface that. Before it did, a failed typecheck left
 /// `hinputs` None, which read downstream as an empty `__vale_main -> []` firing log plus an undefined
