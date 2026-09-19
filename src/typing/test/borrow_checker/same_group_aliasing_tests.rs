@@ -50,7 +50,7 @@ exported func main() int {
 "#),
     r#"At test:0.vale:17:11:
   observe(e);
-e references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used e after invalidated.
 "#,
   );
 }
@@ -94,7 +94,7 @@ exported func main() int {
 "#),
     r#"At test:0.vale:17:11:
   observe(e);
-e references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used e after invalidated.
 "#,
   );
 }

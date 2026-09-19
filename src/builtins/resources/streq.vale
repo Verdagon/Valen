@@ -1,21 +1,21 @@
 
 // Vale-visible wrapper that resolves to the __vbi_streq compiler intrinsic.
-func streq(
-  aContainerStr &str,
+func streq<ga', gb'>(
+  aContainerStr &str in ga,
   aBegin int,
   aEnd int,
-  bContainerStr &str,
+  bContainerStr &str in gb,
   bBegin int,
   bEnd int)
 bool {
   return __vbi_streq(aContainerStr, aBegin, aEnd, bContainerStr, bBegin, bEnd);
 }
 
-extern func __vbi_streq(
-  aContainerStr &str,
+extern func __vbi_streq<ga', gb'>(
+  aContainerStr &str in ga,
   aBegin int,
   aEnd int,
-  bContainerStr &str,
+  bContainerStr &str in gb,
   bBegin int,
   bEnd int)
 bool;

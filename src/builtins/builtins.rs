@@ -59,10 +59,7 @@ pub fn builtin_module_code_map<'a>(
 /// even when the test doesn't need the actual content of every module — the empty
 /// hashmap satisfies resolution without providing any exports.
 pub fn empty_v_builtins_stub<'a>(coord: &PackageCoordinate<'a>) -> Option<HashMap<String, String>> {
-  match (coord.module.0, coord.packages.as_slice()) {
-    ("v", [StrI("builtins"), _]) => Some(HashMap::default()),
-    _ => None,
-  }
+  if coord.is_builtin() { Some(HashMap::default()) } else { None }
 }
 
 /// Build a single `Source::CodeMap` covering multiple builtin modules — one hashmap

@@ -48,6 +48,11 @@ impl<'a> PackageCoordinate<'a> {
     self.module == TEST_MODULE && self.packages.is_empty()
   }
 
+  /// A builtin module: `("v", ["builtins", <name>])`.
+  pub fn is_builtin(&self) -> bool {
+    self.module == "v" && matches!(self.packages.as_slice(), [StrI("builtins"), _])
+  }
+
   pub fn eq_by_value<'b>(&self, other: &PackageCoordinate<'b>) -> bool {
     self.module.as_str() == other.module.as_str()
       && self.packages.as_slice().len() == other.packages.as_slice().len()

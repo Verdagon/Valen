@@ -353,8 +353,6 @@ where
     });
     coutputs.add_function(header_sig, function2);
 
-    // Borrow-check this finished body. The check arena holds the transient grouped AST. The aliasing
-    // facts it computes outlive the arena and are stashed on coutputs for the backend.
     if self.opts.borrow_checker_enabled {
       let check_arena = Bump::new();
       let aliasing_info =

@@ -15,7 +15,7 @@ use crate::postparsing::names::{
 };
 use crate::postparsing::patterns::patterns::{AtomSP, CaptureS};
 use crate::postparsing::rules::rules::{CallSR, IRulexSR, LookupSR, RuneUsage};
-use crate::postparsing::rules::types::{ITypeST, RuneUsageST};
+use crate::postparsing::rules::types::{CallST, ITypeST, NameST, RuneUsageST};
 use crate::typing::compiler::Compiler;
 use crate::typing::compiler_outputs::CompilerOutputs;
 use crate::typing::env::environment::*;
@@ -114,7 +114,18 @@ where
         self.scout_arena.alloc_slice_from_vec::<IRulexSR<'s>>(Vec::new()),
       )]),
       Some(use_(-64002, void_kind_rune_s)),
-      None, // no user-written return group
+      // The written return, `void`, spelled as a written `void` is: the zero-arg Call of its Name
+      // (@TNLTZACZ). Every non-lambda carries a written return type.
+      Some(ITypeST::Call(self.scout_arena.alloc(CallST {
+        range: interface_a.range,
+        template: self.scout_arena.alloc(ITypeST::Name(self.scout_arena.alloc(NameST {
+          range: interface_a.range,
+          name: self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS {
+            name: self.keywords.void,
+          })),
+        }))),
+        args: self.scout_arena.alloc_slice_from_vec(Vec::new()),
+      }))),
       // A synthesized drop carries no effect clause.
       &[],
       rules_slice,

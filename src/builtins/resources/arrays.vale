@@ -4,30 +4,30 @@ import v.builtins.drop.*;
 import v.builtins.panic.*;
 
 struct DropFunctor<T> { }
-func __call<T>(self &DropFunctor<T>, elem T)
+func __call<T, g'>(self &DropFunctor<T> in g, elem T)
 where func drop(T)void {
   ^elem;
 }
 
 extern("vale_static_sized_array_len")
-func len<S Int, E>(arr &StaticArray<S, E>) int;
+func len<S Int, E, g'>(arr &StaticArray<S, E> in g) int;
 
 extern("vale_runtime_sized_array_new")
 func Array<E>(size int) []E;
 
 extern("vale_runtime_sized_array_push")
-func push<E>(arr &[]E, newElement E) void;
+func push<E, g'>(arr &[]E in g, newElement E) void;
 
 extern("vale_runtime_sized_array_pop")
-func pop<E>(arr &[]E) E;
+func pop<E, g'>(arr &[]E in g) E;
 
 extern("vale_runtime_sized_array_len")
-func len<E>(arr &[]E) int;
+func len<E, g'>(arr &[]E in g) int;
 
 extern("vale_runtime_sized_array_capacity")
-func capacity<E>(arr &[]E) int;
+func capacity<E, g'>(arr &[]E in g) int;
 
-func drop_into<E, F>(arr []E, consumer &F) void
+func drop_into<E, F, g'>(arr []E, consumer &F in g) void
 where func(&F, E)void
 {
   while ((&arr).len() > 0) {
@@ -42,7 +42,7 @@ where func drop(E)void {
 }
 
 extern("vale_static_sized_array_drop_into")
-func drop_into<S Int, E, F>(arr StaticArray<S, E>, consumer &F) void
+func drop_into<S Int, E, F, g'>(arr StaticArray<S, E>, consumer &F in g) void
 where func(&F, E)void;
 
 func drop<S Int, E>(arr StaticArray<S, E>) void
@@ -50,7 +50,7 @@ where func drop(E)void {
   drop_into(^arr, &DropFunctor<E>());
 }
 
-func Array<E, G>(n int, generator &G) []E
+func Array<E, G, g'>(n int, generator &G in g) []E
 where
   func(&G, int)E,
   func drop(G)void

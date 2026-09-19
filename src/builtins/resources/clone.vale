@@ -8,10 +8,10 @@ func clone(x i64) i64 { x }
 func clone(x str) str { x }
 
 // VCOORD: &-flavored clone variants for post-kind-mutability-cut where-clauses (`where func clone(&K)K`)
-func clone(x &int) int { __copy_prim(x) }
-func clone(x &bool) bool { __copy_prim(x) }
-func clone(x &float) float { __copy_prim(x) }
-func clone(x &i64) i64 { __copy_prim(x) }
+func clone<g'>(x &int in g) int { __copy_prim(x) }
+func clone<g'>(x &bool in g) bool { __copy_prim(x) }
+func clone<g'>(x &float in g) float { __copy_prim(x) }
+func clone<g'>(x &i64 in g) i64 { __copy_prim(x) }
 
 // func clone<T>(x &T) &T where T = Kind[_, Kind[mut]] { x }
 // func clone<T>(x weak T) weak T where T = Kind[_, Kind[mut]] { x }

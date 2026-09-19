@@ -307,8 +307,8 @@ pub enum ICompileErrorT<'s, 't> {
     message: &'s str,
   },
   BorrowCheckError {
-    range: &'t [RangeS<'s>],
-    kind: BorrowErrorKind<'s, 't>,
+    range: RangeS<'s>,
+    kind: BorrowErrorKind<'s, 't>, // VCOORD: rename
   },
   SharedImplingMismatch {
     range: &'t [RangeS<'s>],
@@ -389,7 +389,7 @@ impl<'s, 't> ICompileErrorT<'s, 't> {
       Self::CantImplNonInterface { range, .. } => *range,
       Self::NonCitizenCantImpl { range, .. } => *range,
       Self::RangedInternalErrorT { range, .. } => *range,
-      Self::BorrowCheckError { range, .. } => *range,
+      Self::BorrowCheckError { range, .. } => from_ref(range),
       Self::SharedImplingMismatch { range, .. } => *range,
       Self::TookWeakRefOfNonWeakableError { range, .. } => *range,
       Self::NoImplicitCloneDefinedT { range, .. } => *range,

@@ -1,7 +1,7 @@
 import v.builtins.result.*;
 
 extern("vale_as_subtype")
-func try_as<SubType, SuperType>(left &SuperType) Result<&SubType, &SuperType>
+func try_as<SubType, SuperType, g'>(left &SuperType in g) Result<&SubType, &SuperType>
 where implements(SubType, SuperType);
 
 extern("vale_as_subtype")

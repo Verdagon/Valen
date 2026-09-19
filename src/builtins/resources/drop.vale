@@ -7,7 +7,7 @@ func drop(x void) {}
 func drop(x i64) {}
 func drop(x str) {}
 
-func drop<T>(x &T) { }
+func drop<T, g'>(x &T in g) { }
 
 func drop<T>(v void, x T)
 where func drop(T)void {

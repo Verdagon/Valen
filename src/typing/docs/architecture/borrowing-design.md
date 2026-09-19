@@ -133,7 +133,7 @@ All IExpressionGE variants hold expression structs, just like IExpressionTE. Eac
 // A specific mutation to a specific group (as opposed to GroupExprG which an expression for expressing the group(s) a ref might point at).
 struct MutEffectPath<'g> {
   effecting_node_loc: Loc, // Which expr had this mut effect (e.g. loc of `level.tiles.clear()`)
-  steps: &'g [&'s GroupStep<'s>], // What group the effect mutated (e.g. ["level", "tiles"])
+  steps: &'g [&'g GroupStep<'s>], // What group the effect mutated (e.g. ["level", "tiles"])
 }
 enum GroupStep<'s> {
   Rune(&'s IRuneS), // a group param, e.g. <g'>, resolved to its id
@@ -470,6 +470,29 @@ A: We need some way to communicate _across function call boundaries_ which param
 
 
 ## Design Proposals
+
+**A use is checked at the load of the local, by the reference's key.** `check_usages` looks a reference
+up by its `RefKey` across the whole `GroupSubtree`, never by re-walking its group; the group is
+consulted only when the reference is registered. A named reference is checked at every `LocalLookup` of
+its local, which covers call arguments, derefs, member lookups, `return` and `set` sources with one rule.
+
+**`GroupExprG` is a set of paths.** A reference's group is `&'g [GroupPath]`, and a `GroupPath` is a
+`root` (`Rune`, `ParamAnonymousGroup`, or `Local`), `steps` (`Member`, `ChildElements`,
+`InlineElements`, `Variant`), and a `descendants` flag for `g...`. A `MutEffectPath` holds one
+`GroupPath`; substitution at a call replaces a path's root; register and churn walk `steps`.
+
+**Every non-lambda function carries a written return type.** `FunctionS.maybe_return_type` is `Some`
+for every function but a lambda, whether written by the user, written as `void` by the scout, written
+by the macros for constructors, drops and forwarders, or written by the interop synthesizer; the checker
+reads a callee's return groups off it and treats `None` on a non-lambda as a compiler bug.
+
+**One rune-to-templata map per frame resolves kinds and groups alike.** A frame's map holds an
+`ITemplataG` for every generic parameter in scope: a group parameter's entry is
+`Group(GroupExprG)`, next to a kind parameter's `Kind(KindGT)`. A function's own definition registers
+its group parameters as themselves, `g → Group(Rune(g))`. A call site's map for the callee binds each
+callee rune from the grouped arguments, so `churn<g'>(a &[]int in g)` called with `&arr` holds
+`g → Group(Local(arr))`. Every rune a written type or `mut(g)` mentions is looked up in the frame
+being groupified into, and a miss is a compiler bug.
 
 **Override effect-matching is a borrow-check.** Override resolution invokes the borrow checker to
 compare an override's declared `mut(...)` against the abstract method it implements, and a mismatch is

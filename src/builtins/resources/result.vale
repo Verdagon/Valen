@@ -30,10 +30,10 @@ where func drop(ErrType)void {
   [x] = ^self;
 }
 
-abstract func is_ok<OkType, ErrType>(virtual result &Result<OkType, ErrType>) bool;
-func is_ok<OkType, ErrType>(ok &Ok<OkType, ErrType>) bool { return true; }
-func is_ok<OkType, ErrType>(err &Err<OkType, ErrType>) bool { return false; }
-func is_err<OkType, ErrType>(result &Result<OkType, ErrType>) bool { return not is_ok(result); }
+abstract func is_ok<OkType, ErrType, g'>(virtual result &Result<OkType, ErrType> in g) bool;
+func is_ok<OkType, ErrType, g'>(ok &Ok<OkType, ErrType> in g) bool { return true; }
+func is_ok<OkType, ErrType, g'>(err &Err<OkType, ErrType> in g) bool { return false; }
+func is_err<OkType, ErrType, g'>(result &Result<OkType, ErrType> in g) bool { return not is_ok(result); }
 
 abstract func expect<OkType, ErrType>(virtual result Result<OkType, ErrType>, msg str) OkType;
 func expect<OkType, ErrType>(err Err<OkType, ErrType>, msg str) OkType { panic(msg); }

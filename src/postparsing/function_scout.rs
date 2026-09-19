@@ -47,7 +47,7 @@ use crate::postparsing::rules::templex_scout::{
   translate_effects_p_into_effects_s, translate_maybe_type_into_maybe_rune,
   translate_signature_type_st, translate_templex_into_type_st,
 };
-use crate::postparsing::rules::types::{ITypeST, RuneUsageST};
+use crate::postparsing::rules::types::{CallST, ITypeST, NameST, RuneUsageST};
 use crate::postparsing::variable_uses::{VariableDeclarationS, VariableDeclarations, VariableUses};
 use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::utils::code_hierarchy::FileCoordinate;
@@ -680,7 +680,10 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
     };
     // Build the written return type as a group-annotated tree (mirroring a parameter's `tyype`), so
     // the borrow checker can read a returned reference's `in g` group. A `RegionRune` return isn't a
-    // real type.
+    // real type. Every non-lambda carries a written return type: with none written (or only a region
+    // rune), a named function returns `void`, spelled as a written `void` is — the zero-arg Call of its
+    // Name (@TNLTZACZ), the same `void` the rune side looks up above. Only a lambda leaves it unwritten;
+    // its return is inferred.
     let maybe_return_type = match &function.header.ret.ret_type {
       Some(ret_type_p) if !matches!(ret_type_p, ITemplexPT::RegionRune(_)) => {
         Some(translate_templex_into_type_st(
@@ -689,7 +692,20 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           ret_type_p,
         ))
       }
-      _ => None,
+      _ if is_parent_function => None,
+      _ => {
+        let ret_range_s = Self::eval_range(file_coordinate, function.header.ret.range);
+        let void_name = self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(
+          CodeNameValS { name: self.keywords.void },
+        ));
+        Some(ITypeST::Call(self.scout_arena.alloc(CallST {
+          range: ret_range_s.clone(),
+          template: self
+            .scout_arena
+            .alloc(ITypeST::Name(self.scout_arena.alloc(NameST { range: ret_range_s, name: void_name }))),
+          args: self.scout_arena.alloc_slice_from_vec(Vec::new()),
+        })))
+      }
     };
     let has_extern_attr =
       function.header.attributes.iter().any(|attr| matches!(attr, IAttributeP::ExternAttribute(_)));

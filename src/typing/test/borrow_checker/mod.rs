@@ -10,6 +10,7 @@ mod producer_gate_tests;
 mod restrict_region_tests;
 mod robustness_tests;
 mod same_group_aliasing_tests;
+mod synthesized_callee_tests;
 mod use_after_churn_tests;
 mod walk_completeness_tests;
 mod util;

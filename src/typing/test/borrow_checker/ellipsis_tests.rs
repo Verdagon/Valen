@@ -24,7 +24,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -70,7 +70,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -94,7 +94,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -138,7 +138,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }

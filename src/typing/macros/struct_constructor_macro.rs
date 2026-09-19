@@ -16,6 +16,7 @@ use crate::postparsing::names::{
 };
 use crate::postparsing::patterns::patterns::{AtomSP, CaptureS};
 use crate::postparsing::rules::rules::{CallSR, IRulexSR, LookupSR, RuneUsage};
+use crate::postparsing::rules::types::{CallST, ITypeST, NameST, RuneUsageST};
 use crate::typing::ast::ast::*;
 use crate::typing::ast::expressions::*;
 use crate::typing::compiler::Compiler;
@@ -128,6 +129,18 @@ where
 
     let params_slice = self.scout_arena.alloc_slice_from_vec(params);
     let rules_slice = self.scout_arena.alloc_slice_copy(&rules);
+
+    let written_arg_types: Vec<&'s ITypeST<'s>> = generic_param_runes
+      .iter()
+      .map(|ru| &*self.scout_arena.alloc(ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: *ru }))))
+      .collect();
+    let written_return_type = ITypeST::Call(self.scout_arena.alloc(CallST {
+      range: struct_name_range,
+      template: self.scout_arena.alloc(ITypeST::Name(
+        self.scout_arena.alloc(NameST { range: struct_name_range, name: struct_imprecise_name }),
+      )),
+      args: self.scout_arena.alloc_slice_from_vec(written_arg_types),
+    }));
     // A constructor's imprecise name is the citizen's spelling (a `MyStruct(...)` call resolves as
     // `CodeName{"MyStruct"}`); its lid is the synthesized denizen root seed. Built directly. A
     // function declaration name is identity, not interned (@WVSBIZ).
@@ -159,7 +172,7 @@ where
       },
       params_slice,
       Some(ret_rune),
-      None, // no user-written return group
+      Some(written_return_type),
       // A synthesized constructor carries no effect clause.
       &[],
       rules_slice,

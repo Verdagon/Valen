@@ -1414,7 +1414,7 @@ fn test_named_param_keeps_its_name_at_postparse() {
 }
 
 use crate::postparsing::rules::rules::{IRulexSR, RegionSR, ResolveSR};
-use crate::postparsing::rules::types::{BorrowRefST, EffectS, GroupS, ITypeST, RegionS};
+use crate::postparsing::rules::types::{BorrowRefST, CallST, EffectS, GroupS, ITypeST, NameST, RegionS};
 
 #[test]
 fn test_param_no_outer_wrap_routing() {
@@ -2558,6 +2558,50 @@ fn test_return_descendant_group_captured() {
     other => {
       panic!("expected return `&int in g...` captured as a borrow with an ellipsis group; got {:?}", other)
     }
+  }
+}
+
+#[test]
+fn test_omitted_return_on_named_function_is_written_void() {
+  // A named function with no written return type returns `void`, and the scout writes that down:
+  // `func foo() { }` gets `maybe_return_type` spelled exactly as a written `void` is — the zero-arg
+  // Call of the `void` name — so every non-lambda carries a written return type the borrow checker
+  // can read. Only a lambda may leave it unwritten.
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let program = compile(&scout_arena, &keywords, &parse_arena, "exported func foo() { }");
+  let foo = program.lookup_function("foo");
+  match foo.maybe_return_type {
+    Some(ITypeST::Call(CallST {
+      template: ITypeST::Name(NameST { name: IImpreciseNameS::CodeName(cn), .. }),
+      args: [],
+      ..
+    })) => assert_eq!(cn.name, keywords.void),
+    other => panic!("expected an omitted return written as `void`; got {:?}", other),
+  }
+}
+
+#[test]
+fn test_omitted_return_on_generic_named_function_is_written_void() {
+  // The same for a generic helper with borrow parameters — the shape the borrow-checker suite leans
+  // on (`func use2<T>(a &T, b int) { }`): its return is written as `void` too.
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let program = compile(&scout_arena, &keywords, &parse_arena, "func use2<T>(a &T, b int) { }");
+  let use2 = program.lookup_function("use2");
+  match use2.maybe_return_type {
+    Some(ITypeST::Call(CallST {
+      template: ITypeST::Name(NameST { name: IImpreciseNameS::CodeName(cn), .. }),
+      args: [],
+      ..
+    })) => assert_eq!(cn.name, keywords.void),
+    other => panic!("expected an omitted return written as `void`; got {:?}", other),
   }
 }
 

@@ -454,7 +454,20 @@ pub fn run_case_in_package<R: Send>(
   package_module: &str,
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
 ) -> CaseOutcome<R> {
-  try_run_case_in_package(case, package_module, false, move |hinputs, _coutputs, _interner| {
+  try_run_case_in_package(case, package_module, false, true, move |hinputs, _coutputs, _interner| {
+    extract(hinputs)
+  })
+  .expect("rustc returned without ever reaching after_expansion")
+}
+
+/// `run_case` without the builtins package compiled in: the case's program plus its Rust fixture and
+/// nothing else. For a program that uses no Valen operators (`+`, `==`, …), so the typed output is only
+/// what the program itself declares and imports.
+pub fn run_case_without_builtins<R: Send>(
+  case: &Case,
+  extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
+) -> CaseOutcome<R> {
+  try_run_case_in_package(case, "test", false, false, move |hinputs, _coutputs, _interner| {
     extract(hinputs)
   })
   .expect("rustc returned without ever reaching after_expansion")
@@ -467,8 +480,10 @@ pub fn run_case_instantiated<R: Send>(
   case: &Case,
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
 ) -> CaseOutcome<R> {
-  try_run_case_in_package(case, "test", true, move |hinputs, _coutputs, _interner| extract(hinputs))
-    .expect("rustc returned without ever reaching after_expansion")
+  try_run_case_in_package(case, "test", true, true, move |hinputs, _coutputs, _interner| {
+    extract(hinputs)
+  })
+  .expect("rustc returned without ever reaching after_expansion")
 }
 
 /// `run_case` for the one case that expects rustc itself to fail: `None` means `after_expansion`
@@ -477,7 +492,7 @@ pub fn try_run_case<R: Send>(
   case: &Case,
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>) -> R + Send,
 ) -> Option<CaseOutcome<R>> {
-  try_run_case_in_package(case, "test", false, move |hinputs, _coutputs, _interner| {
+  try_run_case_in_package(case, "test", false, true, move |hinputs, _coutputs, _interner| {
     extract(hinputs)
   })
 }
@@ -491,7 +506,7 @@ pub fn run_case_with_coutputs<R: Send>(
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>, &CompilerOutputs<'s, 't>, &TypingInterner<'s, 't>) -> R
     + Send,
 ) -> CaseOutcome<R> {
-  try_run_case_in_package(case, "test", false, extract)
+  try_run_case_in_package(case, "test", false, true, extract)
     .expect("rustc returned without ever reaching after_expansion")
 }
 
@@ -597,6 +612,7 @@ fn try_run_case_in_package<R: Send>(
   case: &Case,
   package_module: &str,
   instantiate: bool,
+  compile_builtins: bool,
   extract: impl for<'s, 't> Fn(&HinputsT<'s, 't>, &CompilerOutputs<'s, 't>, &TypingInterner<'s, 't>) -> R
     + Send,
 ) -> Option<CaseOutcome<R>> {
@@ -633,7 +649,7 @@ fn try_run_case_in_package<R: Send>(
     package_module,
     extract,
     instantiate,
-    compile_builtins: true,
+    compile_builtins,
     outcome: None,
   };
   // rustc's fatal-error path does not return — it emits the diagnostic and then **unwinds**,

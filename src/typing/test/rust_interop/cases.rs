@@ -24,9 +24,14 @@ use std::fs::{read_dir, read_to_string};
 use std::path::PathBuf;
 
 use crate::collect_where_tnode;
+use crate::postparsing::names::IImpreciseNameS;
+use crate::postparsing::rules::types::{CallST, ITypeST, NameST};
 use crate::typing::ast::ast::PrototypeT;
+use crate::typing::compiler::Compiler;
+use crate::typing::compiler_outputs::CompilerOutputs;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::names::names::{INameT, IdT};
+use crate::typing::typing_interner::TypingInterner;
 use crate::typing::rust_interop::corpus::*;
 use crate::typing::rust_interop::stub_gen::generate_pass2_stub;
 use crate::typing::rust_interop::{
@@ -34,7 +39,7 @@ use crate::typing::rust_interop::{
 };
 use crate::typing::templata::templata::ITemplataT;
 use crate::typing::test::rust_interop::harness::{
-  compile_check_fixture, run_case, run_case_in_package, run_case_instantiated,
+  compile_check_fixture, run_case, run_case_in_package, run_case_instantiated, run_case_without_builtins,
   run_case_rustc_driven, run_case_rustc_driven_and_run, run_case_rustc_driven_emitting,
   run_case_rustc_driven_full, run_case_with_coutputs, try_run_case,
   CaseOutcome,
@@ -770,7 +775,8 @@ fn a_struct_wrapping_a_hashmap_is_used_through_methods() {
 fn a_mut_borrow_aliasing_a_shared_borrow_of_one_local_is_rejected() {
   // Mirroring Rust `&mut` into a `mut(g)` group makes a callee's disjoint-group assumption checkable:
   // the same local into a mutated group and a distinct group is an aliasing violation.
-  run_case(&A_MUT_BORROW_ALIASING_A_SHARED_BORROW_IS_REJECTED, callees_in_main)
+  // No builtins: the program uses no Valen operators, so only `main`, `Counter` and `nudge` are checked.
+  run_case_without_builtins(&A_MUT_BORROW_ALIASING_A_SHARED_BORROW_IS_REJECTED, callees_in_main)
     .check(&A_MUT_BORROW_ALIASING_A_SHARED_BORROW_IS_REJECTED);
 }
 
@@ -786,7 +792,9 @@ fn a_mut_borrow_and_a_shared_borrow_of_distinct_locals_compiles() {
 /// Tests that multiple mutable aliases to one imported Rust object are legal.
 #[test]
 fn multiple_mutable_aliases_to_one_rust_object_are_legal() {
-  let outcome = run_case(&MULTIPLE_MUTABLE_ALIASES_TO_ONE_RUST_OBJECT_ARE_LEGAL, callees_in_main);
+  // No builtins: the program uses no Valen operators, so the typed output is just `main` and `Slot`.
+  let outcome =
+    run_case_without_builtins(&MULTIPLE_MUTABLE_ALIASES_TO_ONE_RUST_OBJECT_ARE_LEGAL, callees_in_main);
   let callees = outcome
     .check(&MULTIPLE_MUTABLE_ALIASES_TO_ONE_RUST_OBJECT_ARE_LEGAL)
     .expect("the case declares it compiles");

@@ -6150,7 +6150,8 @@ exported func main() {
               },
             ..
           }),
-      })] => {}
+      // `try_as<SubType, SuperType, g'>`: the group rune of its borrow parameter.
+      }), ITemplataT::Group(_)] => {}
       other => panic!("asPrototypeTemplateArgs: {:?}", other),
     }
     match as_prototype_params {

@@ -256,7 +256,8 @@ where
   // reusing that input parameter's group rune. When a call churns that argument (`mut(g)`), the
   // returned reference is invalidated (use-after-churn). Only the single-reference-input case is
   // handled — elision rule 2, and the `&self` receiver every imported borrow-returning method has;
-  // zero or several reference inputs can't be elided here and leave the return groupless (deferred).
+  // zero or several reference inputs can't be elided here, so that return is written as a borrow with
+  // no group (deferred), the shape the borrow checker rejects on a Vale function.
   let maybe_return_type = match (&sig.ret, param_region_runes.as_slice()) {
     (ValeSigType::Borrow { .. }, [input_region_rune]) => {
       let base = scout_arena.alloc(GroupS::Rune(scout_arena.alloc(*input_region_rune)));
@@ -269,7 +270,11 @@ where
         region: RegionS::Group(descendant),
       })))
     }
-    _ => None,
+    // Every other return is written in value position — a citizen by its short name, a primitive by
+    // its Vale name, a generic by its rune, a borrow elision can't group as an ungrouped borrow. Every
+    // non-lambda carries a written return type; the borrow checker reads a callee's return groups off
+    // this declaration.
+    _ => value_position_type_st(compiler, &sig.ret, range, &generic_runes),
   };
 
   // Emit each imported-trait bound (`where implements(P, Trait)`) the oracle surfaced. The sub is

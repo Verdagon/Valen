@@ -29,7 +29,7 @@ import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func get<g'>(a &[]int in g) &int in g[] { return &a[0]; }
 func churn<g'>(a &[]int in g) mut(g) { }
-func observe<T>(x &T) { }
+func observe<T, tg'>(x &T in tg) { }
 exported func main() int {
   arr = Array<int>(3);
   v = get(&arr);
@@ -40,7 +40,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(v);
-v references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used v after invalidated.
 "#,
   );
 }
@@ -134,7 +134,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -219,7 +219,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -285,7 +285,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -313,7 +313,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:14:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -339,7 +339,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:13:
     observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -409,7 +409,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:13:
     observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -435,7 +435,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -516,7 +516,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   pair(7, ref);
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -562,7 +562,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(first);
-first references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used first after invalidated.
 "#,
   );
 }
@@ -587,7 +587,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   observe(ring);
-ring references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ring after invalidated.
 "#,
   );
 }
@@ -635,7 +635,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:9:8:
   use2(ref, churn_ret(&arr));
-ref references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used ref after invalidated.
 "#,
   );
 }
@@ -664,7 +664,24 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(t);
-t references an array element, which a preceding churn of its group may have moved or deleted, so it can't be used here.
+Used t after invalidated.
 "#,
   );
+}
+
+// A callee's return group rune that no parameter binds has no meaning at the call site. The checker
+// treats it as a bug rather than letting the callee's rune leak into the caller's frame.
+#[test]
+#[should_panic(expected = "not bound at this call")]
+fn test_return_group_rune_bound_by_no_parameter_panics() {
+  assert_compiles_clean_with_arrays(r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func leak<g', h'>(a &[]int in g) &int in h { return &a[0]; }
+exported func main() int {
+  arr = Array<int>(3);
+  v = leak(&arr);
+  return 0;
+}
+"#);
 }

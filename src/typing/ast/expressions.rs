@@ -314,8 +314,8 @@ where
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
   pub condition: ExpressionTE<'s, 't>,
-  pub then_call: ExpressionTE<'s, 't>,
-  pub else_call: ExpressionTE<'s, 't>,
+  pub then_call: ExpressionTE<'s, 't>, // VCOORD: rename
+  pub else_call: ExpressionTE<'s, 't>, // VCOORD: rename
   pub result: KindT<'s, 't>,
   _sealed: (),
 }
@@ -685,7 +685,7 @@ where
 #[derive(Debug)]
 pub struct ConstantBoolTE<'s, 't> {
   pub range: RangeS<'s>,
-  pub value: bool,
+  pub value: bool, // VCOORD: This should be a templata, like Int uses
   pub region: RegionT,
   pub result: KindT<'s, 't>,
   _sealed: (),

@@ -43,6 +43,7 @@ use crate::postparsing::names::{
 use crate::postparsing::patterns::patterns::{AtomSP, CaptureS};
 use crate::postparsing::rules::rules::{BorrowRefSR, CallSR, CallSiteFuncSR, DefinitionFuncSR, EqualsSR, IRulexSR, KindListSR, LiteralSR, LookupSR, OwnRefSR, RegionSR, ResolveSR, RuneParentEnvLookupSR, RuneUsage, WeakRefSR};
 use crate::parsing::ast::ast::LoadAsP;
+use crate::postparsing::rules::templex_scout::map_runes_in_type_st;
 use crate::postparsing::rules::types::{BorrowRefST, CallST, ITypeST, NameST, RegionS, RuneUsageST};
 use crate::typing::compiler::Compiler;
 use crate::typing::macros::macros::GeneratedAhtDenizen;
@@ -1184,7 +1185,9 @@ where 's: 't,
             new_tyype,
             new_params_slice,
             Some(inherited_return_rune),
-            None, // maybe_return_type: no user-written return type (dormant migration field)
+            method
+                .maybe_return_type
+                .map(|written| map_runes_in_type_st(self.scout_arena, &inherit, &written)),
             &[], // effects
             rules_slice,
             &[], // impl_bounds

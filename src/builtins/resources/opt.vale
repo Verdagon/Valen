@@ -26,9 +26,9 @@ func drop<T>(opt None<T>) {
   [ ] = ^opt;
 }
 
-abstract func isEmpty<T>(virtual opt &Opt<T>) bool;
-func isEmpty<T>(opt &None<T>) bool { return true; }
-func isEmpty<T>(opt &Some<T>) bool { return false; }
+abstract func isEmpty<T, g'>(virtual opt &Opt<T> in g) bool;
+func isEmpty<T, g'>(opt &None<T> in g) bool { return true; }
+func isEmpty<T, g'>(opt &Some<T> in g) bool { return false; }
 
 abstract func isEmpty<T>(virtual opt Opt<T>) bool
 where func drop(T)void;
