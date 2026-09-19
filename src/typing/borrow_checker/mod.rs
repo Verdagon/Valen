@@ -1,16 +1,16 @@
-// Two mutually-exclusive borrow-checker impls, selected by the `borrow_checker_sorcerous` feature.
+// Two mutually-exclusive borrow-checker impls, selected by the `borrow_checker_symphony` feature.
 // Default (feature off) compiles the `experimental` checker, the one the suite is green on; enabling
-// the feature compiles the in-progress `sorcerous` rewrite instead. Both define
+// the feature compiles the in-progress `symphony` rewrite instead. Both define
 // `Compiler::check_function`, so only one is ever compiled.
-#[cfg(not(feature = "borrow_checker_sorcerous"))]
+#[cfg(not(feature = "borrow_checker_symphony"))]
 pub mod experimental;
-#[cfg(not(feature = "borrow_checker_sorcerous"))]
+#[cfg(not(feature = "borrow_checker_symphony"))]
 pub use experimental::errors::humanize_borrow_error;
 
-// #[cfg(feature = "borrow_checker_sorcerous")]
-// pub mod sorcerous;
-// #[cfg(feature = "borrow_checker_sorcerous")]
-// pub use sorcerous::errors::humanize_borrow_error;
+#[cfg(feature = "borrow_checker_symphony")]
+pub mod symphony;
+#[cfg(feature = "borrow_checker_symphony")]
+pub use symphony::errors::humanize_borrow_error;
 
 pub mod borrow_error;
 pub mod templata_g;
