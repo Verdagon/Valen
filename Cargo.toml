@@ -5,31 +5,17 @@ edition = "2021"
 build = "build.rs"
 links = "vale_backend"
 
-# Without this, rust-analyzer cannot resolve the `rustc_private` crates and every line that
-# touches them shows as an error in the editor.
 [package.metadata.rust-analyzer]
 rustc_private = true
 
 [features]
-# Rust interop: links rustc's internals and compiles the `typing::rust_interop` module.
-#
-# A cargo feature rather than a bare `--cfg`, because build.rs must know the mode too — it
-# skips the C++ backend's static LLVM-16 link, which would otherwise sit in one process with
-# rustc's own libLLVM — and a build script cannot see a RUSTFLAGS cfg. One switch means the
-# half-configured combinations, which compile cleanly and fail silently, cannot happen.
+# Enables rust interop. Take this out to get a standalone Valen compiler.
 rust_interop = []
 
-# Borrow-checker selection. Default (feature off) compiles the `experimental` borrow checker, the one
-# the suite is green on; enabling this feature compiles the in-progress `sorcerous` rewrite instead.
-# The two are mutually-exclusive impls of `Compiler::check_function`, so exactly one `borrow_checker`
-# submodule is compiled per build.
-borrow_checker_sorcerous = []
+# Enables the new borrow checker.
+borrow_checker_symphony = []
 
-# Frontend/VM tests without the C++ backend. build.rs skips the CMake backend build and tells the
-# linker to leave backend_ffi's C symbols unresolved — they abort if ever called, which the frontend
-# and TestVM tests never do. A temporary bridge while the backend is red (not yet reshaped for the
-# onion metal IR); delete this feature once the backend links again. Run: `cargo test --features
-# no_backend --lib testvm`.
+# Runs all tests without the C++ backend. Delete this soon.
 no_backend = []
 
 [build-dependencies]
@@ -42,7 +28,6 @@ hashbrown = "0.16"
 rustc-hash = "2"
 paste = "1"
 clap = { version = "4", features = ["derive"] }
-# `valen build` orchestrator: parse `Valen.toml`, generate the Cargo workspace it runs cargo over.
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 
@@ -57,23 +42,15 @@ path = "src/lib.rs"
 name = "valec"
 path = "src/bin/valec/main.rs"
 
-# valenc-rs — the rustc-hosted Valen wrapper cargo invokes as RUSTC_WORKSPACE_WRAPPER.
-# `required-features` keeps it out of a plain `cargo build`: it links rustc's internals, so it only
-# exists in the interop configuration. Its source lives under `typing/rust_interop/` (a separate crate
-# root, not a module of the lib — `rust_interop/mod.rs` does not declare it) so all interop code sits in
-# one place.
 [[bin]]
 name = "valenc-rs"
 path = "src/typing/rust_interop/driver/main.rs"
 required-features = ["rust_interop"]
 
-# valen — the cargo-like orchestrator. `valen build` generates a Cargo workspace and runs cargo with
-# valenc-rs as RUSTC_WORKSPACE_WRAPPER. Interop-only (it links the interop lib).
 [[bin]]
 name = "valen"
 path = "src/typing/rust_interop/valen/main.rs"
 required-features = ["rust_interop"]
-
 
 [profile.profiling]
 inherits = "release"
