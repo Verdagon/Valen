@@ -1,7 +1,7 @@
 ---
 name: design-assistant
 description: How to work with the human on editing a `-design.md` design document.
-g_read_when: Read when the human wants to work with you to edit a markdown ending in -design.md.
+g_read_when: Read when editing a markdown ending in -design.md, or the human says just "diff.".
 g_mention_in:
   - CLAUDE.md
 ---

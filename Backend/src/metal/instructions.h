@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class SourceLocation {
 public:
@@ -264,8 +265,12 @@ public:
   Kind* sourceType;
   Kind* result;
 
-  Mutate(SourceLocation* sourceLocation_, Expression* destinationExpr_, BorrowRef* destinationType_, Expression* sourceExpr_, Kind* sourceType_, Kind* result_) :
-      Expression(sourceLocation_), destinationExpr(destinationExpr_), destinationType(destinationType_), sourceExpr(sourceExpr_), sourceType(sourceType_), result(result_) {}
+  bool hasAliasScope;
+  std::vector<uint32_t> groupIndices;
+  uint32_t groupCount;
+
+  Mutate(SourceLocation* sourceLocation_, Expression* destinationExpr_, BorrowRef* destinationType_, Expression* sourceExpr_, Kind* sourceType_, Kind* result_, bool hasAliasScope_, std::vector<uint32_t> groupIndices_, uint32_t groupCount_) :
+      Expression(sourceLocation_), destinationExpr(destinationExpr_), destinationType(destinationType_), sourceExpr(sourceExpr_), sourceType(sourceType_), result(result_), hasAliasScope(hasAliasScope_), groupIndices(std::move(groupIndices_)), groupCount(groupCount_) {}
 };
 
 
@@ -361,16 +366,28 @@ public:
   Prototype* callable;
   std::vector<Expression *> args;
   Kind* result;
+  // When hasFacts, this call reaches the groups in `touched` (of `groupCount` groups in this function);
+  // codegen tags it `!noalias {every group it does NOT touch}` so those groups' accesses stay coalescable
+  // across it. A call reaches a group only through the references it is handed.
+  bool hasFacts;
+  std::vector<uint32_t> touched;
+  uint32_t groupCount;
 
   Call(
       SourceLocation* sourceLocation_,
       Prototype* callable_,
       std::vector<Expression *> args_,
-      Kind* result_)
+      Kind* result_,
+      bool hasFacts_,
+      std::vector<uint32_t> touched_,
+      uint32_t groupCount_)
       : Expression(sourceLocation_),
         callable(callable_),
         args(args_),
-        result(result_) {}
+        result(result_),
+        hasFacts(hasFacts_),
+        touched(std::move(touched_)),
+        groupCount(groupCount_) {}
 };
 
 class ExternCall : public Expression {
@@ -743,9 +760,14 @@ public:
     Expression* inner;
     Kind* sourceType;
     Kind* result;
+    // When hasAliasScope, this load accesses the groups `groupIndices` (of `groupCount` groups in this
+    // function), so codegen tags it `!alias.scope {groupIndices}` + `!noalias {every other group}`.
+    bool hasAliasScope;
+    std::vector<uint32_t> groupIndices;
+    uint32_t groupCount;
 
-    CopyPrim(SourceLocation* sourceLocation_, Expression* inner_, Kind* sourceType_, Kind* result_) :
-        Expression(sourceLocation_), inner(inner_), sourceType(sourceType_), result(result_) {}
+    CopyPrim(SourceLocation* sourceLocation_, Expression* inner_, Kind* sourceType_, Kind* result_, bool hasAliasScope_, std::vector<uint32_t> groupIndices_, uint32_t groupCount_) :
+        Expression(sourceLocation_), inner(inner_), sourceType(sourceType_), result(result_), hasAliasScope(hasAliasScope_), groupIndices(std::move(groupIndices_)), groupCount(groupCount_) {}
 };
 
 

@@ -11,6 +11,7 @@
 // follow-up. The expression/kind/function/struct/interface/export/extern spine is complete.
 
 use std::collections::HashMap;
+use std::cell::RefCell;
 
 use crate::backend_ffi::metal_cache::{
     CoercionFFI, Edge, Expression, Function, InterfaceDef, InterfaceMethod, Kind, Local, MetalCache,
@@ -90,7 +91,7 @@ pub fn populate_metal_cache<'cache, 's, 'i>(
 where
     's: 'i,
 {
-    let lowerer = Lowerer { cache, code_map };
+    let lowerer = Lowerer { cache, code_map, current_group_facts: RefCell::new(None) };
 
     // HinputsI is flat; group defs by their id's package coordinate (first-seen order).
     let mut package_coords: Vec<&'s PackageCoordinate<'s>> = Vec::new();
@@ -125,12 +126,26 @@ where
     pb.finish()
 }
 
+/// An owned per-function snapshot of the region-free ground-truth aliasing facts, extracted from the
+/// arena `FunctionAliasingInfoI` for the function currently being lowered. Owned so the `Lowerer` needs
+/// no instantiation-arena lifetime (the durable carrier on `HinputsI` stays arena-allocated).
+struct LoweredAliasingFacts {
+    group_count: u32,
+    /// Each instruction's `LocI` path → the set of group indices it accesses.
+    accessed: HashMap<Vec<i32>, Vec<u32>>,
+}
+
 struct Lowerer<'cache, 'cm, 'sm> {
     cache: &'cache MetalCache,
     // Consulted to resolve source ranges (byte offsets) into (file, line, col) for DWARF.
     // 'cm/'sm are independent of the per-method source lifetime 's; resolve_line_col accepts
     // the map and the location under independent lifetimes.
     code_map: &'cm FileCoordinateMap<'sm, String>,
+    /// The region-free ground-truth aliasing facts of the function currently being lowered (set per
+    /// function in `lower_package`), so each access/call lowering can look up its accessed-group set by
+    /// `LocI` path. Pure plumbing — the backend numbers the groups and derives the metadata by
+    /// complement; nothing here does group logic.
+    current_group_facts: RefCell<Option<LoweredAliasingFacts>>,
 }
 
 fn code_map<'s>(loc: CodeLocationS<'s>) -> String {
@@ -138,6 +153,14 @@ fn code_map<'s>(loc: CodeLocationS<'s>) -> String {
 }
 
 impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
+    /// Look up the accessed-group index set for an instruction by its `LocI` path, plus the function's
+    /// group count. Returns None when the checker recorded nothing for this instruction. Pure lookup.
+    fn accessed_groups(&self, loc_path: &[i32]) -> Option<(Vec<u32>, u32)> {
+        self.current_group_facts.borrow().as_ref().and_then(|f| {
+            f.accessed.get(loc_path).map(|set| (set.clone(), f.group_count))
+        })
+    }
+
     // Resolve an expression's RangeS into an interned SourceLocation handle for DWARF. Every
     // ExpressionIE carries a range (populated by the instantiator from the TE node); a synthetic
     // range (offset < 0) interns the empty "no source info" location. Backend discards it for now.
@@ -234,13 +257,25 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             if f.header.id.package_coord as *const _ as usize != pkg_key {
                 continue;
             }
+            // Publish this function's ground-truth aliasing facts so body lowering can tag its accesses
+            // and calls; clear it otherwise. Purely carrying what the checker computed — no logic here.
+            *self.current_group_facts.borrow_mut() =
+                monouts.id_to_aliasing_info.get(&f.header.id).map(|i| LoweredAliasingFacts {
+                    group_count: i.group_count,
+                    accessed: i
+                        .instruction_loc_to_accessed_groups
+                        .iter()
+                        .map(|(k, v)| ((*k).to_vec(), (*v).to_vec()))
+                        .collect(),
+                });
             let func = self.lower_function(f);
+            *self.current_group_facts.borrow_mut() = None;
             let fname = humanize_id(&code_map, &f.header.id, None);
             // Presence of an entry means the borrow checker analyzed this function; record its
             // per-parameter noalias verdict on the package. A function with no entry (generated,
             // extern, or checker disabled) records nothing, and the backend marks nothing for it.
             if let Some(info) = monouts.id_to_aliasing_info.get(&f.header.id) {
-                pb.add_param_noalias(&fname, &info.param_noalias);
+                pb.add_param_noalias(&fname, info.param_index_to_noalias);
             }
             pb.add_function(&fname, func);
             // A Rust→Vale callback's body is an ordinary function here, but it also carries an inbound
@@ -487,14 +522,18 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
                 loc,
             ),
 
-            ExpressionIE::Mutate(x) => c.expr_mutate(
-                self.lower_expression(&x.destination_expr),
-                self.lower_borrow(x.destination_type),
-                self.lower_expression(&x.source_expr),
-                self.lower_kind(x.source_type),
-                self.lower_kind(x.result),
-                loc,
-            ),
+            ExpressionIE::Mutate(x) => {
+                let access_facts = self.accessed_groups(x.loci.path);
+                c.expr_mutate(
+                    self.lower_expression(&x.destination_expr),
+                    self.lower_borrow(x.destination_type),
+                    self.lower_expression(&x.source_expr),
+                    self.lower_kind(x.source_type),
+                    self.lower_kind(x.result),
+                    access_facts,
+                    loc,
+                )
+            }
 
             ExpressionIE::Construct(x) => c.expr_new_struct(
                 self.lower_struct_kind(x.struct_tt),
@@ -508,7 +547,11 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
                 &self.lower_locals(x.destination_reference_variables, loc),
                 loc,
             ),
-            ExpressionIE::CopyPrim(x) => c.expr_copy_prim(self.lower_expression(&x.inner), self.lower_kind(x.source_type), self.lower_kind(x.result), loc),
+            ExpressionIE::CopyPrim(x) => {
+                let access_facts = self.accessed_groups(x.loci.path);
+                let inner = self.lower_expression(&x.inner);
+                c.expr_copy_prim(inner, self.lower_kind(x.source_type), self.lower_kind(x.result), access_facts, loc)
+            }
 
             ExpressionIE::Upcast(x) => c.expr_struct_to_interface_upcast(
                 self.lower_expression(&x.inner_expr),
@@ -552,12 +595,16 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
                 loc,
             ),
 
-            ExpressionIE::FunctionCall(x) => c.expr_call(
-                self.lower_prototype(&x.callable),
-                &self.lower_exprs(x.args),
-                self.lower_kind(x.result),
-                loc,
-            ),
+            ExpressionIE::FunctionCall(x) => {
+                let call_facts = self.accessed_groups(x.loci.path);
+                c.expr_call(
+                    self.lower_prototype(&x.callable),
+                    &self.lower_exprs(x.args),
+                    self.lower_kind(x.result),
+                    call_facts,
+                    loc,
+                )
+            }
             ExpressionIE::ExternFunctionCall(x) => c.expr_extern_call(
                 self.lower_prototype(&x.prototype2),
                 &self.lower_exprs(x.args),

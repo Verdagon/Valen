@@ -454,7 +454,7 @@ public:
       Ref ref,
       Kind* targetRefMT) override;
 
-  void store(FunctionState *functionState, LLVMBuilderRef builder, Kind *sourceMT, Ref sourceRef, Kind* destinationRefMT, Ref referenceRef) override;
+  LLVMValueRef store(FunctionState *functionState, LLVMBuilderRef builder, Kind *sourceMT, Ref sourceRef, Kind* destinationRefMT, Ref referenceRef) override;
 
   Ref load(FunctionState *functionState, LLVMBuilderRef builder, BorrowRef *sourceRefMT, Ref sourceRef) override;
 

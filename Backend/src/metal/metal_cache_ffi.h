@@ -205,7 +205,7 @@ ExpressionHandle* metal_expr_runtime_sized_array_lookup(
 
 // Mutate (unified store over a destination lvalue).
 ExpressionHandle* metal_expr_mutate(
-    ExpressionHandle* destination_expr, KindHandle* destination_type, ExpressionHandle* source_expr, KindHandle* source_type, KindHandle* result, SourceLocationHandle* loc);
+    ExpressionHandle* destination_expr, KindHandle* destination_type, ExpressionHandle* source_expr, KindHandle* source_type, KindHandle* result, bool has_alias_scope, const uint32_t* scope_ptr, size_t scope_len, uint32_t group_count, SourceLocationHandle* loc);
 
 // Construct / destroy.
 ExpressionHandle* metal_expr_new_struct(
@@ -214,7 +214,7 @@ ExpressionHandle* metal_expr_new_struct(
 ExpressionHandle* metal_expr_destroy(
     ExpressionHandle* expr, KindHandle* struct_kind,
     LocalHandle* const* destination_locals, size_t local_count, SourceLocationHandle* loc);
-ExpressionHandle* metal_expr_copy_prim(ExpressionHandle* inner, KindHandle* source_type, KindHandle* result, SourceLocationHandle* loc);
+ExpressionHandle* metal_expr_copy_prim(ExpressionHandle* inner, KindHandle* source_type, KindHandle* result, bool has_alias_scope, const uint32_t* scope_ptr, size_t scope_len, uint32_t group_count, SourceLocationHandle* loc);
 
 // Upcast / subtype.
 ExpressionHandle* metal_expr_struct_to_interface_upcast(
@@ -238,7 +238,7 @@ ExpressionHandle* metal_expr_lock_weak(
 
 // Calls.
 ExpressionHandle* metal_expr_call(
-    PrototypeHandle* callable, ExpressionHandle* const* args, size_t arg_count, KindHandle* result, SourceLocationHandle* loc);
+    PrototypeHandle* callable, ExpressionHandle* const* args, size_t arg_count, KindHandle* result, bool has_facts, const uint32_t* touched_ptr, size_t touched_len, uint32_t group_count, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_extern_call(
     PrototypeHandle* prototype, ExpressionHandle* const* args, size_t arg_count, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_interface_call(

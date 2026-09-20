@@ -1,0 +1,24 @@
+// Proves the block-scoped restrict metadata is load-bearing: `a` and `b` share group `g` (so neither is
+// whole-function noalias), but in the trailing span only `a` reaches into `g`, across an opaque C extern
+// call `noopBarrier()` that is proven not to touch `g`. The checker tags that region's loads
+// `!alias.scope {g}` and the call `!noalias {g}`, which lets LLVM coalesce the two `a.fuel` reads (`x` and
+// `y`) across the otherwise-opaque call into one load. `do_things` is exported so it survives to
+// build.opt.ll for inspection; its borrow params keep `fuel` non-constant so the reads can't be folded.
+
+extern func noopBarrier();
+
+exported struct Ship { fuel int; }
+
+exported func do_things<g'>(a &Ship in g, b &Ship in g) int {
+  q = __copy_prim(b.fuel);
+  x = __copy_prim(a.fuel);
+  noopBarrier();
+  y = __copy_prim(a.fuel);
+  return q + x + y;
+}
+
+exported func main() int {
+  s1 = Ship(1);
+  s2 = Ship(2);
+  return do_things(&s1, &s2);
+}

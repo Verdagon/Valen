@@ -108,6 +108,8 @@ set(BACKEND_LIB_SRCS
 		src/region/common/migration.h
 		src/region/common/migration.cpp
 		src/region/iregion.cpp
+
+		src/aliasing/aliasing.cpp
 )
 
 add_library(backend_lib STATIC ${BACKEND_LIB_SRCS})

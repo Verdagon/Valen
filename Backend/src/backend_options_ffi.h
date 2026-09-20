@@ -39,6 +39,7 @@ typedef struct BackendCompileOptionsFFI {
   // Emit DWARF debug info (`--debug`). Drives per-function/statement/local DWARF
   // emission in codegen. See docs/architecture/debugging-architecture.md.
   uint8_t debug;
+  uint8_t suppress_alias_metadata;
 } BackendCompileOptionsFFI;
 
 // Compile mode selector for BackendInputsFFI.mode.

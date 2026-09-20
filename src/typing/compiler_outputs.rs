@@ -4,6 +4,7 @@ use crate::postparsing::ast::{FunctionS, ImplS, InterfaceS, StructS};
 use crate::postparsing::names::*;
 use crate::postparsing::*;
 use crate::typing::ast::ast::*;
+use crate::typing::ast::borrowing_ast::FunctionAliasingInfoT;
 use crate::typing::ast::citizens::*;
 use crate::typing::ast::expressions::*;
 use crate::typing::compilation::TypingPassOptions;
@@ -57,7 +58,7 @@ where
 
   // The borrow checker's aliasing info per function. IndexMap for cross-run determinism. Surfaced
   // onto HinputsT for the backend.
-  pub signature_to_aliasing_info: IndexMap<SignatureT<'s, 't>, FunctionAliasingInfoT>,
+  pub signature_to_aliasing_info: IndexMap<SignatureT<'s, 't>, &'t FunctionAliasingInfoT<'s, 't>>,
 
   // VCOORD: whether a postparsed already exists in these tables must be undetectable to callers.
   // Once Rust imports go lazy, get_or_create_postparsed_* builds a missing denizen on demand, so a
@@ -307,7 +308,7 @@ where
   pub fn record_aliasing_info(
     &mut self,
     signature: SignatureT<'s, 't>,
-    aliasing_info: FunctionAliasingInfoT,
+    aliasing_info: &'t FunctionAliasingInfoT<'s, 't>,
   ) {
     let prev = self.signature_to_aliasing_info.insert(signature, aliasing_info);
     assert!(prev.is_none(), "aliasing info recorded twice for one signature");

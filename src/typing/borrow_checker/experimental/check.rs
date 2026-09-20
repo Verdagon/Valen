@@ -10,7 +10,8 @@ use bumpalo::Bump;
 
 use crate::postparsing::ast::FunctionS;
 use crate::postparsing::rules::types::{ITypeST, RegionS};
-use crate::typing::ast::ast::{FunctionAliasingInfoT, FunctionDefinitionT};
+use crate::typing::ast::ast::FunctionDefinitionT;
+use crate::typing::ast::borrowing_ast::FunctionAliasingInfoT;
 use crate::typing::borrow_checker::borrow_error::BorrowErrorKind;
 use crate::typing::compiler::Compiler;
 use crate::typing::compiler_error_reporter::ICompileErrorT;
@@ -25,7 +26,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_s: &'s FunctionS<'s>,
     function_t: &'t FunctionDefinitionT<'s, 't>,
     check_arena: &'g Bump,
-  ) -> Result<FunctionAliasingInfoT, ICompileErrorT<'s, 't>> {
+  ) -> Result<&'g FunctionAliasingInfoT<'s, 'g>, ICompileErrorT<'s, 't>>
+  where
+    's: 'g,
+  {
     self.check_return_group(function_s)?;
     let (body_g, access_log) = self.groupify_function(coutputs, function_s, function_t, check_arena)?;
     self.check_usages(coutputs, function_s, body_g, check_arena)?;

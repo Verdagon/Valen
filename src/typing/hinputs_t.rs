@@ -1,9 +1,9 @@
 use crate::postparsing::names::IRuneS;
 use crate::typing::ast::ast::{
-  EdgeT, FunctionAliasingInfoT, FunctionDefinitionT, FunctionExportT, FunctionExternT,
+  EdgeT, FunctionDefinitionT, FunctionExportT, FunctionExternT,
   InterfaceEdgeBlueprintT, KindExportT, KindExternT, PrototypeT, SignatureT,
 };
-use crate::typing::ast::borrowing_ast::RestrictRegionT;
+use crate::typing::ast::borrowing_ast::FunctionAliasingInfoT;
 use crate::typing::ast::citizens::{CitizenDefinitionT, InterfaceDefinitionT, StructDefinitionT};
 use crate::typing::names::names::{
   FunctionTemplateNameT, INameT, IdT, ImplTemplateNameT, InterfaceTemplateNameT,
@@ -58,10 +58,10 @@ pub struct HinputsT<'s, 't> {
   pub structs: Vec<&'t StructDefinitionT<'s, 't>>,
   pub functions: Vec<&'t FunctionDefinitionT<'s, 't>>,
 
-  // The borrow checker's aliasing info per function, keyed by signature. The backend reads it to emit
+  // The borrow checker's aliasing info per function. The backend reads it to emit
   // `noalias` attributes (and, later, block-scoped alias metadata).
-  pub signature_to_aliasing_info: HashMap<SignatureT<'s, 't>, FunctionAliasingInfoT>,
-  
+  pub signature_to_aliasing_info: HashMap<SignatureT<'s, 't>, &'t FunctionAliasingInfoT<'s, 't>>,
+
   pub interface_template_to_edge_blueprints: HashMap<IdT<'s, 't>, &'t InterfaceEdgeBlueprintT<'s, 't>>,
   pub interface_template_to_sub_citizen_to_edge:
     HashMap<IdT<'s, 't>, HashMap<IdT<'s, 't>, &'t EdgeT<'s, 't>>>,
@@ -221,18 +221,16 @@ impl<'s, 't> HinputsT<'s, 't> {
     self
       .signature_to_aliasing_info
       .get(&function.header.to_signature())
-      .map(|info| info.param_noalias.as_slice())
+      .map(|info| info.param_index_to_noalias)
       .expect("no aliasing info recorded for function")
   }
 
-  /// The borrow checker's restrict regions for the function named `human_name` — spans where one
-  /// reference is the sole live reference into its group.
-  pub fn restrict_regions(&self, human_name: &str) -> &[RestrictRegionT] {
+  pub fn aliasing_info(&self, human_name: &str) -> &'t FunctionAliasingInfoT<'s, 't> {
     let function = self.lookup_function_by_str(human_name);
     self
       .signature_to_aliasing_info
       .get(&function.header.to_signature())
-      .map(|info| info.restrict_regions.as_slice())
+      .copied()
       .expect("no aliasing info recorded for function")
   }
 

@@ -146,10 +146,27 @@ where
             }
           }
           Err(e) => {
+            // VCOORD: revisit this auto-deref
+            #[cfg(feature = "rust_interop")]
+            if let Some(result) = self.try_autoderef_overload_call(
+              coutputs,
+              nenv,
+              loct,
+              range,
+              call_location,
+              context_region,
+              callable_expr,
+              explicit_template_arg_rules_s,
+              explicit_template_arg_runes_s,
+              receiving_rune_to_explicit_template_arg_rune,
+              given_args_exprs_2,
+            )? {
+              return Ok(result);
+            }
             return Err(ICompileErrorT::CouldntFindFunctionToCallT {
               range: self.typing_interner.alloc_slice_copy(range),
               fff: e,
-            })
+            });
           }
           Ok(x) => x,
         };
@@ -194,6 +211,7 @@ where
             let mut bound_args = args_exprs_2;
             bound_args[vi] = upcast.inner_expr;
             ExpressionTE::BoundFunctionCall(self.typing_interner.alloc(BoundFunctionCallTE::new(
+              LocT::from_lid(self.typing_interner, call_location),
               range[0],
               upcast.impl_name,
               stamp_result.prototype,
@@ -233,6 +251,84 @@ where
         callable_expr,
         given_args_exprs_2,
       ),
+    }
+  }
+
+  // VCOORD: revisit this autoderef impl
+  #[cfg(feature = "rust_interop")]
+  fn try_autoderef_overload_call(
+    &self,
+    coutputs: &mut CompilerOutputs<'s, 't>,
+    nenv: &mut NodeEnvironmentBox<'s, 't>,
+    loct: LocT<'t>,
+    range: &[RangeS<'s>],
+    call_location: LocationInDenizen<'s>,
+    context_region: RegionT,
+    callable_expr: ExpressionTE<'s, 't>,
+    explicit_template_arg_rules_s: &[IRulexSR<'s>],
+    explicit_template_arg_runes_s: &[IRuneS<'s>],
+    receiving_rune_to_explicit_template_arg_rune: &[(RuneUsage<'s>, RuneUsage<'s>)],
+    given_args_exprs_2: &[ExpressionTE<'s, 't>],
+  ) -> Result<Option<(ExpressionTE<'s, 't>, PendingTempDrops<'s, 't>)>, ICompileErrorT<'s, 't>> {
+    let Some(recv_expr) = given_args_exprs_2.first().copied() else {
+      return Ok(None);
+    };
+    let recv_type = recv_expr.result();
+    if !crate::typing::rust_interop::reserved::is_rust_backed_kind(recv_type) {
+      return Ok(None);
+    }
+    let calling_env = IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner));
+    let deref_name =
+      self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS {
+        name: self.scout_arena.intern_str("deref"),
+      }));
+    let deref_banner = self.find_function(
+      calling_env,
+      coutputs,
+      range,
+      call_location,
+      deref_name,
+      &[],
+      &[],
+      &[],
+      context_region,
+      &[recv_type],
+      &[],
+      false,
+      false,
+    )?;
+    let deref_prototype = match deref_banner {
+      Ok(pb) => pb.prototype,
+      Err(_) => return Ok(None),
+    };
+    assert!(coutputs
+      .get_instantiation_bounds(self.typing_interner, deref_prototype.id)
+      .is_some());
+    let deref_expr = ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
+      LocT::from_lid(self.typing_interner, call_location),
+      self.typing_interner.alloc_slice_copy(range),
+      deref_prototype,
+      self.typing_interner.alloc_slice_from_vec(vec![recv_expr]),
+      deref_prototype.return_type,
+    )));
+    let mut rewritten_args: Vec<ExpressionTE<'s, 't>> = Vec::with_capacity(given_args_exprs_2.len());
+    rewritten_args.push(deref_expr);
+    rewritten_args.extend_from_slice(&given_args_exprs_2[1..]);
+    match self.evaluate_call(
+      coutputs,
+      nenv,
+      loct,
+      range,
+      call_location,
+      context_region,
+      callable_expr,
+      explicit_template_arg_rules_s,
+      explicit_template_arg_runes_s,
+      receiving_rune_to_explicit_template_arg_rune,
+      &rewritten_args,
+    ) {
+      Ok(result) => Ok(Some(result)),
+      Err(_) => Ok(None),
     }
   }
 

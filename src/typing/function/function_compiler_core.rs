@@ -357,6 +357,7 @@ where
       let check_arena = Bump::new();
       let aliasing_info =
         self.check_function(coutputs, full_env_snapshot.function, function2, &check_arena)?;
+      let aliasing_info = self.copy_aliasing_info_to_typing_arena(aliasing_info);
       coutputs.record_aliasing_info(*header_sig, aliasing_info);
     }
 

@@ -39,7 +39,8 @@ ValeFuncPtrLE declareFunction(
   // so a length mismatch is a carrier bug, not a case to tolerate. Only pointer args are eligible; a
   // non-pointer would fail the verifier.
   if (const std::vector<bool>* paramNoalias =
-          lookupParamNoalias(globalState, functionM->prototype)) {
+          lookupParamNoalias(globalState, functionM->prototype);
+      paramNoalias && !globalState->opt->suppress_alias_metadata) {
     assert(paramNoalias->size() == functionM->prototype->params.size());
     unsigned noaliasKind = LLVMGetEnumAttributeKindForName("noalias", 7);
     for (size_t i = 0; i < paramNoalias->size(); i++) {
@@ -161,6 +162,11 @@ RawFuncPtrLE declareExternFunction(
 
   RawFuncPtrLE functionL =
       addRawFunction(globalState->mod, abiFuncNameL.c_str(), sig.returnLT, sig.paramTypesL);
+
+  // Vale is always panic=abort, so nothing unwinds.
+  unsigned nounwindKind = LLVMGetEnumAttributeKindForName("nounwind", 8);
+  LLVMAddAttributeAtIndex(functionL.ptrLE, LLVMAttributeFunctionIndex,
+      LLVMCreateEnumAttribute(globalState->context, nounwindKind, 0));
 
   // VCOORD: integrate this better, perhaps in addRawFunction?
   // Per @EACBIPZ, an interop extern with an indirect (sret) return passes its out-pointer in the

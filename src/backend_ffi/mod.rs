@@ -38,6 +38,7 @@ pub(crate) struct BackendCompileOptionsFFIRaw {
     use_atomic_rc: u8,
     print_mem_overhead: u8,
     debug: u8,
+    suppress_alias_metadata: u8,
 }
 
 extern "C" {
@@ -67,6 +68,10 @@ pub struct BackendCompileOptions {
     /// Emit DWARF debug info (`--debug`). The backend emits per-function/statement/local DWARF when
     /// set; see docs/architecture/debugging-architecture.md.
     pub debug: bool,
+    /// Test-only lever: suppress every aliasing optimization hint (the `!alias.scope`/`!noalias`
+    /// metadata and the parameter-level `noalias` attribute), keeping `nounwind`. Lets a test compile the
+    /// same program with and without the hints and compare the optimizer's output. Never set in a real build.
+    pub suppress_alias_metadata: bool,
 }
 
 impl Default for BackendCompileOptions {
@@ -86,6 +91,7 @@ impl Default for BackendCompileOptions {
             use_atomic_rc: false,
             print_mem_overhead: false,
             debug: false,
+            suppress_alias_metadata: false,
         }
     }
 }
@@ -116,6 +122,7 @@ pub fn compile(inputs: BackendInputs) -> i32 {
         use_atomic_rc: opts.use_atomic_rc as u8,
         print_mem_overhead: opts.print_mem_overhead as u8,
         debug: opts.debug as u8,
+        suppress_alias_metadata: opts.suppress_alias_metadata as u8,
     };
 
     // Per-mode fields. The entry-symbol CString must outlive the FFI call, so bind it here

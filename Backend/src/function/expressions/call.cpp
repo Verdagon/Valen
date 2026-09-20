@@ -2,6 +2,7 @@
 #include "shared/shared.h"
 
 #include "../../translatetype.h"
+#include "../../aliasing/aliasing.h"
 
 #include "../expression.h"
 
@@ -22,5 +23,9 @@ Ref translateCall(
     argsLE.push_back(argLE);
   }
 
-  return buildCallV(globalState, functionState, builder, call->callable, argsLE);
+  std::vector<uint32_t> noaliasIds;
+  if (call->hasFacts) { // VCOORD: revisit
+    noaliasIds = noaliasComplement(call->touched, call->groupCount);
+  }
+  return buildCallV(globalState, functionState, builder, call->callable, argsLE, noaliasIds);
 }

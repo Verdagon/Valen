@@ -177,14 +177,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         ExpressionGE::Block(arena.alloc(BlockGE { range: b.range, inner, result: inner.result() }))
       }
       ExpressionTE::Consecutor(c) => {
-        // Group each statement, recording a bare-integer statement as a marker between its neighbors'
-        // accesses so a restrict region can be pinned by value.
         let mut grouped = Vec::with_capacity(c.exprs.len());
         for e in c.exprs.iter() {
           let g = self.groupify(coutputs, e, ctx, arena);
-          if let Some(value) = statement_marker(e) {
-            ctx.access_log.push(AccessEventG::Marker { value });
-          }
           grouped.push(g);
         }
         let exprs = arena.alloc_slice_fill_iter(grouped.into_iter());
@@ -319,7 +314,12 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           }
           None => (self.make_kind_g_groupless(call.callable.return_type, arena), vec![]),
         };
-        let touched: Vec<Vec<GroupStep<'s, 't>>> = paths.iter().map(|m| m.steps.to_vec()).collect();
+        // A call reaches every group its arguments carry — not merely the groups it declares it mutates.
+        // Valen declares only mutation (`mut(g)`), never reads, and read-only aliasing is legal, so the
+        // backend `!noalias`'s a call only against groups its arguments cannot reach (argument-reachability
+        // keeps it sound). `compute_group_facts` closes these downward to their descendants.
+        let touched: Vec<Vec<GroupStep<'s, 't>>> =
+          args.iter().filter_map(|a| borrowref_group(a.result())).collect();
         ctx.access_log.push(AccessEventG::Call { touched, loct: call.loct });
         let mut_effects = arena.alloc_slice_fill_iter(paths.into_iter().map(|p| &*arena.alloc(p)));
         ExpressionGE::FunctionCall(arena.alloc(FunctionCallGE {
@@ -466,6 +466,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       ExpressionTE::CopyPrim(e) => {
         let inner = self.groupify(coutputs, &e.inner, ctx, arena);
+        // A primitive copy reads a value through its reference — a real load into the base's group.
         if let Some((base_ref, group)) = self.base_ref_and_group(ctx, &e.inner, arena) {
           ctx.access_log.push(AccessEventG::Read { base_ref, group, loct: e.loct });
         }
@@ -495,7 +496,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           array_expr,
           array_type: self.ssa_gt(e.array_type, arena),
           index_expr,
-          result: self.element_borrow(e.result, array_expr.result(), arena),
+          result: self.ssa_element_borrow(e.result, array_expr.result(), arena),
         }))
       }
       ExpressionTE::RuntimeSizedArrayLookup(e) => {
@@ -610,7 +611,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     }
   }
 
-  /// An array-element access yields a borrow into the array's child-elements group.
+  /// A runtime-sized-array element access yields a borrow into the array's child-elements group — a
+  /// separately-allocated heap buffer, so its own group.
   fn element_borrow<'g>(
     &self,
     access: &'t BorrowRefT<'s, 't>,
@@ -622,6 +624,24 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let inner = self.make_kind_g_groupless(access.inner, arena);
         let group = with_step(arena, ab.group.group, GroupChildStepG::ChildElements {});
         arena.alloc(BorrowRefGT { group: GroupTemplataG { group, kind: inner }, inner })
+      }
+      other => panic!("vfail: element access through a non-borrow array: {:?}", other),
+    }
+  }
+
+  /// A static-sized-array element access is inline — the elements share the array's own storage — so the
+  /// element borrow carries the array's group directly, with no `ChildElements` step (the fold). Numbering
+  /// them apart would tell LLVM an access to the whole array and an access to an element never overlap.
+  fn ssa_element_borrow<'g>(
+    &self,
+    access: &'t BorrowRefT<'s, 't>,
+    array: KindGT<'s, 't, 'g>,
+    arena: &'g Bump,
+  ) -> &'g BorrowRefGT<'s, 't, 'g> {
+    match array {
+      KindGT::BorrowRef(ab) => {
+        let inner = self.make_kind_g_groupless(access.inner, arena);
+        arena.alloc(BorrowRefGT { group: GroupTemplataG { group: ab.group.group, kind: inner }, inner })
       }
       other => panic!("vfail: element access through a non-borrow array: {:?}", other),
     }
@@ -693,28 +713,60 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   }
 
   /// The root reference an access chain goes through, and the flat group that reference points into.
+  /// Walks the `member`/`deref`/`lookup` wrappers down to the root `LocalLookup`/`ArgLookup`, capturing
+  /// the base reference's name and its group plus a `Member` per member step and a `ChildElements` per
+  /// runtime-sized-array element step (a static-sized array is inline, so its element step adds nothing —
+  /// the fold). The composed path is truncated after its last elements step, since trailing inline members
+  /// share that heap element's group — so `a.fuel` reports `g` (root, no element crossed) while
+  /// `lvl.tiles[0]` reports `l.tiles[]` and its sibling `lvl.foes[0]` reports `l.foes[]`. `None` for a
+  /// chain rooted in something unnamed (a temporary, a call result) or a non-borrow.
   fn base_ref_and_group<'g>(
     &self,
     ctx: &GCtx<'s, 't, 'g>,
     expr: &ExpressionTE<'s, 't>,
     arena: &'g Bump,
   ) -> Option<(IVarNameT<'s, 't>, Vec<GroupStep<'s, 't>>)> {
-    match expr {
-      ExpressionTE::LocalLookup(l) => {
-        let ty = self.local_type(ctx, l.local_variable.name, l.local_variable.tyype, arena);
-        Some((l.local_variable.name, borrowref_group(ty)?))
+    // access→root order; reversed below into root→access order.
+    let mut steps_rev: Vec<GroupStep<'s, 't>> = vec![];
+    let mut cur = expr;
+    let (base_ref, root) = loop {
+      match cur {
+        ExpressionTE::LocalLookup(l) => {
+          let ty = self.local_type(ctx, l.local_variable.name, l.local_variable.tyype, arena);
+          break (l.local_variable.name, borrowref_group(ty)?);
+        }
+        ExpressionTE::ArgLookup(a) => {
+          let name = ctx.function_t.header.params.get(a.param_index as usize)?.name;
+          break (name, borrowref_group(self.arg_type(a.param_index as usize, ctx, arena))?);
+        }
+        ExpressionTE::Deref(d) => cur = &d.inner,
+        ExpressionTE::CopyPrim(e) => cur = &e.inner,
+        ExpressionTE::MemberLookup(e) => {
+          let member_name = match &e.member_name {
+            IVarNameT::Member(cv) => cv.imprecise_name.name,
+            IVarNameT::Local(cv) => cv.imprecise_name.name,
+            _ => return None,
+          };
+          steps_rev.push(GroupStep::Member { member_name });
+          cur = &e.struct_expr;
+        }
+        ExpressionTE::RuntimeSizedArrayLookup(e) => {
+          steps_rev.push(GroupStep::ChildElements);
+          cur = &e.array_expr;
+        }
+        // Inline static-sized array: its elements share the parent group, so no group step (the fold).
+        ExpressionTE::StaticSizedArrayLookup(e) => cur = &e.array_expr,
+        _ => return None,
       }
-      ExpressionTE::ArgLookup(a) => {
-        let name = ctx.function_t.header.params.get(a.param_index as usize)?.name;
-        Some((name, borrowref_group(self.arg_type(a.param_index as usize, ctx, arena))?))
-      }
-      ExpressionTE::Deref(d) => self.base_ref_and_group(ctx, &d.inner, arena),
-      ExpressionTE::CopyPrim(e) => self.base_ref_and_group(ctx, &e.inner, arena),
-      ExpressionTE::MemberLookup(e) => self.base_ref_and_group(ctx, &e.struct_expr, arena),
-      ExpressionTE::StaticSizedArrayLookup(e) => self.base_ref_and_group(ctx, &e.array_expr, arena),
-      ExpressionTE::RuntimeSizedArrayLookup(e) => self.base_ref_and_group(ctx, &e.array_expr, arena),
-      _ => None,
+    };
+    let root_len = root.len();
+    let mut full = root;
+    full.extend(steps_rev.into_iter().rev());
+    match full.iter().rposition(|s| matches!(s, GroupStep::ChildElements | GroupStep::InlineElements)) {
+      Some(last) => full.truncate(last + 1),
+      None => full.truncate(root_len),
     }
+    Some((base_ref, full))
   }
 }
 
@@ -790,6 +842,7 @@ fn statement_marker<'s, 't>(expr: &ExpressionTE<'s, 't>) -> Option<i32> {
 }
 
 /// The innermost local a grouped place expression is rooted in.
+// VLOOOOK: Option return — needs VOPT approval or removal
 pub(crate) fn place_root_local<'s, 't, 'g>(expr: ExpressionGE<'s, 't, 'g>) -> Option<IVarNameT<'s, 't>> {
   match expr {
     ExpressionGE::LocalLookup(l) => Some(l.local_variable.name),

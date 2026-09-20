@@ -27,13 +27,13 @@ pub struct InstantiationBoundArgumentsI<'s, 'i> where 's: 'i {
 
 
 /// The borrow checker's aliasing info for one instantiated function — the I-side mirror of
-/// `FunctionAliasingInfoT`. Holds the per-parameter `noalias` verdict now, and grows to carry the
-/// block-scoped restrict regions.
-#[derive(Clone, Debug)]
-pub struct FunctionAliasingInfoI {
+#[derive(Debug)]
+pub struct FunctionAliasingInfoI<'i> {
     /// One entry per parameter, in signature order: true where the parameter is the sole reference into
     /// a group no other parameter aliases, so the backend may emit `noalias`.
-    pub param_noalias: Vec<bool>,
+    pub param_index_to_noalias: &'i [bool],
+    pub group_count: u32,
+    pub instruction_loc_to_accessed_groups: ArenaIndexMap<'i, &'i [i32], &'i [u32]>,
 }
 
 /// Temporary state (see @TFITCX) — top-level container for instantiated output.
@@ -49,7 +49,7 @@ pub struct HinputsI<'s, 'i> where 's: 'i {
     // The borrow checker's aliasing info per function, keyed by the instantiated id (the same key the
     // backend humanizes when lowering). Presence means the function was analyzed; absence (generated,
     // extern, or checker disabled) means the backend marks nothing for it.
-    pub id_to_aliasing_info: IndexMap<IdI<'s, 'i>, FunctionAliasingInfoI>,
+    pub id_to_aliasing_info: IndexMap<IdI<'s, 'i>, &'i FunctionAliasingInfoI<'i>>,
     pub interface_to_edge_blueprints:
         ArenaIndexMap<'i, IdI<'s, 'i>, InterfaceEdgeBlueprintI<'s, 'i>>,
     pub interface_to_sub_citizen_to_edge:

@@ -1,0 +1,29 @@
+// Example A — a sole reference gets whole-function noalias (exactly Rust's `&mut`), so LLVM keeps its
+// field in a register across a loop's opaque `noopBarrier()` calls. `a` and `b` may alias (same group g) —
+// Rust forbids two overlapping `&mut` — yet each `bump()` call passes a reference that is unique within the
+// call, so bump's body still gets the full noalias win. `noopBarrier` is an opaque C extern.
+
+extern func noopBarrier();
+
+exported struct Ship { fuel int; }
+
+exported func bump(s &Ship) {
+  i = 0;
+  while i < 1000 {
+    set s.fuel = __copy_prim(s.fuel) + 1;
+    noopBarrier();
+    set i = i + 1;
+  }
+}
+
+exported func bump_both<g'>(a &Ship in g, b &Ship in g) {
+  bump(a);
+  bump(b);
+}
+
+exported func main() int {
+  s1 = Ship(0);
+  s2 = Ship(0);
+  bump_both(&s1, &s2);
+  return 0;
+}

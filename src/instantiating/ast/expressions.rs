@@ -7,7 +7,7 @@ use crate::instantiating::ast::types::{
 };
 use crate::instantiating::ast::names::{IdI, IVarNameI};
 use crate::instantiating::ast::ast::{
-    LocalVariableI, PrototypeI,
+    LocI, LocalVariableI, PrototypeI,
 };
 use std::marker::PhantomData;
 
@@ -294,6 +294,7 @@ pub struct MutateIE<'s, 'i> {
 	pub source_expr: ExpressionIE<'s, 'i>,
 	pub source_type: KindIT<'s, 'i>,
 	pub result: KindIT<'s, 'i>,
+	pub loci: LocI<'i>,
 }
 
 
@@ -611,6 +612,7 @@ pub struct FunctionCallIE<'s, 'i> {
 	pub callable: PrototypeI<'s, 'i>,
 	pub args: &'i[ExpressionIE<'s, 'i>],
 	pub result: KindIT<'s, 'i>,
+	pub loci: LocI<'i>,
 }
 
 
@@ -621,6 +623,7 @@ pub struct CopyPrimIE<'s, 'i> {
     pub inner: ExpressionIE<'s, 'i>,
     pub source_type: KindIT<'s, 'i>,
     pub result: KindIT<'s, 'i>,
+    pub loci: LocI<'i>,
 }
 
 

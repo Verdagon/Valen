@@ -38,6 +38,9 @@ struct ValeOptions {
     // spins up a DIBuilder and functions get DISubprograms + per-statement
     // DILocations.
     bool debug = false;
+    // Suppress every aliasing optimization hint (`!alias.scope`/`!noalias` metadata,
+    // parameter `noalias` attribute), keeping `nounwind`. Test-only.
+    bool suppress_alias_metadata = false;
 };
 
 // Copy fields out of the FFI POD into a ValeOptions. Returns 1 on success,

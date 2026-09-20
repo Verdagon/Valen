@@ -2063,14 +2063,14 @@ LiveRef RCImm::immutabilify(
   return wrapToLiveRef(FL(), functionState, builder, targetRefMT, transmutedRefLE);
 }
 
-void RCImm::store(FunctionState *functionState, LLVMBuilderRef builder, Kind *sourceMT, Ref sourceRef, Kind* destinationRefMT, Ref referenceRef) {
+LLVMValueRef RCImm::store(FunctionState *functionState, LLVMBuilderRef builder, Kind *sourceMT, Ref sourceRef, Kind* destinationRefMT, Ref referenceRef) {
   auto sourceLE =
     globalState->getRegion(sourceMT)
       ->checkValidReference(FL(), functionState, builder, false, sourceMT, sourceRef);
   auto destinationRefLE =
     globalState->getRegion(destinationRefMT)
       ->checkValidReference(FL(), functionState, builder, false, destinationRefMT, referenceRef);
-  LLVMBuildStore(builder, sourceLE, destinationRefLE);
+  return LLVMBuildStore(builder, sourceLE, destinationRefLE);
 }
 
 Ref RCImm::load(FunctionState *functionState, LLVMBuilderRef builder, BorrowRef *sourceRefMT, Ref sourceRef) {

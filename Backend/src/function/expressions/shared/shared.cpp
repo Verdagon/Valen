@@ -7,6 +7,7 @@
 #include "../../../region/common/controlblock.h"
 #include "../../../region/rcimm/rcimm.h"
 #include "../../../utils/branch.h"
+#include "../../../aliasing/aliasing.h"
 #include <region/common/migration.h>
 #include <llvm-c/DebugInfo.h>
 #include "../../debugging.h"
@@ -383,7 +384,8 @@ Ref buildCallV(
     FunctionState* functionState,
     LLVMBuilderRef builder,
     Prototype* prototype,
-    std::vector<Ref> argRefs) {
+    std::vector<Ref> argRefs,
+    const std::vector<uint32_t>& noaliasScopeIds) {
   auto funcL = globalState->lookupFunction(prototype);
 
   buildFlare(FL(), globalState, functionState, builder, "Suspending function ", functionState->containingFuncName);
@@ -400,6 +402,9 @@ Ref buildCallV(
   buildFlare(FL(), globalState, functionState, builder, "Doing call");
 
   auto resultLE = funcL.call(builder, argsLE, "");
+
+  // VCOORD: comment
+  attachNoalias(globalState, functionState, resultLE, noaliasScopeIds);
 
   buildFlare(FL(), globalState, functionState, builder, "Done with call");
 

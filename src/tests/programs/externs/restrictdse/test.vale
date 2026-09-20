@@ -1,0 +1,25 @@
+// Proves the block-scoped restrict metadata is load-bearing for STORES: `a` and `b` share group `g` (so
+// neither is whole-function noalias), but in the trailing span only `a` reaches into `g`, across an opaque
+// C extern call `noopBarrier()` that is proven not to touch `g`. The checker tags that region's stores
+// `!alias.scope {g}` and the call `!noalias {g}`, which lets LLVM dead-store-eliminate the redundant
+// `set a.fuel = 2` (overwritten by `set a.fuel = 3`, and the opaque barrier provably can't read it).
+// `do_things` is exported so it survives to build.opt.ll; its borrow params `a`/`b` are escaped pointers,
+// so the surviving stores (`b.fuel = 1`, `a.fuel = 3`) are observable and can't themselves be eliminated.
+
+extern func noopBarrier();
+
+exported struct Ship { fuel int; }
+
+exported func do_things<g'>(a &Ship in g, b &Ship in g) {
+  set b.fuel = 1;
+  set a.fuel = 2;
+  noopBarrier();
+  set a.fuel = 3;
+}
+
+exported func main() int {
+  s1 = Ship(0);
+  s2 = Ship(0);
+  do_things(&s1, &s2);
+  return 0;
+}

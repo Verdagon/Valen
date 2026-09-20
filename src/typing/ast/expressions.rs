@@ -967,6 +967,7 @@ pub struct BoundFunctionCallTE<'s, 't>
 where
   's: 't,
 {
+  pub loct: LocT<'t>,
   pub range: RangeS<'s>,
   pub impl_name: IdT<'s, 't>,
   pub abstract_prototype: &'t PrototypeT<'s, 't>,
@@ -981,6 +982,7 @@ where
   's: 't,
 {
   pub fn new(
+    loct: LocT<'t>,
     range: RangeS<'s>,
     impl_name: IdT<'s, 't>,
     abstract_prototype: &'t PrototypeT<'s, 't>,
@@ -989,6 +991,7 @@ where
     args: &'t [ExpressionTE<'s, 't>],
   ) -> BoundFunctionCallTE<'s, 't> {
     BoundFunctionCallTE {
+      loct,
       range,
       impl_name,
       abstract_prototype,

@@ -155,6 +155,10 @@ public:
   int nextBlockNumber = 1;
   int instructionDepthInAst = 0;
 
+  // VCOORD: revisit
+  LLVMMetadataRef aliasDomain = nullptr;
+  std::unordered_map<uint32_t, LLVMMetadataRef> aliasScopes;
+
   FunctionState(
       std::string containingFuncName_,
       LLVMValueRef containingFuncL_,

@@ -43,7 +43,8 @@ public:
       Kind* sourceMT,
       Ref sourceRef) = 0;
 
-  virtual void store(
+  // Returns the LLVM store instruction so a caller can attach metadata.
+  virtual LLVMValueRef store(
     FunctionState *functionState,
     LLVMBuilderRef builder,
     Kind *sourceMT,

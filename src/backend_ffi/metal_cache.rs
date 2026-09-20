@@ -14,6 +14,7 @@ use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr::{null_mut, NonNull};
 
+
 #[repr(C)]
 pub struct MetalCacheHandleRaw {
     _opaque: [u8; 0],
@@ -225,7 +226,7 @@ extern "C" {
         array_expr: *mut c_void, array_type: *mut c_void, index_expr: *mut c_void, index_type: *mut c_void, result: *mut c_void, loc: *mut c_void,
     ) -> *mut c_void;
 
-    fn metal_expr_mutate(destination_expr: *mut c_void, destination_type: *mut c_void, source_expr: *mut c_void, source_type: *mut c_void, result: *mut c_void, loc: *mut c_void) -> *mut c_void;
+    fn metal_expr_mutate(destination_expr: *mut c_void, destination_type: *mut c_void, source_expr: *mut c_void, source_type: *mut c_void, result: *mut c_void, has_alias_scope: bool, scope_ptr: *const u32, scope_len: usize, group_count: u32, loc: *mut c_void) -> *mut c_void;
 
     fn metal_expr_new_struct(
         struct_kind: *mut c_void, result: *mut c_void,
@@ -235,7 +236,7 @@ extern "C" {
         expr: *mut c_void, struct_kind: *mut c_void,
         destination_locals: *const *mut c_void, local_count: usize, loc: *mut c_void,
     ) -> *mut c_void;
-    fn metal_expr_copy_prim(inner: *mut c_void, source_type: *mut c_void, result: *mut c_void, loc: *mut c_void) -> *mut c_void;
+    fn metal_expr_copy_prim(inner: *mut c_void, source_type: *mut c_void, result: *mut c_void, has_alias_scope: bool, scope_ptr: *const u32, scope_len: usize, group_count: u32, loc: *mut c_void) -> *mut c_void;
 
     fn metal_expr_struct_to_interface_upcast(
         inner_expr: *mut c_void, source_type: *mut c_void, target_interface: *mut c_void, impl_name: *mut c_void, result: *mut c_void, loc: *mut c_void,
@@ -260,7 +261,8 @@ extern "C" {
     ) -> *mut c_void;
 
     fn metal_expr_call(
-        callable: *mut c_void, args: *const *mut c_void, arg_count: usize, result: *mut c_void, loc: *mut c_void,
+        callable: *mut c_void, args: *const *mut c_void, arg_count: usize, result: *mut c_void,
+        has_facts: bool, touched_ptr: *const u32, touched_len: usize, group_count: u32, loc: *mut c_void,
     ) -> *mut c_void;
     fn metal_expr_extern_call(
         prototype: *mut c_void, args: *const *mut c_void, arg_count: usize, result: *mut c_void, loc: *mut c_void,
@@ -717,8 +719,12 @@ impl MetalCache {
         unsafe { Expression(NonNull::new(metal_expr_runtime_sized_array_lookup(array_expr.0.as_ptr(), array_type.0.as_ptr(), index_expr.0.as_ptr(), index_type.0.as_ptr(), result.0.as_ptr(), loc_ptr(loc))).unwrap(), PhantomData) }
     }
 
-    pub fn expr_mutate<'c>(&'c self, destination_expr: Expression<'c>, destination_type: Kind<'c>, source_expr: Expression<'c>, source_type: Kind<'c>, result: Kind<'c>, loc: SourceLocation<'c>) -> Expression<'c> {
-        unsafe { Expression(NonNull::new(metal_expr_mutate(destination_expr.0.as_ptr(), destination_type.0.as_ptr(), source_expr.0.as_ptr(), source_type.0.as_ptr(), result.0.as_ptr(), loc_ptr(loc))).unwrap(), PhantomData) }
+    pub fn expr_mutate<'c>(&'c self, destination_expr: Expression<'c>, destination_type: Kind<'c>, source_expr: Expression<'c>, source_type: Kind<'c>, result: Kind<'c>, access_facts: Option<(Vec<u32>, u32)>, loc: SourceLocation<'c>) -> Expression<'c> {
+        let (has, scopes, count) = match access_facts {
+            Some((s, c)) => (true, s, c),
+            None => (false, Vec::new(), 0u32),
+        };
+        unsafe { Expression(NonNull::new(metal_expr_mutate(destination_expr.0.as_ptr(), destination_type.0.as_ptr(), source_expr.0.as_ptr(), source_type.0.as_ptr(), result.0.as_ptr(), has, scopes.as_ptr(), scopes.len(), count, loc_ptr(loc))).unwrap(), PhantomData) }
     }
 
     pub fn expr_new_struct<'c>(&'c self, struct_kind: Kind<'c>, result: Kind<'c>, args: &[Expression<'c>], loc: SourceLocation<'c>) -> Expression<'c> {
@@ -729,8 +735,12 @@ impl MetalCache {
         let ptrs = ptrs!(destination_locals);
         unsafe { Expression(NonNull::new(metal_expr_destroy(expr.0.as_ptr(), struct_kind.0.as_ptr(), ptrs.as_ptr(), ptrs.len(), loc_ptr(loc))).unwrap(), PhantomData) }
     }
-    pub fn expr_copy_prim<'c>(&'c self, inner: Expression<'c>, source_type: Kind<'c>, result: Kind<'c>, loc: SourceLocation<'c>) -> Expression<'c> {
-        unsafe { Expression(NonNull::new(metal_expr_copy_prim(inner.0.as_ptr(), source_type.0.as_ptr(), result.0.as_ptr(), loc_ptr(loc))).unwrap(), PhantomData) }
+    pub fn expr_copy_prim<'c>(&'c self, inner: Expression<'c>, source_type: Kind<'c>, result: Kind<'c>, access_facts: Option<(Vec<u32>, u32)>, loc: SourceLocation<'c>) -> Expression<'c> {
+        let (has, scopes, count) = match access_facts {
+            Some((s, c)) => (true, s, c),
+            None => (false, Vec::new(), 0u32),
+        };
+        unsafe { Expression(NonNull::new(metal_expr_copy_prim(inner.0.as_ptr(), source_type.0.as_ptr(), result.0.as_ptr(), has, scopes.as_ptr(), scopes.len(), count, loc_ptr(loc))).unwrap(), PhantomData) }
     }
 
     pub fn expr_struct_to_interface_upcast<'c>(&'c self, inner_expr: Expression<'c>, source_type: Kind<'c>, target_interface: Kind<'c>, impl_name: Name<'c>, result: Kind<'c>, loc: SourceLocation<'c>) -> Expression<'c> {
@@ -780,9 +790,13 @@ impl MetalCache {
         }
     }
 
-    pub fn expr_call<'c>(&'c self, callable: Prototype<'c>, args: &[Expression<'c>], result: Kind<'c>, loc: SourceLocation<'c>) -> Expression<'c> {
+    pub fn expr_call<'c>(&'c self, callable: Prototype<'c>, args: &[Expression<'c>], result: Kind<'c>, call_facts: Option<(Vec<u32>, u32)>, loc: SourceLocation<'c>) -> Expression<'c> {
         let ptrs = ptrs!(args);
-        unsafe { Expression(NonNull::new(metal_expr_call(callable.0.as_ptr(), ptrs.as_ptr(), ptrs.len(), result.0.as_ptr(), loc_ptr(loc))).unwrap(), PhantomData) }
+        let (has, touched, count) = match call_facts {
+            Some((t, c)) => (true, t, c),
+            None => (false, Vec::new(), 0u32),
+        };
+        unsafe { Expression(NonNull::new(metal_expr_call(callable.0.as_ptr(), ptrs.as_ptr(), ptrs.len(), result.0.as_ptr(), has, touched.as_ptr(), touched.len(), count, loc_ptr(loc))).unwrap(), PhantomData) }
     }
     pub fn expr_extern_call<'c>(&'c self, prototype: Prototype<'c>, args: &[Expression<'c>], result: Kind<'c>, loc: SourceLocation<'c>) -> Expression<'c> {
         let ptrs = ptrs!(args);

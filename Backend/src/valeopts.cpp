@@ -35,6 +35,7 @@ int loadFromFfi(ValeOptions *opt, const BackendCompileOptionsFFI *ffi) {
   opt->useAtomicRc = ffi->use_atomic_rc != 0;
   opt->printMemOverhead = ffi->print_mem_overhead != 0;
   opt->debug = ffi->debug != 0;
+  opt->suppress_alias_metadata = ffi->suppress_alias_metadata != 0;
 
   return 1;
 }

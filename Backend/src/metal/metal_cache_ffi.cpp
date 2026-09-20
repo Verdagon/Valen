@@ -384,8 +384,8 @@ extern "C" VIS ExpressionHandle* metal_expr_runtime_sized_array_lookup(
 }
 
 extern "C" VIS ExpressionHandle* metal_expr_mutate(
-    ExpressionHandle* destination_expr, KindHandle* destination_type, ExpressionHandle* source_expr, KindHandle* source_type, KindHandle* result, SourceLocationHandle* source_loc) {
-  return reinterpret_cast<ExpressionHandle*>(new Mutate(srcloc(source_loc), ex(destination_expr), brf(destination_type), ex(source_expr), knd(source_type), knd(result)));
+    ExpressionHandle* destination_expr, KindHandle* destination_type, ExpressionHandle* source_expr, KindHandle* source_type, KindHandle* result, bool has_alias_scope, const uint32_t* scope_ptr, size_t scope_len, uint32_t group_count, SourceLocationHandle* source_loc) {
+  return reinterpret_cast<ExpressionHandle*>(new Mutate(srcloc(source_loc), ex(destination_expr), brf(destination_type), ex(source_expr), knd(source_type), knd(result), has_alias_scope, std::vector<uint32_t>(scope_ptr, scope_ptr + scope_len), group_count));
 }
 
 extern "C" VIS ExpressionHandle* metal_expr_new_struct(
@@ -400,8 +400,8 @@ extern "C" VIS ExpressionHandle* metal_expr_destroy(
   return reinterpret_cast<ExpressionHandle*>(new Destroy(srcloc(source_loc),
       ex(expr), reinterpret_cast<StructKind*>(knd(struct_kind)), locals(destination_locals, local_count)));
 }
-extern "C" VIS ExpressionHandle* metal_expr_copy_prim(ExpressionHandle* inner, KindHandle* source_type, KindHandle* result, SourceLocationHandle* source_loc) {
-  return reinterpret_cast<ExpressionHandle*>(new CopyPrim(srcloc(source_loc), ex(inner), knd(source_type), knd(result)));
+extern "C" VIS ExpressionHandle* metal_expr_copy_prim(ExpressionHandle* inner, KindHandle* source_type, KindHandle* result, bool has_alias_scope, const uint32_t* scope_ptr, size_t scope_len, uint32_t group_count, SourceLocationHandle* source_loc) {
+  return reinterpret_cast<ExpressionHandle*>(new CopyPrim(srcloc(source_loc), ex(inner), knd(source_type), knd(result), has_alias_scope, std::vector<uint32_t>(scope_ptr, scope_ptr + scope_len), group_count));
 }
 
 extern "C" VIS ExpressionHandle* metal_expr_struct_to_interface_upcast(
@@ -443,8 +443,8 @@ extern "C" VIS ExpressionHandle* metal_expr_lock_weak(
 }
 
 extern "C" VIS ExpressionHandle* metal_expr_call(
-    PrototypeHandle* callable, ExpressionHandle* const* args, size_t arg_count, KindHandle* result, SourceLocationHandle* source_loc) {
-  return reinterpret_cast<ExpressionHandle*>(new Call(srcloc(source_loc), proto(callable), exprs(args, arg_count), knd(result)));
+    PrototypeHandle* callable, ExpressionHandle* const* args, size_t arg_count, KindHandle* result, bool has_facts, const uint32_t* touched_ptr, size_t touched_len, uint32_t group_count, SourceLocationHandle* source_loc) {
+  return reinterpret_cast<ExpressionHandle*>(new Call(srcloc(source_loc), proto(callable), exprs(args, arg_count), knd(result), has_facts, std::vector<uint32_t>(touched_ptr, touched_ptr + touched_len), group_count));
 }
 extern "C" VIS ExpressionHandle* metal_expr_extern_call(
     PrototypeHandle* prototype, ExpressionHandle* const* args, size_t arg_count, KindHandle* result, SourceLocationHandle* source_loc) {

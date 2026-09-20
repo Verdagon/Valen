@@ -4,9 +4,6 @@
 
 TODO to prepare:
 
- * (DONE) Rename LocationInFunctionEnvironment<'t> to Loc<'t>.
- * (DONE) Add Loc to `FunctionCallTE`, `WhileTE`, and `IfTE`.
- * (DONE) Make it so StructMemberT.name contains a MemberNameT, not an IVarNameT.
  * rename RegionS to GroupS
  * rename BorrowRefST.region to group
  * rename RegionGenericParameterType -> GroupGenericParameterType
@@ -42,13 +39,13 @@ The borrow checker reads typing pass output, and consults the original postparse
 
 Also, because of this, whenever we need to fill a value into a group generic parameter, we just fill it with a `GroupTemplataT{}`.
 
-### check_function Has Two Phases
+### check_function Has Three Phases
 
-`check_function` has two phases.
+`check_function` has three phases.
 
  * It calls `groupify_function`, which makes an AST that has the "true types" of everything (types with groups).
  * It calls `check_usages`, which tracks what references are valid, and checks uses.
- * It calls `calculate_aliasing_info`, which tracks what parameters and locals are `noalias` and when, to later feed to the backend for optimization.
+ * It calls `calculate_aliasing_info`, which figures out which loads/stores/calls access which groups.
 
 ```rs
 pub fn check_function<'s, 'ctx, 't, 'g>(
@@ -57,7 +54,7 @@ pub fn check_function<'s, 'ctx, 't, 'g>(
   function_s: &'s FunctionS<'s>,
   function_t: &'t FunctionDefinitionT<'s, 't>,
   check_arena: &'g Bump,
-) -> Result<(), ICompileErrorT<'s, 't>> {
+) -> Result<&'g FunctionAliasingInfoT<'g>, ICompileErrorT<'s, 't>> {
   let body_g = self.groupify_function(coutputs, function_s, function_t, check_arena);
   self.check_usages(coutputs, &body_g)?;
   Ok(self.calculate_aliasing_info()?)
@@ -121,7 +118,7 @@ func foo<l'>(level &Level in l, tile in l.tiles) {
 Then `groupify_function` should return an IExpressionGE that looks like IExpressionTE, except:
 
  * `level`'s type is BorrowRefGT{inner: StructGT(Level's IdT, []), group: GroupExprG::Rune(l)}
- * `tile`'s type is BorrowRefGT{inner: StructGT(Tile's IdT, []), group: Elements(Member(Rune(l), tiles))}
+ * `tile`'s type is BorrowRefGT{inner: StructGT(Tile's IdT, []), group: ChildElements(Member(Rune(l), tiles))}
  * the `clear` call has a `mut_effects = [[Local("level"), Member("tiles")]]` ("`mut`ated level.tiles")
  * `while` has a `mut_effects: [MutEffectPath([0,2,1,2,2], [Local("level"), Member("tiles")])]` ("a call at 0,2,1,2,2 `mut`ated level.tiles")
 
@@ -137,16 +134,16 @@ struct MutEffectPath<'g> {
 }
 enum GroupStep<'s> {
   Rune(&'s IRuneS), // a group param, e.g. <g'>, resolved to its id
-  ParamAnonymousGroup(&'s StrI<'s>), // A param's group if it doesn't come from a rune or another param. The string is the param name
-  Local(&'s StrI), // A local's implicitly declared group.
+  ParamAnonymousGroup(&'t IVarNameT<'s, 't>), // A param's group if it doesn't come from a rune or another param. The string is the param name
+  Local(&'t IVarNameT<'s, 't>), // A local's implicitly declared group.
   Member { member_name: &'s StrI<'s> }, // `x.items`
-  Elements, // the `[]` part of `x.items[]`
+  ChildElements, // the `[]` part of `x.items[]` if items is a Box/Vec/RSA
+  InlineElements, // the `[]` part of `x.items[]` if items is a SSA.
+  Variant { variant_name: &'s StrI<'s> }, // an enum's variant, the `WarpEngine` part of `my_ship.engine_enum.WarpEngine`
   // No `Empty` variant, that just becomes not a MutEffectPath at all.
   // No `Union` variant, that just becomes multiple MutEffectPath.
 }
 ```
-
-Note: future version should explore making Local contain an actual IVarNameT, not sure why we dont.
 
 #### KindGT and ITemplataG
 
@@ -186,7 +183,7 @@ BorrowRefGT is the interesting one, because it's the only place that has a `Grou
 ```rs
 pub struct BorrowRefGT<'s, 't, 'g> {
   pub group: GroupExprG<'s>,
-  pub inner: &'g KindGT<'s, 't, 'g>,
+  pub inner: KindGT<'s, 't, 'g>,
 }
 ```
 
@@ -270,7 +267,9 @@ enum GroupExprG<'s, 't, 'g> {
   ParamAnonymousGroup(&'t IVarNameT<'s, 't>), // A param's group if it doesn't come from a rune or another param. The StrI is the parameter's name
   Local(&'t IVarNameT<'s, 't>), // A local's implicitly declared group.
   Member { base: &'g GroupExprG<'s, 't, 'g>, member_name: StrI<'s> }, // `x.items`
-  Elements { base: &'g GroupExprG<'s, 't, 'g> }, // the `[]` part of `x.items[]`
+  ChildElements { base: &'g GroupExprG<'s, 't, 'g> }, // the `[]` part of `x.items[]` if items is a Box/Vec/RSA
+  InlineElements { base: &'g GroupExprG<'s, 't, 'g> }, // the `[]` part of `x.items[]` if items is a SSA.
+  Variant { base: &'g GroupExprG<'s, 't, 'g>, variant_name: StrI<'s> }, // an enum's variant, the `WarpEngine` part of `my_ship.engine_enum.WarpEngine`
   Union { members: &'g [&'g GroupExprG<'s, 't, 'g>] }, // This ref points at multiple groups, or this function mutates multiple groups
   Ellipsis { base: &'g GroupExprG<'s, 't, 'g> }, // the `...` part of `x...`
 }
@@ -283,8 +282,6 @@ Notes:
     * ParamAnonymousGroup is **only** to be used for the surface-most borrow in a function signature. Okay: `x: &Ship` -> `x: &Ship in ParamAnonymousGroup(x)`. Bad: `y: &Opt<&Ship> in a` -> `y: &Opt<&Ship in ParamAnonymousGroup(x)> in a`.
  * A `GroupExprG`'s runes are always in the current function's (the caller's) namespace.
  * `map`'s GroupSubtree is different than `map.size`'s GroupSubtree. However, in the code that detects a mutation to `map`, we'll make sure it doesn't invalidate references to `map.size`, because `map.size` isn't destructible independently from `map`.
-
-Future version should explore making Local contain an actual IVarNameT, not sure why we dont.
 
 #### groupify_function
 
@@ -359,7 +356,7 @@ As `check_usages` encounters `MutateGE`s and `FunctionCallGE`s which have `mut_e
 
 If it was a `mut(g)` effect (no ellipsis), then:
 
- * For every `Elements` descendant of that path, and all descendants of those `Elements` descendants, fill the `invalidated_by`.
+ * For every `ChildElements`/`Variant` descendant of that path, and all descendants of those `ChildElements`/`Variant` descendants, fill the `invalidated_by`.
  * For each entry in this group's `locals_in_ellipsis`, fill the `invalidated_by`.
  * For each descendant group, for each of their `locals_in_ellipsis`, fill the `invalidated_by`.
  * For each ancestor group, for each of their `locals_in_ellipsis`, fill the `invalidated_by`.
@@ -383,8 +380,7 @@ If they mutate a group `g...`, that's the same as mutating group `g`.
 
 Notes:
 
- * A churn of a group invalidates any references into that group's independently-destructible descendant groups. And the only independently-destructible child group in Valen is the Elements (`[]`) child group. Therefore, a churn of a group invalidates any references into that group's descendant Elements groups, and all of those groups descendants.
-    * When unions arrive, their variants will also be in an Elements child group. When raw pointers arrive (like underlying `Box` and `Vec`), those too will be Elements child groups.
+ * A churn of a group invalidates any references into that group's independently-destructible descendant groups. And the only independently-destructible child groups in Valen are the ChildElements (`[]`) child group and the Variant child group. Therefore, a churn of a group invalidates any references into that group's descendant ChildElements/Variant groups, and all of those groups descendants.
 
 #### Check Argument Overlaps
 
@@ -433,22 +429,10 @@ For now, when an override implements an abstract method, its declared `mut(...)`
 
 ### calculate_aliasing_info
 
-`calculate_aliasing_info` is a function that tracks what parameters and locals are `noalias` and when, to later feed to the backend for optimization. It looks like this:
+We need to tell LLVM _when_ things are `noalias` (C's `restrict`). And we do that. However, that's only used on function parameters that don't alias.
 
-```rs
-fn calculate_aliasing_info<'g>(
-  &self,
-  function_s: &'s FunctionS<'s>,
-  function_t: &'t FunctionDefinitionT<'s, 't>,
-  body: &'g IExpressionGE<'s, 't, 'g>,
-) -> FunctionAliasingInfoT { ... }
-```
+We _also_ need to communicate where _inside_ the functions what references are temporarily effectively unique. For example:
 
-If a function parameter is the *only* way to reach into a certain group, then that parameter should be codegen'd with `noalias`. The borrow checker should output, for the function, a boolean per parameter.
-
-The borrow checker should also calculate in which scopes a parameter is the only one used to reach into a certain group.
-
-For example:
 ```
 // a and b are both in group g (so they might alias) and it's being mutated,
 // so neither can be `noalias`.
@@ -463,11 +447,272 @@ func do_things<g'>(a &Ship in g, b &Ship in g) mut(g) {
   set a.fuel = a.fuel + 1;
 }
 ```
-So, `a` is restrict for part of that function. The borrow checker should communicate, for each area where one reference is the only one reaching into its group, the group it names and the access sites inside the area. Backend uses this to emit `!alias.scope` and `!noalias` metadata on those accesses.
 
-Q: Why do we have both, if the block-scoped restrict is strictly more powerful?
-A: We need some way to communicate _across function call boundaries_ which parameters are already restrict. There's no way for block-scoped metadata to do that.
+So, `a` is restrict for part of that function. The borrow checker should communicate enough such that LLVM can figure out how it can do these "local restrict"-like optimizations.
 
+To do that, we have `calculate_aliasing_info`.
+
+
+`calculate_aliasing_info` is a function that figures out which loads/stores/calls access which groups, so that we can inform the backend who informs the optimizer so it can optimize better.
+
+Specifically, the backend will be attaching this kind of metadata:
+
+ * An `!alias.scope {scope number}` for every load and store, saying what group it's accessing.
+ * A `!noalias {scope number}` for every load, store, and callsite.
+ * A `!noalias` for every parameter that is the only reference pointing into its group (like C `restrict` pointer or Rust `&mut`).
+ * `readonly` on each borrow parameter if nothing reachable by it can be mutated.
+
+For example, the backend adds this commented information:
+
+```
+struct Level { tiles Vec<Tile>; entities Vec<Entity>; }
+struct Tile { ... }
+struct Entity { ... }
+func attack<l', s'>(
+    level &Level in l,
+    tile &Tile in l.tiles[],
+    foe &Entity in l.entities[] mut,
+    something &Something in s,       // `restrict`, `readonly`
+) {
+  // group l is !alias.scope {0}
+  // group l.tiles[] is !alias.scope {1}
+  // group l.entities[] is !alias.scope{2}
+  // group s is !alias.scope{3}
+
+  // Accesses l (and l.tiles[] or l.entities[]) but not s. Readonly.
+  print_level(level); // !noalias {3}
+
+  // Accesses l.tiles[], doesn't access l or l.entities[] or s
+  heat = tile.heat; // !alias.scope {1} + !noalias {0} + !noalias {2} + !noalias {3}
+
+  // Accesses l.tiles[], doesn't access l or l.entities[] or s
+  describe(tile); // !noalias {0} + !noalias {2} + !noalias {3}
+  // (calls dont get !alias.scope)
+
+  // Accesses l.entities[], doesn't access l or l.tiles[] or s
+  set foe.hp = foe.hp - heat; // Both get: !alias.scope {2} + !noalias {0} + !noalias {1} + !noalias {3}
+
+  // Accesses s, doesn't access l or l.tiles[] or l.entities[]
+  print(something); // !noalias {0} + !noalias {1} + !noalias {2}
+}
+```
+
+We supply information to the backend to do that, which looks like this:
+
+```rs
+fn calculate_aliasing_info<'g>(
+  &self,
+  function_s: &'s FunctionS<'s>,
+  function_t: &'t FunctionDefinitionT<'s, 't>,
+  body: &'g IExpressionGE<'s, 't, 'g>,
+) -> &'g FunctionAliasingInfoT<'g> { ... }
+```
+
+...which is included in the HinputsT, per function:
+
+```rs
+pub struct HinputsT<'s, 't> {
+  ...
+
+  // If the borrow checker is off, this map will be empty.
+  // If the borrow checker is on, every single function will have an entry here.
+  pub signature_to_aliasing_info: IndexMap<SignatureT<'s, 't>, &'t FunctionAliasingInfoT<'s, 't>>,
+  ...
+}
+```
+
+FunctionAliasingInfoT looks like this:
+
+```rs
+pub struct FunctionAliasingInfoT<'s, 'x> {
+  // For each param, whether to add `noalias` to it.
+  // True if the parameter is the *only* way to reach into a certain group, so add `noalias`.
+  // False if other parameters might overlap it.
+  pub param_index_to_noalias: &'x [bool],
+
+  // For each param, whether to add `readonly` to it.
+  // True if nothing reachable by this parameter is ever modified by this function.
+  // False if either:
+  //  * A mut effect modifies it, an ancestor, or a descendant.
+  //  * A mut effect modifies anything reachable by this param.
+  pub param_index_to_readonly: &'x [bool],
+
+  // The _size_ of this slice is all that really matters.
+  // The elements of this slice are only for debugging.
+  pub group_paths: &'x [GroupIdT<'s, 'x>],
+
+  // Key: LocT for the instruction (load, store, call).
+  // Value: All the group IDs that it accesses.
+  // (sorted by key)
+  // Every load/store/call gets one of these.
+  pub instruction_loc_to_accessed_groups: &'x [(LocT<'x>, &'x [u32])],
+  // Backend will add the inverse set; LLVM only cares about "groups this instruction *doesnt* access".
+  // Note that this **doesn't** say whether or not it mutates; this doesn't correspond to mut effects.
+  // It just corresponds to what things are reachable.
+}
+// The name of each group, just for debugging purposes.
+pub struct GroupIdT<'s, 'x> {
+  pub steps: &'x [GroupIdStepT<'s>],
+}
+// A step in a name of each group, just for debugging purposes.
+pub enum GroupIdStepT<'s> {
+  Rune(StrI<'s>),
+  ParamAnonymousGroup(StrI<'s>),
+  Local(StrI<'s>),
+  Member(StrI<'s>),
+  ChildElements, // the `[]` part of `x.items[]` if items is a Box/Vec/RSA
+  InlineElements, // the `[]` part of `x.items[]` if items is a SSA.
+  Variant(StrI<'s>), // an enum's variant, the `WarpEngine` part of `my_ship.engine_enum.WarpEngine`
+}
+```
+
+So the above function would produce a `FunctionAliasingInfoT` with this (commented) information:
+
+```
+struct Level { tiles Vec<Tile>; entities Vec<Entity>; }
+struct Tile { ... }
+struct Entity { ... }
+
+func attack<l', s'>(
+    level &Level in l,               // param_index_to_noalias[0] = false, param_index_to_readonly[0] = false
+    tile &Tile in l.tiles[],         // param_index_to_noalias[1] = false, param_index_to_readonly[1] = true
+    foe &Entity in l.entities[] mut, // param_index_to_noalias[2] = false, param_index_to_readonly[2] = false
+    something &Something in s,       // param_index_to_noalias[3] = true,  param_index_to_readonly[3] = true
+) {
+  // group_paths.len() = 4
+  // Contents (not semantically necessary, but produced for debugging):
+  //  0. [Rune("l")]
+  //  1. [Rune("l"), Member("tiles"), ChildElements]
+  //  2. [Rune("l"), Member("entities"), ChildElements]
+  //  3. [Rune("s")]
+
+  print_level(level); // accesses group 0 + 1 + 2 (l can reach those, can't reach s)
+  heat = tile.heat; // accesses group 1
+  describe(tile); // accesses group 1
+  set foe.hp = foe.hp - heat; // accesses group 2
+  print(something); // accesses group 3
+}
+```
+
+
+#### readonly parameter
+
+One might think we put `readonly` on a parameter if we mutate nothing in its _owned_ hierarchy. That's wrong.
+
+We put `readonly` on a parameter if we mutate nothing _reachable_ by it.
+
+In this example:
+
+```
+func moo<g'>(
+   ships &Vec<Ship> in g mut,
+   my_opt &Opt<&Ship in g>
+) { ... }
+```
+
+`my_opt` does _not_ get `readonly`, because it can reach mutable `Ship`s in `g`.
+
+#### A note on redundancy
+
+We technically don't need to put `!alias.scope` on most of these things. Technically, in the original example, we could get away with just these annotations:
+
+```
+struct Level { tiles Vec<Tile>; entities Vec<Entity>; }
+struct Tile { ... }
+struct Entity { ... }
+func attack<l', s'>(
+    level &Level in l,
+    tile &Tile in l.tiles[], // `readonly`
+    foe &Entity in l.entities[] mut,
+    something &Something in s,       // `restrict`
+) {
+  // group l is !alias.scope {0}
+  // group l.tiles[] is !alias.scope {1}
+  // group l.entities[] is !alias.scope{2}
+  // group s is !alias.scope{3}
+
+  print_level(level);
+
+  heat = tile.heat; // !alias.scope {1} + !noalias {2}
+
+  describe(tile); // !noalias {2}
+
+  set foe.hp = foe.hp - heat; // !alias.scope {2} + !noalias {1}
+
+  print(something); // !noalias {1} + !noalias {2}
+}
+```
+
+Claude's explanation for why we can drop these:
+
+ * All !noalias {0} (group l). Nothing directly loads/stores level's own storage (level is only handed to print_level, a call, which gets no !alias.scope), so scope 0 has no members and excluding it does nothing.
+ * All !noalias {3} (group s). Same, something is only passed to print(something), a call, so nothing is !alias.scope {3}; excluding it is inert. (This is also the restrict param, so it's covered by something's whole-function noalias regardless.)
+ * print_level's only scope tag was !noalias {3} → gone.
+
+However, we produce this information anyway, for simplicity. We might decide to elide some of these annotations later. For now, we emit them for simplicity and consistentcy.
+
+
+### Closures
+
+the problem arises when we want these two properties:
+
+ * every function is borrow checked independently of any other function
+ * we dont want any lifetimes figured out in the typing pass
+
+This is the case:
+
+```
+func foo<g'>(...) {
+  x Vec<&Ship in g> = ...;
+  y Vec<&Ship in g> = ...;
+  take_closure({
+    print(x.len() + y.len());
+  });
+}
+```
+
+There are a few questions that arise in this example
+
+question 1: what is the type of the closure's underlying struct? more specifically, what are its generic parameters? two options:
+
+ * option A (wrong): `struct foo_closure_1<x_lifetime, y_lifetime, x_T_lifetime, y_T_lifetime> { ... }`
+ * option B (correct): `struct foo_closure_1<x_lifetime, y_lifetime, g> { ... }`
+
+question 2: assuming option B above, who figures that out? in other words, who knows that x's
+
+ * wrong answer: just look at the types the user wrote; they wrote &Ship in g so you can see that they both use G. this is wrong because it breaks if the user doesn't manually specify the types (x = ...)
+ * correct answer: the borrow checker that runs on foo figures it out
+
+the trouble here is: when we're borrow checking closure's `__call` method, we need to know what the lifetime parameters are of that struct
+
+in other words, foo's borrow checker makes information needed by `__call`'s borrow check
+
+i think the answer is unfortunately to order them; borrow check the parent first, then borrow check the child 
+
+rustc concluded something similar (order them) though they went the opposite direction: borrow check the child first, then feed constraints up to the parent 
+
+
+aha, found a weakness in my framing. these seemed to be the two options:
+
+ 1. borrow check child, then parent. child looks at what it calls, to establish constraints (such as x_T_lifetime == y_T_lifetime).
+    * this is nice because we can calculate the child effects (such as "i the child mutate x.items[]") and those propagate upward to the parent.
+ 2. borrow check parent, then child.
+    * this is nice because at the parent callsites we can figure out the actual lifetime parameters that we want the child to have ("i the parent am handing you Vec<&Ship in g> and Vec<&Ship in g>, both of those are g, so you only need one lifetime parameter for it)
+
+both aren't great:
+
+ * #1 is a workaround because the child cant know the actual generic params, that's why it needs to communicate constraints upward.
+ * #2 actually fails because the parent needs to know the child's effects.
+
+but there's a middle ground:
+
+do #1, but pause borrow checking the parent while we immediately go borrow check the child.
+once the child is done borrow checking, we will then know its effects, and we can resume borrow checking the parent.
+
+
+### Notes
+
+ * Every extern gets `nounwind` because we only ever compile Valen with panic=abort.
 
 ## Design Proposals
 
@@ -494,24 +739,50 @@ callee rune from the grouped arguments, so `churn<g'>(a &[]int in g)` called wit
 `g → Group(Local(arr))`. Every rune a written type or `mut(g)` mentions is looked up in the frame
 being groupified into, and a miss is a compiler bug.
 
-**Override effect-matching is a borrow-check.** Override resolution invokes the borrow checker to
+**S1. Aliasing info is region-free.** LLVM should still treat a reference as effectively restrict wherever
+it is the sole one reaching its group across a call — but the checker never computes those spans. It
+reports only which group each load/store touches and which groups each call can reach through its
+arguments, and LLVM concludes the restrict-ness itself from the resulting `!alias.scope`/`!noalias`.
+Tagging every access is free because `!alias.scope` is inert without a matching `!noalias`, so the only
+load-bearing content is a call's reach, which the backend complements into each `!noalias`.
+
+**S2. A fixed size array's elements share their parent's scope number.** `element_result` gives every
+array's elements their own group, whether the array is stored on the heap or kept inline inside its
+parent. Scope numbering must fold the inline case back in: an inline array's elements are the same memory
+as the parent, so numbering them apart would tell LLVM that an access to the whole parent and an access
+to an element never overlap, and it would reorder them into wrong code. A heap array's elements keep
+their own number, and the array's type decides which.
+
+**S4. Override effect-matching is a borrow-check.** Override resolution invokes the borrow checker to
 compare an override's declared `mut(...)` against the abstract method it implements, and a mismatch is
 a `BorrowErrorKind`; so the borrow checker has two entry points — per-body `check_function` and
 override-conformance from the impl seam.
 
-**Group-generic closures.** A closure that captures a reference is generic over the groups its captures
+**S5. Group-generic closures.** A closure that captures a reference is generic over the groups its captures
 need: for each capture, the closure struct gains a group parameter per free group in that capture's type
 (found by walking the type, not its definition) plus a fresh outer group for a by-reference capture,
 each bound at `&{...}` construction to the enclosing group. The closure body reads them off `self`'s
 type, so a captured reference's use is checked like any group-generic call — no cross-function body
 peek. Detailed plan: `docs/plans/group-generic-closures-plan.md`.
 
+**S6. A `where func` bound prototype can declare churn.** A bound such as `where func __call(&F, &Win in r,
+&Inp) mut(r)` quantifies its region per call (HRTB-shaped), and the checker enforces the declared churn on
+every call through the bound. The motivating case is a generic forwarder whose closure parameter churns
+a `&mut` window it is handed (a Rust-trait reverse callback); today that program compiles only with the
+checker off.
+
+**S7. A trailing `mut` after a borrow parameter's type declares churn.** `w &Win mut` means the parameter's
+group is churned by the body, equivalent to naming the group and listing it in `mut(...)`. It is accepted on
+function headers, lambda parameters, and `where func` bound prototypes (S6).
+
+S8. talk about AccessEventG
+
 ## Details
 
-### Phase entry points (from Two Phases)
+### Phase entry points (from Three Phases)
 
-`check_function` runs the two phases in order, threading phase 1's output into phase 2. All inputs
-stay immutable and the only output is an error, so the entry point stays pure.
+`check_function` runs the three phases in order, threading phase 1's grouped AST into phases 2 and 3. All
+inputs stay immutable; the only outputs are an error or the aliasing info, so the entry point stays pure.
 
 Phase 1 (`groupify_function`) builds the grouped AST: it fills each borrow's group and attaches each
 call's `mut_effects`, aggregating them onto the enclosing `while` node, so phase 2 needs no loop
@@ -519,6 +790,9 @@ fixpoint.
 
 Phase 2 (`check_usages`) walks the grouped AST once, threads the `GroupSubtree` tree, and rejects a use
 of a reference a churn invalidated.
+
+Phase 3 (`calculate_aliasing_info`) walks the same grouped AST and produces the `FunctionAliasingInfoT`
+telling the backend which memory each load, store, and call touches.
 
 ### The grouped AST meets the GroupSubtree state (from check_usages)
 
@@ -542,24 +816,38 @@ use site. A use-after-churn of a *held register* — an unnamed mid-expression t
 distinct `BorrowErrorKind::UseAfterChurnTemporary`, pointing at the argument that holds the stale
 reference; the per-argument source range comes from `FunctionCallTE.range`.
 
-### Noalias output (from Noalias)
+### Aliasing output (from calculate_aliasing_info)
 
-`check_function` returns a `FunctionAliasingInfoT` — owned data (it must outlive `check_arena`, dropped
-the moment checking finishes) holding the per-parameter `noalias` booleans, and, once Phase B lands, the
-restrict regions. Computed once on the generic function; group structure doesn't vary per
-monomorphization, so every instantiation carries the same facts.
+`check_function` returns a `FunctionAliasingInfoT`, allocated in the check arena. Before that arena is
+dropped, `function_compiler_core.rs` copies it into the typing arena so it lives as long as the typed
+outputs. It is computed once on the generic function; group structure does not vary per monomorphization,
+so every instantiation carries the same facts.
 
-The facts ride in side maps keyed by function id — never on `ParameterT`/`ParameterI` or the metal AST:
-`CompilerOutputs.signature_to_aliasing_info` (by `SignatureT`) → `HinputsT` → instantiation copies it,
-keyed by the instantiated `IdI`, into `HinputsI.id_to_aliasing_info` (`FunctionAliasingInfoI`) → the
-metal `Package.paramNoaliasByName` side map → C++ `declareFunction` reads it via `lookupParamNoalias`.
-A map entry's presence is the "analyzed" signal (absent = generated/extern/checker-off, marked nothing);
-`declareFunction` asserts a present entry's length equals the parameter count.
+It carries three things, one per optimization:
 
-The **per-parameter attribute** keys by parameter index and is landed. The **restrict regions** (Phase B)
-key their access sites by `LocT` (mirrored as `LocI` past instantiation); the value-access nodes
-(`Deref`/`CopyPrim`/`Mutate`) must gain a `LocT` for this, since they carry only `RangeS` today (which is
-not unique enough — a decayed `Deref` and its inner `LocalLookup` share one).
+ * `param_index_to_noalias`: one bool per parameter. True when that parameter is the only reference into
+   its group, so the backend adds `noalias` to it.
+ * `param_index_to_readonly`: one bool per parameter. True when nothing reachable through that parameter is
+   mutated — no declared `mut` covers its group, an ancestor, a descendant, or any group reached through a
+   borrow nested in its type — so the backend adds `readonly` to it.
+ * `group_paths` plus `instruction_loc_to_accessed_groups`: one entry per scope number (its length is the
+   count; each entry's path is debug-only), and for each load, store, and call (keyed by `LocT`) the
+   numbers it accesses. The backend adds `!alias.scope` on loads and stores, and derives every `!noalias`
+   by complementing against `group_paths.len()`.
+
+The facts ride in side maps keyed by function id, never on `ParameterT`/`ParameterI` or the metal AST:
+`HinputsT.signature_to_aliasing_info` (by `SignatureT`), which instantiation copies keyed by the
+instantiated `IdI` for the backend. A map entry's presence is the "analyzed" signal; absent means
+generated, extern, or the checker was off, and nothing is marked.
+
+A scope number is a piece of memory, folded from each access's group: an inline fixed size array's
+elements fold into their parent's number, while a heap array's keep their own (see the allocation-fold
+proposal). The value-access nodes (`Deref`/`CopyPrim`/`Mutate`) carry a `LocT` so the backend can look
+each access up; they hold only a `RangeS` otherwise, which is not unique enough because a decayed `Deref`
+and its inner `LocalLookup` share one.
+
+Externs also get `nounwind` (Vale aborts on panic), which is what lets the scope metadata work across a
+call the optimizer cannot see into.
 
 ## Test cases
 

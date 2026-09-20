@@ -211,7 +211,7 @@ pub struct InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
     // The borrow checker's aliasing info, carried from HinputsT (keyed by the pre-monomorphization
     // SignatureT) to each instantiated function's IdI, so the backend can look it up by the same id it
     // lowers. Monomorph-invariant, so all monos of one template share it. Presence = analyzed.
-    pub aliasing_info_by_id: IndexMap<IdI<'s, 'i>, FunctionAliasingInfoI>,
+    pub aliasing_info_by_id: IndexMap<IdI<'s, 'i>, &'i FunctionAliasingInfoI<'i>>,
     pub structs: IndexMap<IdI<'s, 'i>, &'i StructDefinitionI<'s, 'i>>,
     pub static_sized_arrays: IndexMap<IdI<'s, 'i>, &'i StaticSizedArrayIT<'s, 'i>>,
     pub runtime_sized_arrays: IndexMap<IdI<'s, 'i>, &'i RuntimeSizedArrayIT<'s, 'i>>,
@@ -1319,10 +1319,20 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         // Carry the borrow checker's aliasing info from the template signature to this instantiated
         // function's id, for the backend to read at lowering. Presence marks the function as analyzed.
         if let Some(info) = self.hinputs.signature_to_aliasing_info.get(&function_t.header.to_signature()) {
-            monouts.aliasing_info_by_id.insert(
-                result.header.id,
-                FunctionAliasingInfoI { param_noalias: info.param_noalias.clone() },
-            );
+            let mut instr_map: ArenaIndexMap<'i, &'i [i32], &'i [u32]> =
+                ArenaIndexMap::new_in(self.interner.bump());
+            for (loc, set) in info.instruction_loc_to_accessed_groups.iter() {
+                instr_map.insert(
+                    self.interner.alloc_slice_copy(loc.path),
+                    self.interner.alloc_slice_copy(*set),
+                );
+            }
+            let info_i = self.interner.alloc(FunctionAliasingInfoI {
+                param_index_to_noalias: self.interner.alloc_slice_copy(info.param_index_to_noalias),
+                group_count: info.group_paths.len() as u32,
+                instruction_loc_to_accessed_groups: instr_map,
+            });
+            monouts.aliasing_info_by_id.insert(result.header.id, info_i);
         }
 
         result
@@ -1442,7 +1452,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 }))
             }
             ExpressionTE::Mutate(m) => {
-                let MutateTE { destination_expr: destination_tt, source_expr, .. } = **m;
+                let MutateTE { destination_expr: destination_tt, source_expr, loct, .. } = **m;
                 let (destination_it, destination_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &destination_tt);
                 let (source_it, source_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &source_expr);
                 let destination_borrow = match destination_it {
@@ -1456,6 +1466,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     source_expr: source_ce,
                     source_type: source_it,
                     result: result_it,
+                    loci: LocI { path: self.interner.alloc_slice_from_vec(loct.path.to_vec()) },
                 }))
             }
             ExpressionTE::Restackify(r) => {
@@ -1683,7 +1694,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 result_ce
             }
             ExpressionTE::FunctionCall(fc) => {
-                let FunctionCallTE { callable: prototype_t, args, .. } = fc;
+                let FunctionCallTE { callable: prototype_t, args, loct, .. } = fc;
                 let inners_ce: Vec<ExpressionIE<'s, 'i>> = args.iter().map(|arg_te| {
                     let (_arg_it, arg_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, arg_te);
                     arg_ce
@@ -1697,6 +1708,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     callable: prototype,
                     args: self.interner.bump().alloc_slice_fill_iter(inners_ce.into_iter()),
                     result: result_it,
+                    loci: LocI { path: self.interner.alloc_slice_from_vec(loct.path.to_vec()) },
                 }))
             }
             ExpressionTE::BoundFunctionCall(b) => {
@@ -1725,6 +1737,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                             callable: override_prototype,
                             args: self.interner.bump().alloc_slice_fill_iter(args_ce.into_iter()),
                             result: result_it,
+                            loci: LocI { path: self.interner.alloc_slice_from_vec(b.loct.path.to_vec()) },
                         }))
                     }
                     // Interface receiver (interfaces can implement interfaces) → real dynamic dispatch.
@@ -1752,6 +1765,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     inner: inner_ce,
                     source_type: inner_it,
                     result: result_it,
+                    loci: LocI { path: self.interner.alloc_slice_from_vec(cp.loct.path.to_vec()) },
                 }))
             }
             ExpressionTE::Construct(c) => {

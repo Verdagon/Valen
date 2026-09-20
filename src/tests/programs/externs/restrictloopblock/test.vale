@@ -1,0 +1,31 @@
+// Example B — the case Rust's `&mut` cannot express. `a` and `b` share group g, so neither is
+// whole-function noalias. Two separate loops each use only one of them, so block-scoped restrict proves `a`
+// sole in loop 1 and `b` sole in loop 2 — LLVM keeps each field in a register across its loop's opaque
+// `noopBarrier()` calls, driven purely by the block-scoped metadata (there is no param-level noalias to
+// lean on). `noopBarrier` is an opaque C extern.
+
+extern func noopBarrier();
+
+exported struct Ship { fuel int; }
+
+exported func bump_inline<g'>(a &Ship in g, b &Ship in g) {
+  i = 0;
+  while i < 1000 {
+    set a.fuel = __copy_prim(a.fuel) + 1;
+    noopBarrier();
+    set i = i + 1;
+  }
+  j = 0;
+  while j < 1000 {
+    set b.fuel = __copy_prim(b.fuel) + 1;
+    noopBarrier();
+    set j = j + 1;
+  }
+}
+
+exported func main() int {
+  s1 = Ship(0);
+  s2 = Ship(0);
+  bump_inline(&s1, &s2);
+  return 0;
+}

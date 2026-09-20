@@ -11,6 +11,7 @@
 
 #include "expressions/expressions.h"
 #include "expressions/shared/shared.h"
+#include "../aliasing/aliasing.h"
 #include "expressions/shared/members.h"
 #include "expression.h"
 #include "function.h"
@@ -116,8 +117,11 @@ Ref translateExpressionInner(
     auto resultRef =
         globalState->getRegion(sourceBorrowType)
             ->load(functionState, builder, sourceBorrowType, sourceRef);
-    globalState->getRegion(copyPrimM->result)
+    auto resultRefLE = globalState->getRegion(copyPrimM->result)
         ->checkValidReference(FL(), functionState, builder, false, copyPrimM->result, resultRef);
+    if (copyPrimM->hasAliasScope) {
+      attachAccessAliasScope(globalState, functionState, resultRefLE, copyPrimM->groupIndices, copyPrimM->groupCount);
+    }
     return resultRef;
   } else if (auto ret = dynamic_cast<Return*>(expr)) {
     buildFlare(FL(), globalState, functionState, builder, typeid(*expr).name());
@@ -209,8 +213,11 @@ Ref translateExpressionInner(
     auto sourceRef =
       translateExpression(globalState, functionState, blockState, builder, mutate->sourceExpr);
 
-    globalState->getRegion(mutate->destinationType->inner)
+    auto storeLE = globalState->getRegion(mutate->destinationType->inner)
         ->store(functionState, builder, mutate->sourceType, sourceRef, mutate->destinationType, destinationRefRef);
+    if (mutate->hasAliasScope) {
+      attachAccessAliasScope(globalState, functionState, storeLE, mutate->groupIndices, mutate->groupCount);
+    }
 
     return oldRef;
   // } else if (auto localStore = dynamic_cast<LocalStore*>(expr)) {

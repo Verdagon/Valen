@@ -1,14 +1,8 @@
 #![feature(box_patterns)]
 #![allow(dead_code)]
 #![allow(unused_variables, unused_imports)]
-// Rust interop links rustc's internals. `rustc_private` is the entire feature list this
-// needs — no other `#![feature]` and no extra `#![allow]`.
 #![cfg_attr(feature = "rust_interop", feature(rustc_private))]
 
-// The rustc crates the interop read path uses. `rustc_driver` must be named even where its
-// API is barely called: declaring it is what pulls in the dylib the other internals live in.
-// Deliberately minimal — add on demand rather than up front; the long lists belong to
-// codegen work, not to a read-only typing pass.
 #[cfg(feature = "rust_interop")]
 extern crate rustc_driver;
 #[cfg(feature = "rust_interop")]
@@ -21,9 +15,6 @@ extern crate rustc_middle;
 extern crate rustc_session;
 #[cfg(feature = "rust_interop")]
 extern crate rustc_span;
-// The collector-driven instantiation path (per_instance_mir): rustc drives our monomorphizer, so we
-// link the mono collector and codegen crates it runs through, plus rustc_index/rustc_abi for building
-// the synthetic MIR body we hand back. Sysroot-provided by the fork; no Cargo deps.
 #[cfg(feature = "rust_interop")]
 extern crate rustc_codegen_ssa;
 #[cfg(feature = "rust_interop")]
@@ -34,26 +25,19 @@ extern crate rustc_monomorphize;
 extern crate rustc_index;
 #[cfg(feature = "rust_interop")]
 extern crate rustc_abi;
-// rustc_target::callconv::{FnAbi, PassMode}: the per-argument/return calling convention we read to
-// build each Rust leaf's extern ABI descriptor.
 #[cfg(feature = "rust_interop")]
 extern crate rustc_target;
 extern crate core;
+#[cfg(feature = "rust_interop")]
+extern crate rustc_hashes;
 
-// VCOORD: Onion typing arc: parser + postparsing linked; typing and downstream
-// stay unlinked pending their own slices. higher_typing was retired outright.
 pub mod backend_ffi;
 pub mod builtins;
 pub mod clang;
 pub mod code_source;
 pub mod compile_options;
-// pub mod file_coordinate_map;
-// Backend-driving e2e tests (pass_manager::build → C++ backend → clang → exec). The interop build
-// deliberately does not link the C++ backend (§4.2), so these are excluded there — they run in the
-// backend-enabled default/nextest gates. Restores the interop-build behavior from before ad4c79a4.
 #[cfg(all(test, not(feature = "rust_interop")))]
 pub mod end_to_end_tests;
-// #[cfg(test)]
 pub mod integration_tests;
 pub mod instantiating;
 pub mod interner;

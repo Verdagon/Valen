@@ -11,3 +11,4 @@ mod drive_tests;
 mod harness;
 mod orchestrator_tests;
 mod pipeline_e2e;
+mod speed;

@@ -255,7 +255,8 @@ Ref buildCallV(
     FunctionState* functionState,
     LLVMBuilderRef builder,
     Prototype* prototype,
-    std::vector<Ref> argRefs);
+    std::vector<Ref> argRefs,
+    const std::vector<uint32_t>& noaliasScopeIds = {});
 
 LLVMValueRef buildMaybeNeverCall(
     GlobalState* globalState,
