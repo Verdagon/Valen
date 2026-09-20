@@ -2,6 +2,7 @@ use bumpalo::Bump;
 use crate::postparsing::ast::{IBodyS, IFunctionAttributeS, LocationInDenizen};
 use crate::postparsing::names::*;
 use crate::typing::ast::ast::*;
+use crate::typing::ast::borrowing_ast::{FunctionAliasingInfoT, GroupIdT};
 use crate::typing::ast::expressions::{
   ArgLookupTE, BlockTE, ExpressionTE, ExternFunctionCallTE, GenericParametersInheritance, ReturnTE,
 };
@@ -353,12 +354,33 @@ where
     });
     coutputs.add_function(header_sig, function2);
 
+    // Run borrow checking, and copy the aliasing info out
     if self.opts.borrow_checker_enabled {
       let check_arena = Bump::new();
-      let aliasing_info =
+      let aliasing_info_g =
         self.check_function(coutputs, full_env_snapshot.function, function2, &check_arena)?;
-      let aliasing_info = self.copy_aliasing_info_to_typing_arena(aliasing_info);
-      coutputs.record_aliasing_info(*header_sig, aliasing_info);
+      let group_paths: Vec<GroupIdT<'s, 't>> = aliasing_info_g
+        .group_paths
+        .iter()
+        .map(|g| GroupIdT { steps: self.typing_interner.alloc_slice_copy(g.steps) })
+        .collect();
+      let instr: Vec<(LocT<'t>, &'t [u32])> = aliasing_info_g
+        .instruction_loc_to_accessed_groups
+        .iter()
+        .map(|(loc, set)| {
+          (
+            LocT { path: self.typing_interner.alloc_slice_copy(loc.path) },
+            self.typing_interner.alloc_slice_copy(set),
+          )
+        })
+        .collect();
+      let aliasing_info_t =
+        self.typing_interner.alloc(FunctionAliasingInfoT {
+          param_index_to_noalias: self.typing_interner.alloc_slice_copy(aliasing_info_g.param_index_to_noalias),
+          group_paths: self.typing_interner.alloc_slice_from_vec(group_paths),
+          instruction_loc_to_accessed_groups: self.typing_interner.alloc_slice_from_vec(instr),
+        });
+      coutputs.record_aliasing_info(*header_sig, aliasing_info_t);
     }
 
     Ok(function2.header)

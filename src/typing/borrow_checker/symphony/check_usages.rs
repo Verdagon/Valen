@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use crate::postparsing::ast::FunctionS;
 use crate::postparsing::rules::types::ITypeST;
 use crate::StrI;
-use crate::typing::ast::ast::{FunctionAliasingInfoT, FunctionDefinitionT, LocT};
+use crate::typing::ast::ast::{FunctionDefinitionT, LocT};
 use crate::typing::borrow_checker::borrow_error::BorrowErrorKind;
 use crate::typing::borrow_checker::check_usages_types::{GroupSubtree, LocalEntry, RefKey};
 use crate::typing::borrow_checker::group_expr::{GroupChildStepG, GroupExprG, GroupPathG, GroupRootG};

@@ -2,7 +2,8 @@ use bumpalo::Bump;
 use crate::postparsing::ast::FunctionS;
 use crate::postparsing::rules::types::ITypeST;
 use crate::StrI;
-use crate::typing::ast::ast::{FunctionAliasingInfoT, FunctionDefinitionT};
+use crate::typing::ast::ast::FunctionDefinitionT;
+use crate::typing::ast::borrowing_ast::FunctionAliasingInfoT;
 use crate::typing::borrow_checker::ast_g::ExpressionGE;
 use crate::typing::borrow_checker::kind_g::KindGT;
 use crate::typing::borrow_checker::templata_g::ITemplataG;
@@ -24,10 +25,13 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_s: &'s FunctionS<'s>,
     function_t: &'t FunctionDefinitionT<'s, 't>,
     bump_g: &'g Bump,
-  ) -> Result<FunctionAliasingInfoT, ICompileErrorT<'s, 't>> {
-    let (body_g, access_log) =
+  ) -> Result<&'g FunctionAliasingInfoT<'s, 'g>, ICompileErrorT<'s, 't>>
+  where
+    's: 'g,
+  {
+    let (body_g, _access_log) =
         self.groupify_function(coutputs, function_s, function_t, bump_g)?;
     self.check_usages(coutputs, function_s, bump_g, body_g)?;
-    Ok(self.calculate_aliasing_info(function_s, function_t, body_g, &*access_log))
+    Ok(self.calculate_aliasing_info(function_s, function_t, bump_g))
   }
 }

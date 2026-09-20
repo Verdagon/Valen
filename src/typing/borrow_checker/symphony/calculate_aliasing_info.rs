@@ -1,23 +1,26 @@
+use bumpalo::Bump;
 use crate::postparsing::ast::FunctionS;
-use crate::typing::ast::ast::{FunctionAliasingInfoT, FunctionDefinitionT};
-use crate::typing::borrow_checker::access_event::AccessEventG;
-use crate::typing::borrow_checker::ast_g::ExpressionGE;
+use crate::typing::ast::ast::FunctionDefinitionT;
+use crate::typing::ast::borrowing_ast::FunctionAliasingInfoT;
 use crate::typing::compiler::Compiler;
-use crate::typing::compiler_error_reporter::ICompileErrorT;
-use crate::typing::compiler_outputs::CompilerOutputs;
 
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   pub fn calculate_aliasing_info<'g>(
     &self,
-    function_s: &'s FunctionS<'s>,
+    _function_s: &'s FunctionS<'s>,
     function_t: &'t FunctionDefinitionT<'s, 't>,
-    body: ExpressionGE<'s, 't, 'g>,
-    access_log: &[&'g AccessEventG<'s, 't>],
-  ) -> FunctionAliasingInfoT {
+    check_arena: &'g Bump,
+  ) -> &'g FunctionAliasingInfoT<'s, 'g>
+  where
+    's: 'g,
+  {
+    let param_index_to_noalias =
+        check_arena.alloc_slice_fill_copy(function_t.header.params.len(), false);
     // TODO
-    FunctionAliasingInfoT {
-      param_noalias: function_t.header.params.iter().map( | _ | false).collect(),
-      restrict_regions: Vec::new(),
-    }
+    check_arena.alloc(FunctionAliasingInfoT {
+      param_index_to_noalias,
+      group_paths: &[],
+      instruction_loc_to_accessed_groups: &[],
+    })
   }
 }

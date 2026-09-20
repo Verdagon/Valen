@@ -27,12 +27,12 @@ fn test_use_returned_reference_after_churn_rejected() {
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
-func get<g'>(a &[]int in g) &int in g[] { return &a[0]; }
+func get<g'>(a &[]int in g, i int) &int in g[] { return &a[__copy_prim(i)]; }
 func churn<g'>(a &[]int in g) mut(g) { }
 func observe<T, tg'>(x &T in tg) { }
 exported func main() int {
   arr = Array<int>(3);
-  v = get(&arr);
+  v = arr.get(0);
   churn(&arr);
   observe(v);
   return 0;
