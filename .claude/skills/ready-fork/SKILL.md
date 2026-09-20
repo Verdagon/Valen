@@ -1,1 +1,0 @@
-../../../docs/skills/ready-fork.md

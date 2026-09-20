@@ -1,1 +1,0 @@
-../../Luz/skills/guardian-jr.md

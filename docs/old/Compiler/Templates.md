@@ -85,8 +85,6 @@ if let Interface = I)
 
 # Interface Methods Can Be Templates (IMCBT)
 
-(This arcana has inaccuracies; see docs/old/reports/InterfaceMethodsCanBeTemplates-IMCBT-report.md for corrections.)
-
 This interface is templated:
 
 > interface IFunction1\<M, P1, R\> {

@@ -1,1 +1,0 @@
-../../../docs/skills/find-deadweight.md

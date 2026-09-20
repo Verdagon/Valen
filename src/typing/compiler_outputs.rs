@@ -69,7 +69,7 @@ where
   // There must be no "does this id have a postparsed?" query anywhere.
   // Enforce it structurally: move these tables and their peek behind a private module that exposes
   // only the total get_or_create_* accessors, so the fields stop being pub and the membership check
-  // lives in exactly one sealed place. A Guardian shield guarding against new existence queries may
+  // lives in exactly one sealed place. A lint guarding against new existence queries may
   // be worth adding on top.
   template_id_to_postparsed_function: IndexMap<&'t IdT<'s, 't>, &'s FunctionS<'s>>,
   template_id_to_postparsed_struct: IndexMap<&'t IdT<'s, 't>, &'s StructS<'s>>,

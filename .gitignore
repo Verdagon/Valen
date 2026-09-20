@@ -61,3 +61,10 @@ docs/convos/
 # Per-worktree Guardian ports (each worktree runs its own Guardian instance)
 guardian_port.txt
 opencode_port.txt
+
+/notes/
+/guardian.toml
+/fire-commit-config.md
+/fire-commit-config.toml
+/opencode.json
+docs/arcana/reports/

@@ -1,1 +1,0 @@
-../../../docs/skills/luz-import-skill.md

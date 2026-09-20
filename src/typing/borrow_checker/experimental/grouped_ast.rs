@@ -3,7 +3,7 @@
 //! The grouped body is the canonical `ExpressionGE`, built by `groupify_function` and walked by
 //! `check_usages`. This module holds what the walk needs that the canonical nodes don't carry: the
 //! child order (`children`), the flat group-path helpers, and `JointFact`, the shape of a
-//! joint-argument violation at a call. See `docs/architecture/borrowing-design.md`.
+//! joint-argument violation at a call. See `src/typing/docs/architecture/borrowing-design.md`.
 
 use bumpalo::Bump;
 

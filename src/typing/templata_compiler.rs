@@ -1219,8 +1219,6 @@ where
     if coutputs.peek_postparsed_function(key).is_some() {
       // VLAZY: investigate this
       //
-      // Analysis from claude, verify before trusting:
-      //
       // Why does a key sometimes come back already-registered here?
       //
       // NOT because the bound is citizen-anchored (an earlier belief). A function bound's prototype is

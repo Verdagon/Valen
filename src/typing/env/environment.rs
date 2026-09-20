@@ -654,7 +654,6 @@ pub fn code_locations_match<'s>(
   // lineS == line2 && charS == char2
 }
 
-// Guardian: disable-all
 /// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct TemplatasStoreT<'s, 't>

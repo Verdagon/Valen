@@ -109,6 +109,4 @@ If any page fails, the build log names the failing `.vmd` source and the valec/b
 
 ## See also
 
-- `docs/skills/fire-commit.md` — the commit-and-sync protocol; defines the full test matrix and references this guide for local pre-flight.
-- `docs/skills/merging-from-experimental.md` — cherry-pick workflow; calls out VerdagonSite as the load-bearing master e2e probe.
 - `VerdagonSite/README.md` — the canonical invocation strings for the page-render step; consult when paths drift.

@@ -282,8 +282,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       // A group argument's group is only knowable from its written form (`citizen_args_in`).
       ITemplataT::Group(_) => panic!(
-        "vfail: a group template argument with no written group — a deferred case; see \
-         docs/plans/group-generic-closures-plan.md"
+        "vfail: a group template argument with no written group — a deferred case"
       ),
       ITemplataT::Function(f) => ITemplataG::Function(
         arena.alloc(FunctionTemplataG { function_template_id: f.function_template_id }),
@@ -333,7 +332,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       KindT::RuntimeSizedArray(a) => KindGT::RuntimeSizedArray(self.rsa_gt(a, arena)),
       KindT::BorrowRef(_) => panic!(
         "vfail: borrow with no derivable group — a deferred case (closure capture / weak-nested / \
-         nested reference field); see docs/plans/group-generic-closures-plan.md"
+         nested reference field)"
       ),
       KindT::OwnRef(w) => KindGT::OwnRef(arena.alloc(OwnRefGT { inner: self.make_kind_g_groupless(w.inner, arena) })),
       KindT::ShareRef(w) => {
@@ -406,8 +405,7 @@ fn group_path_from_group_s<'s, 't>(
   match group {
     GroupS::Rune(ru) => (GroupRootG::Rune(ru.rune), vec![], false),
     GroupS::Local(_) => panic!(
-      "vfail: a group written as a local name (`in x`) is not yet supported; see \
-       docs/plans/group-generic-closures-plan.md"
+      "vfail: a group written as a local name (`in x`) is not yet supported"
     ),
     GroupS::Member { base, member_name } => {
       let (root, mut steps, ellipsis) = group_path_from_group_s(base);
@@ -469,8 +467,7 @@ fn group_anon<'s, 't, 'g>(
   match param_name {
     Some(name) => single_path(arena, GroupRootG::ParamAnonymousGroup(*name)),
     None => panic!(
-      "vfail: borrow with no group and no parameter context — a deferred case; see \
-       docs/plans/group-generic-closures-plan.md"
+      "vfail: borrow with no group and no parameter context — a deferred case"
     ),
   }
 }

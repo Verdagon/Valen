@@ -1,1 +1,0 @@
-../../../docs/skills/valec-guidelines.md

@@ -1,1 +1,0 @@
-../../Luz/skills/fire-rebase.md

@@ -389,9 +389,8 @@ fn copy_tree_skipping_target(from: &Path, to: &Path) {
 // it asks to exit at frame 30 — so the honest assertion is run-to-exit-7, not just link.
 //
 // This test's `driver_check.valen` currently uses a HAND-WRITTEN forwarder struct; the endeavor's goal
-// is to swap it to the auto-generated form `MainLoopCallback((win,inp) => {...})` (the ready-to-apply
-// patch is staged in docs/handoffs/rust-interop-handoff.md, blocked on the Guardian AFEOX `.valen`
-// allowlist). Either form returns 7, so this assertion holds across the swap; after the swap it becomes
+// is to swap it to the auto-generated form `MainLoopCallback((win,inp) => {...})`. Either form returns 7,
+// so this assertion holds across the swap; after the swap it becomes
 // the orchestrator-parity proof of the auto-generated forwarder.
 #[test]
 fn automates_driver_check_reverse_callback() {

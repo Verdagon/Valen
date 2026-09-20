@@ -66,7 +66,7 @@ pub struct BackendCompileOptions {
     pub use_atomic_rc: bool,
     pub print_mem_overhead: bool,
     /// Emit DWARF debug info (`--debug`). The backend emits per-function/statement/local DWARF when
-    /// set; see docs/architecture/debugging-architecture.md.
+    /// set.
     pub debug: bool,
     /// Test-only lever: suppress every aliasing optimization hint (the `!alias.scope`/`!noalias`
     /// metadata and the parameter-level `noalias` attribute), keeping `nounwind`. Lets a test compile the

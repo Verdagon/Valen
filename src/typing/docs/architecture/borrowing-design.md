@@ -753,6 +753,12 @@ as the parent, so numbering them apart would tell LLVM that an access to the who
 to an element never overlap, and it would reorder them into wrong code. A heap array's elements keep
 their own number, and the array's type decides which.
 
+**S3. A group rune's entry carries the type of its referent.** `Group(GroupTemplataG { group, kind })`: in a
+definition, `kind` is the referent type of the parameter written `&T in g`; at a call, it is the bound
+argument's referent. A written `g.items` or `g[]` resolves its step against that type. A rune two
+parameters share names one group with two referents, so `kind` is the binding parameter's type, not a
+property of the group.
+
 **S4. Override effect-matching is a borrow-check.** Override resolution invokes the borrow checker to
 compare an override's declared `mut(...)` against the abstract method it implements, and a mismatch is
 a `BorrowErrorKind`; so the borrow checker has two entry points — per-body `check_function` and
@@ -763,7 +769,7 @@ need: for each capture, the closure struct gains a group parameter per free grou
 (found by walking the type, not its definition) plus a fresh outer group for a by-reference capture,
 each bound at `&{...}` construction to the enclosing group. The closure body reads them off `self`'s
 type, so a captured reference's use is checked like any group-generic call — no cross-function body
-peek. Detailed plan: `docs/plans/group-generic-closures-plan.md`.
+peek. Detailed plan in the group-generic-closures design notes.
 
 **S6. A `where func` bound prototype can declare churn.** A bound such as `where func __call(&F, &Win in r,
 &Inp) mut(r)` quantifies its region per call (HRTB-shaped), and the checker enforces the declared churn on
@@ -910,7 +916,7 @@ unnamed temporary.
 
  * Groups never live on the value type, because a `KindT`'s structural `Eq`/`Hash` is monomorphization
    identity, so a group on `BorrowRefT` would split `Vec<int> in a` from `Vec<int> in b` into two
-   monomorphizations — `docs/plans/path-to-borrowing.md`, §"The group representation". `KindGT` sidesteps
+   monomorphizations — the path-to-borrowing design, §"The group representation". `KindGT` sidesteps
    this by being borrow-checker-only.
 
 ### Undocumented

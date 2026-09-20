@@ -1,8 +1,6 @@
 
 ## ReferenceMemberLookup Results In Member's Ownership (RMLRMO)
 
-(This arcana has inaccuracies; see docs/old/reports/ReferenceMemberLookupResultsInMembersOwnership-RMLRMO-report.md for corrections.)
-
 When we do:
 
 ```
@@ -40,8 +38,6 @@ When we do println(ship.engine), we add a **SoftLoad** there, around the Referen
 
 (RMLHTP)
 
-(This arcana has inaccuracies; see docs/old/reports/ReferenceMemberLookupHasTargetPermission-RMLHTP-report.md for corrections.)
-
 When we have a readonly reference to a Ship, and we access its engine,
 it too should be readonly.
 
@@ -65,8 +61,6 @@ here, since we can\'t mutate anything readonly.
 ## Can Sometimes Have Read-Only Owning References
 
 (CSHROOR)
-
-(This arcana has inaccuracies; see docs/old/reports/CanSometimesHaveReadOnlyOwningReferences-CSHROOR-report.md for corrections.)
 
 Recall RMLHTP, if we have a &Ship and we load .engine from it, like:
 

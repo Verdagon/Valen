@@ -140,7 +140,7 @@ exported func main() int { a = 7; return { a }(); }
 // captured `sum`) should compile. The typing pass now lowers the mutation (mirroring the
 // read path in `evaluate_addressible_lookup_for_mutate`), but the borrow checker cannot yet
 // derive a group for a closure-captured reference — the deferred group-generic-closures
-// feature (docs/plans/group-generic-closures-plan.md, borrow_types.rs ~347). This is a live
+// feature (borrow_types.rs ~347). This is a live
 // repro: it panics in the borrow checker until that feature lands, at which point
 // `expect_compiler_outputs` should succeed and this becomes a passing regression test.
 // Ignored for now (the feature is a large deferred piece); un-ignore when it lands.

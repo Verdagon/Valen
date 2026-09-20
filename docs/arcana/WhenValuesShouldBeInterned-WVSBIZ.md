@@ -1,8 +1,6 @@
 # When Values Should Be Interned (WVSBIZ)
 
-(This arcana has inaccuracies; see docs/arcana/reports/WhenValuesShouldBeInterned-WVSBIZ-report.md for corrections.)
-
-This doc answers two related questions: where does an immutable value live (arena vs inline), and if arena, should it be interned (deduplicated) or just allocated. The mutation-vs-not question is settled first by `docs/architecture/arenas.md` — arenas are immutable, so anything that mutates uses Box / non-arena container / by-value patterns and never reaches this framework.
+This doc answers two related questions: where does an immutable value live (arena vs inline), and if arena, should it be interned (deduplicated) or just allocated. The mutation-vs-not question is settled first by the arenas design — arenas are immutable, so anything that mutates uses Box / non-arena container / by-value patterns and never reaches this framework.
 
 ## Arena vs Inline: Seven Principles
 
@@ -46,7 +44,7 @@ Once a type is classified as Interned, construction must go through the interner
 
 ## See also
 
-- `docs/architecture/arenas.md` — the immutability invariant and mutation patterns (Box / non-arena container / by-value); arena-vs-inline is the immutable-side decision after that filter.
+- The arenas design — the immutability invariant and mutation patterns (Box / non-arena container / by-value); arena-vs-inline is the immutable-side decision after that filter.
 - @TFITCX — the six categories every struct/enum must be classified into.
 - @SICZ — how Interned types are sealed against external construction via `MustIntern`.
 - @IEOIBZ — identity-bearing arena-allocated types implement `PartialEq`/`Hash` via `std::ptr::eq`/`std::ptr::hash`.

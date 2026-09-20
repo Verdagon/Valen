@@ -587,10 +587,9 @@ where
                         let positional_explicit_template_arg_runes_s = &[];
                         let receiving_rune_to_explicit_template_arg_rune = &[];
 
-                        // VCOORD: add arcana for this, currently it just lives in plan-phased-calls.md
-                        // and move this to the new phased calls plan.
+                        // VCOORD: add arcana for this.
                         //
-                        // FuncBoundStep (docs/plans/plan-phased-calls.md §5.5-§5.8): to satisfy this
+                        // FuncBoundStep: to satisfy this
                         // bound, look in the environment of each rune substitution value, taken whole.
                         // For `where func(&G)E` the rune is G; we search the env of the type G
                         // resolved to (e.g. the closure struct, where its `__call` is declared),

@@ -262,7 +262,7 @@ where
   // being passed here (the MKRFA contract — see the canonical fold in overload_resolver).
   // This is NOT enforced at the type level; violations produce silent
   // "couldn't solve" errors at dependent rules rather than faulting at the MKRFA rule.
-  // See docs/historical/mkrfa-protocol-leak.md for the queued enforcement work
+  // See the historical MKRFA notes for the queued enforcement work
   // (extract shared helper + replace the no-op handler with vwat).
   pub fn make_solver_state(
     &self,

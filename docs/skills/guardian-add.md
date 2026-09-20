@@ -1,1 +1,0 @@
-../../Guardian/docs/skills/guardian-add.md

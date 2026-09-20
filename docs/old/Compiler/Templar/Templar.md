@@ -118,7 +118,6 @@ slightly delayed.
 -   Block2
 
 It will also make sure theyre calculated *before* a containing return.
-(The MEDBR arcana below has inaccuracies; see docs/old/reports/WeMustExecuteDeferredsBeforeAReturn-MEDBR-report.md for corrections.)
 
 We must execute deferreds before a return (MEDBR) because otherwise the
 return will shoot us out of the function before the deferreds can even
@@ -248,8 +247,6 @@ Let\'s keep thinking.
 
 ## Separate Drop and Free Functions (SDFF)
 
-(This arcana has inaccuracies; see docs/old/reports/SeparateDropAndFreeFunctions-SDFF-report.md for corrections.)
-
 The difference:
 
 -   free will only:
@@ -300,8 +297,6 @@ that\'s no different than if the user manually did it, i suppose.
 
 ## Need Separate IDrop and Drop Names (NSIDN)
 
-(This arcana has inaccuracies; see docs/old/reports/NeedSeparateIDropAndDropNames-NSIDN-report.md for corrections.)
-
 We made it automatically generate drop functions for everything.
 
 However, automatically generating a drop function for a struct which
@@ -350,8 +345,6 @@ So instead, we\'ll have two different rules:
 
 ## How We Derive Drop (HWDD)
 
-(This arcana has inaccuracies; see docs/old/reports/HowWeDeriveDrop-HWDD-report.md for corrections.)
-
 There are some macros added automatically:
 
 -   #DeriveStructDrop is added to every struct
@@ -387,8 +380,6 @@ It would basically be declaring a:
 in the same environment as the struct.
 
 ## The Immutable Free Anomaly (TIFA)
-
-(This arcana has inaccuracies; see docs/old/reports/TheImmutableFreeAnomaly-TIFA-report.md for corrections.)
 
 ## Generate Destructors For All Kinds (GDFAK)
 
@@ -531,8 +522,6 @@ reference.
 
 # No Destructor For Empty Tuple Type (NDFETT)
 
-(This arcana has inaccuracies; see docs/old/reports/NoDestructorForEmptyTupleType-NDFETT-report.md for corrections.)
-
 Every destructor returns \[\].
 
 So what does \[\]\'s destructor return?
@@ -543,8 +532,6 @@ To solve that conundrum, we just don\'t have a destructor for it.
 kind.
 
 # Need Interface Identifying Rune In Impl (NIIRII)
-
-(This arcana has inaccuracies; see docs/old/reports/NeedInterfaceIdentifyingRuneInImpl-NIIRII-report.md for corrections.)
 
 We had a weird bug where if a struct implemented two interfaces, two
 vdrops would be generated, which is good\... but they collided because

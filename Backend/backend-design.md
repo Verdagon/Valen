@@ -1,7 +1,7 @@
 # Improved Onion-Style Backend Design
 
 Living source of truth for reshaping the C++ backend to consume the onion IR.
-Plan context: `docs/plans/complete-backend-plan.md` (Step 4).
+Plan context: the backend plan (Step 4).
 
 ## Design (human-only)
 
@@ -142,9 +142,9 @@ Soon, we should get rid of this. We'll need to bring in OS-specific ABI-handling
 
 ### Documented
 
-- The backend consumes the onion IR; placement (Inline vs Yonder) is derived from the onion shape at codegen, never a carried field. (`docs/plans/complete-backend-plan.md`, Step 4, updated 2026-08-19.)
-- The metal-IR headers, the FFI builder layer, the Rust bridge, and the driver were reshaped to onion and compile on the Rust side. (`docs/plans/complete-backend-plan.md`, Step 4 Status, updated 2026-08-19.)
-- The FFI, `metal_cache.rs`, and `metal_lowerer.rs` are dumb 1:1 plumbing with no lowering logic. (`docs/handoffs/exp-3-wipbx-handoff.md`, updated 2026-08-19.)
+- The backend consumes the onion IR; placement (Inline vs Yonder) is derived from the onion shape at codegen, never a carried field. (Backend plan Step 4, updated 2026-08-19.)
+- The metal-IR headers, the FFI builder layer, the Rust bridge, and the driver were reshaped to onion and compile on the Rust side. (Backend plan Step 4 Status, updated 2026-08-19.)
+- The FFI, `metal_cache.rs`, and `metal_lowerer.rs` are dumb 1:1 plumbing with no lowering logic. (updated 2026-08-19.)
 
 ### Undocumented
 
@@ -155,4 +155,4 @@ Soon, we should get rid of this. We'll need to bring in OS-specific ABI-handling
 - ABI lowering for S9/S10: hand-roll a per-target C-ABI aggregate classifier (like Zig/Odin/C3), or — for the interop path only — query rustc's `FnAbi`/`fn_abi_of_instance` (we're in-process with `tcx`) and emit LLVM matching it, so Vale and rustc agree by construction. Leaning: ride rustc's `FnAbi` for interop as the on-ramp, hand-roll for standalone valec (no rustc) later. Both feed one shared backend ABI-lowering layer, not an interop-only patch.
 - Node naming: keep the onion names (`LocalLookup`/`MemberLookup`/`Deref`/`Mutate`) and delete the backend's dead `LocalLoad`/`MemberLoad`/`LocalStore`, or rename the Rust nodes `LocalLookup`→`LocalLoad` and `MemberLookup`→`MemberLoad`? Leaning: keep the onion names — a lookup yields a borrow of storage (an lvalue), not a read, so "Load" misleads, and keeping the names needs zero Rust-side change.
 - Check-reference expected-type source: derive each check's expected type from the callee prototype or the struct/array layout (no redundant node fields), retyping `Ref`/`LiveRef`/`checkValidReference` from `Kind*` to onion `Kind*` — or re-add expected-type fields to the nodes as the pre-onion IR did? Leaning: derive, keeping `Ref`'s private-field discipline as the enforcement. A stronger variant: have the member/element check take the layout source (`structKind, memberName`) and compute the expected type internally, so a call site cannot pass a convenient-but-wrong type.
-- Owned-bare-struct placement: an owned value is now a bare kind (zero wraps), so codegen must decide how a bare owned struct is placed (by-value vs. heap) from the kind alone. (Named in `docs/plans/complete-backend-plan.md` Step 4 as the one deferred decision.)
+- Owned-bare-struct placement: an owned value is now a bare kind (zero wraps), so codegen must decide how a bare owned struct is placed (by-value vs. heap) from the kind alone. (Named in the backend plan Step 4 as the one deferred decision.)

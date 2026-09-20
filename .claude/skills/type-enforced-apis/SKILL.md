@@ -1,1 +1,0 @@
-../../../docs/skills/type-enforced-apis.md

@@ -1,8 +1,6 @@
 
 # IRegion Interface in Backend (IRIIB)
 
-(This arcana has inaccuracies; see docs/arcana/reports/IRegionInterfaceInBackend-IRIIB-report.md for corrections.)
-
 IRegion is the main class (well, interface) responsible for managing and accessing memory in the backend.
 
 A random sample of some of the methods on IRegion:

@@ -1,1 +1,0 @@
-../../../docs/skills/design-assistant.md

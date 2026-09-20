@@ -103,7 +103,7 @@ live rustc `TyCtxt` — `import rust.alloc.vec.Vec;` and the like. It is **off b
 build (the sections above) is the standalone compiler and never touches rustc.
 
 A program that imports `Vec` typechecks against live rustc; with the collector-driven backend a Vale
-program that calls real Rust functions also links and runs (see `docs/handoffs/rust-interop-handoff.md`).
+program that calls real Rust functions also links and runs.
 The C++ backend links the fork's shared libLLVM 21 in **both** the standalone and interop builds — under
 interop the backend and rustc resolve to the same one libLLVM, so there is no dual-LLVM duplicate-symbol UB.
 

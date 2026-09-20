@@ -3236,7 +3236,7 @@ impl<'s, 't> TryFrom<INameT<'s, 't>> for CitizenTemplateNameT<'s, 't> {
 //      `promote_in()`), allocate the permanent `XxxNameT`, install in the
 //      HashMap, return the new `&'t XxxNameT`.
 //
-// Three IDEPFL kinds (see `.claude/rules/postparser/IDEPFL-postparser-interning.md`):
+// Three IDEPFL kinds (see `src/postparsing/docs/architecture/interning-dual-enum.md`):
 //
 // - **Simple** — struct fields are all Copy primitives or scout-lifetime refs
 //   (`StrI<'s>`, `CodeLocationS<'s>`, `RangeS<'s>`, `IRuneS<'s>`, `i32`).
@@ -3266,8 +3266,7 @@ impl<'s, 't> TryFrom<INameT<'s, 't>> for CitizenTemplateNameT<'s, 't> {
 // -- IdValT: transient Val for IdT --------------------------------------------
 // `init_steps: &'tmp [INameT<'s, 't>]` replaces the permanent IdT's `&'t`
 // slice so callers can hash a trial IdT against the interner without yet
-// arena-allocating the slice. Monomorphic per
-// `docs/reasoning/idt-typed-view-alternatives.md`.
+// arena-allocating the slice. Monomorphic (see the IdT typed-view alternatives notes).
 // Derive Hash/PartialEq/Eq: content-based (iterates the init_steps slice,
 // delegates to &ref's target). This is *required* for heterogeneous lookup:
 // the hash must be consistent whether the Val's slice is 'tmp-borrowed (query)

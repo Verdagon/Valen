@@ -1,1 +1,0 @@
-../../../docs/skills/collapsed-call-tree.md

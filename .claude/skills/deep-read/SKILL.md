@@ -1,1 +1,0 @@
-../../../docs/skills/deep-read.md

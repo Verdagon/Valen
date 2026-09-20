@@ -1,1 +1,0 @@
-../../../docs/skills/write-pretooluse-hook.md

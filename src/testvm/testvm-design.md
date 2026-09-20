@@ -74,8 +74,6 @@ Specifically, it removes the outer wrap. So a `& weak Ship` would become a `weak
 
 ## Design Proposals
 
-<!-- Claude adds concise proposals here. The human ratifies by moving them up into the section above. -->
-
 **S1.** Rewire `src/testvm/` from the deleted `final_ast`/`ProgramH` vocabulary to the onion
 `HinputsI` vocabulary. The VM is one of two consumers of `HinputsI` (the other is `backend_ffi`),
 driven by a thin driver; the instantiator stays a pure producer that returns `HinputsI` as data.
@@ -194,7 +192,7 @@ builtins). The vivem and integration tests are described under Details > Current
 
 ### The design already ruled on inline in the VM
 
-`docs/architecture/bare-clone-borrow-move-design.md` § "vivem caveat" (as of 2026-08-15) states the
+The bare-clone/borrow/move design's "vivem caveat" (as of 2026-08-15) states the
 VM keeps treating every value as a separately-allocated heap object and treats a primitive borrow as
 "just another referrer to the same allocation." It marks write-through-borrow on primitives as out
 of scope, with a note that supporting it would need a primitive-storage rework.

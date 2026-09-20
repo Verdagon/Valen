@@ -1,1 +1,0 @@
-../../../docs/skills/merging-from-master.md

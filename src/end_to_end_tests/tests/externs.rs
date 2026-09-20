@@ -16,10 +16,9 @@ fn run(dir_rel: &str, expected: i32) {
 /// C-param (`hostBoundaryType` `OwnRef` → pointer) but `exportFunction`'s `receiveHostObjectIntoVale`
 /// doesn't load through it (a `toRef` type mismatch → SIGABRT), and `generateExports` emits invalid C
 /// for the empty-struct **return** ("initializer for aggregate with no elements requires explicit
-/// braces"). Restore this (un-ignore) once by-value struct C-ABI export is implemented — see
-/// docs/handoffs/rust-interop-handoff.md.
+/// braces"). Restore this (un-ignore) once by-value struct C-ABI export is implemented.
 #[test]
-#[ignore = "deferred: by-value struct across the C export boundary is unimplemented (owned-arg receive + generated-C empty-aggregate init); see rust-interop-handoff.md"]
+#[ignore = "deferred: by-value struct across the C export boundary is unimplemented (owned-arg receive + generated-C empty-aggregate init)"]
 fn zst_struct_exported_by_value() {
     assert_inline_compile_and_run(
         r#"

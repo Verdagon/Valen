@@ -1,1 +1,0 @@
-../../Luz/skills/full-read.md

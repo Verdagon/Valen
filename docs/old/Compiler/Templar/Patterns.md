@@ -1,7 +1,5 @@
 **Destructuring Shared Doesnt Compile To Destroy** (DSDCTD)
 
-(This arcana has inaccuracies; see docs/old/reports/DestructuringSharedDoesntCompileToDestroy-DSDCTD-report.md for corrections.)
-
 We also destroy shared things.
 
 Anti-example: \`(x, y, z) = Vec3(3, 4, 5)\` will \*not\* evaluate to a

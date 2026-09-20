@@ -1,1 +1,0 @@
-../../../docs/skills/update-handoff.md

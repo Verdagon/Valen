@@ -1,1 +1,0 @@
-../../Luz/skills/use-mailbox.md

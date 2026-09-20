@@ -1,1 +1,0 @@
-../../../docs/skills/good-arcana.md

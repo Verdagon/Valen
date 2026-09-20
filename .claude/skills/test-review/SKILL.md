@@ -1,1 +1,0 @@
-../../../docs/skills/test-review.md

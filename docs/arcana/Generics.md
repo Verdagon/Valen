@@ -61,8 +61,6 @@ It only needs the caller's environment for bounds, it should not grab an actual 
 
 # Only Work with Placeholders From the Root Denizen (OWPFRD)
 
-(This arcana has inaccuracies; see docs/arcana/reports/OnlyWorkWithPlaceholdersFromTheRootDenizen-OWPFRD-report.md for corrections.)
-
 Let's say we're in this function:
 
 ```
@@ -154,8 +152,6 @@ This will likely also save us some space and complexity in the vtables; each vta
 
 # Don't Use Default Expression When Compiling Denizen (DUDEWCD)
 
-(This arcana has inaccuracies; see docs/arcana/reports/DontUseDefaultExpressionWhenCompilingDenizen-DUDEWCD-report.md for corrections.)
-
 When compiling definitions, we need to always populate placeholders for every argument, and never use default expressions.
 
 Let's say we have:
@@ -172,8 +168,6 @@ So, we need to *not* execute that LiteralSR(N, 5) rule.
 
 
 # Using Instantiated Names in Templar (UINIT)
-
-(This arcana has inaccuracies; see docs/arcana/reports/UsingInstantiatedNamesInTemplar-UINIT-report.md for corrections.)
 
 
 This one little name field (FunctionHeaderT.fullName) can illuminate much of how the compiler works.
@@ -205,8 +199,6 @@ We also use this same scheme for the CompilerOutputs, to map names to environmen
 
 
 # Concept Functions With Generics (CFWG)
-
-(This arcana has inaccuracies; see docs/arcana/reports/ConceptFunctionsWithGenerics-CFWG-report.md for corrections.)
 
 Our current concept functions don't really work with default generic parameters that well.
 
@@ -271,8 +263,6 @@ sucks that we need a functor. but honestly, that comes from this weird placehold
 
 # PlaceholderTemplata, PlaceholderKind, Coords, Kinds (PTPKCK)
 
-(This arcana has inaccuracies; see docs/arcana/reports/PlaceholderTemplataPlaceholderKindCoordsKinds-PTPKCK-report.md for corrections.)
-
 When we compile a generic denizen's definition, we conjure up some placeholders.
 
 
@@ -318,8 +308,6 @@ Perhaps there's even a way to have everything be just a rune, and all their temp
 
 
 ## Incrementally Reluctantly Add Generic Placeholders (IRAGP)
-
-(This arcana has inaccuracies; see docs/arcana/reports/IncrementallyReluctantlyAddGenericPlaceholders-IRAGP-report.md for corrections.)
 
 We have two functions for making arrays, one for mutable and one for immutable.
 
@@ -449,8 +437,6 @@ So, we need to recall the abstract function's inner environment when we do that 
 
 ## Must Know Runes From Above (MKRFA)
 
-(This arcana has inaccuracies; see docs/arcana/reports/MustKnowRunesFromAbove-MKRFA-report.md for corrections.)
-
 We often think that runes are unknowns. That's not always true.
 
 When a call-site inside a function body textually references a rune by name (e.g. `Some<T>(x)`), and that rune was declared by the enclosing function's template, the inner solve shouldn't treat it as a fresh unknown, it's already bound by the enclosing scope.
@@ -490,7 +476,7 @@ When compiling an expression (like case 1) we'll preprocess the RuneParentEnvLoo
 
 This preprocessing is part of the per-call-site setup contract described by @ECSIIOSZ — every site that instantiates a solver (OverloadResolver, ArrayCompiler, ImplCompiler, etc.) has to do it individually, because the solver's own RuneParentEnvLookupSR handler is a no-op.
 
-**⚠ Known architectural smell — refactor soon.** MKRFA is a **recurring-bug pattern with no enforcement.** The contract lives in prose comments cross-referencing the "MKRFA" tag, not in types, and the value solver's handler for `RuneParentEnvLookupSR` is a silent no-op that conceals violations. Three `ArrayCompiler` methods sat in violation for ~4 years before the symptom surfaced (April 2026, via the `Borrowing toArray` AfterRegions test). Any new expression-compilation site that spawns its own solver is at risk of repeating the bug. A near-term fix — extract the preprocessing fold from `OverloadResolver.scala:311-325` into an `InferCompiler` helper and replace the no-op handler with `vwat()` — is queued in `docs/historical/mkrfa-protocol-leak.md`. Prefer honoring the contract via that helper over writing a new inline fold at every future site.
+**⚠ Known architectural smell — refactor soon.** MKRFA is a **recurring-bug pattern with no enforcement.** The contract lives in prose comments cross-referencing the "MKRFA" tag, not in types, and the value solver's handler for `RuneParentEnvLookupSR` is a silent no-op that conceals violations. Three `ArrayCompiler` methods sat in violation for ~4 years before the symptom surfaced (April 2026, via the `Borrowing toArray` AfterRegions test). Any new expression-compilation site that spawns its own solver is at risk of repeating the bug. A near-term fix — extract the preprocessing fold from `OverloadResolver.scala:311-325` into an `InferCompiler` helper and replace the no-op handler with `vwat()` — is queued in the historical MKRFA notes. Prefer honoring the contract via that helper over writing a new inline fold at every future site.
 
 
 # Can't Get All Descendants Of Interface (CGADOI)
@@ -503,8 +489,6 @@ For now, we leave that question unanswered, and say that we can never know all c
 
 
 # Need Bound Information From Parameters (NBIFP née NBIFPR)
-
-(This arcana has inaccuracies; see docs/arcana/reports/NeedBoundInformationFromParameters-NBIFP-report.md for corrections.)
 
 > **Note on direction:** the current NBIFP implementation harvests bound prototypes from a citizen-typed parameter's inner env into the calling function's near-env (see `addRunedDataToNearEnv`). This is the currently-cataloged push exception under @BDPFWDZ ("By Default Pull From Where Declared", `docs/arcana/ByDefaultPullFromWhereDeclared-BDPFWDZ.md`) — the principle suggests refactoring toward link-walking, where the bounds stay in the citizen's inner env and `OverloadResolver` walks the calling function's parameter envs at lookup time. The mechanism described below is correct for the *what*; the principle weighs in on the *where*. The refactor is non-urgent technical debt, not blocking any test.
 
@@ -718,8 +702,6 @@ Alas, that's likely too much work for now, we'll have to fall back to having a t
 
 # Lambdas Are Generic Templates (LAGT)
 
-(This arcana has inaccuracies; see docs/arcana/reports/LambdasAreGenericTemplates-LAGT-report.md for corrections.)
-
 See also the cross-cutting arcana `docs/arcana/LambdasAreGenericTemplatesNotGenerics-LAGTNGZ.md` for how this design interacts with the typing pass's dispatcher (`function.isLight()`), the two `NameTranslator` entry points, and `FunctionS.genericParams` for untyped lambda params.
 
 Lambdas are instantiated every time they're called. In this:
@@ -849,8 +831,6 @@ The second one matches nicely!
 And that's how we find the original generic function for a particular instantiation.
 
 ## Don't Monomorphize Parts Of Generic Names (DMPOGN)
-
-(This arcana has inaccuracies; see docs/arcana/reports/DontMonomorphizePartsOfGenericNames-DMPOGN-report.md for corrections.)
 
 Because of GLIOGN, we need a lambda function to remember its original generic.
 
@@ -992,8 +972,6 @@ The solution is the same: in the instantiator, when a function tries to instanti
 
 # WTF Is Going On With Impls (WIGOWI)
 
-(This arcana has inaccuracies; see docs/arcana/reports/WTFIsGoingOnWithImpls-WIGOWI-report.md for corrections.)
-
 For each impl, the typing phase will identify all the sub citizen's overrides for the interface. It's probably one of the most complex areas of the compiler.
 
 
@@ -1077,8 +1055,6 @@ ZHERE: it right — it just contradicts the heading. Reword to "We're compiling 
 ZHERE: case" so the two agree.
 
 ## Step 2: Compile Dispatcher Function Given Interface (CDFGI)
-
-(This arcana has inaccuracies; see docs/arcana/reports/CompileDispatcherFunctionGivenInterface-CDFGI-report.md for corrections.)
 
 
 Now, take the original abstract function:
@@ -1276,8 +1252,6 @@ NOTE TO SELF: we're not bringing in any impl bounds! this might be where we used
 
 ### Inherit Bounds From Case Struct (IBFCS)
 
-(This arcana has inaccuracies; see docs/arcana/reports/InheritBoundsFromCaseStruct-IBFCS-report.md for corrections.)
-
 
 In FOSFC, we do a solve to get the case struct. When doing that, we also grab the reachable bounds from that struct.
 
@@ -1342,8 +1316,6 @@ ZHERE: (edge_compiler.rs:609-617), i.e. the dispatcher case plus its `case$` bin
 ZHERE: saying so, since Step 2's function deliberately excludes those (OMCNAGP).
 
 ## Step 5: Assemble the Case Environment For Resolving the Override (ACEFRO)
-
-(This arcana has inaccuracies; see docs/arcana/reports/AssembleTheCaseEnvironmentForResolvingTheOverride-ACEFRO-report.md for corrections.)
 
 Step 2 gave us the dispatcher interface: `ISpaceship<dis$0, dis$1, dis$2>`
 
@@ -1488,8 +1460,6 @@ ZHERE: MySome impl". The `odis{impl:98}...case` shorthand below follows the ISNZ
 
 ### Translate Impl Bound Argument Names For Case (TIBANFC)
 
-(This arcana has inaccuracies; see docs/arcana/reports/TranslateImplBoundArgumentNamesForCase-TIBANFC-report.md for corrections.)
-
 When we're compiling the override dispatcher for func len, specifically for its case for MySome:
 
 `odis{impl:98}<^len.odis{impl:98}$0>(&MyOption<^len.odis{impl:98}$0>).case`
@@ -1533,8 +1503,6 @@ So, the solution we chose is to declare the outer environment in structs' pre-co
 
 ## Some Rules are Hoisted Out of Default Param (SRHODP)
 
-(This arcana has inaccuracies; see docs/arcana/reports/SomeRulesAreHoistedOutOfDefaultParam-SRHODP-report.md for corrections.)
-
 This snippet is using a **bound function**:
 
 ```
@@ -1558,8 +1526,6 @@ But we don't want the other two rules (DefinitionFunc, CallSiteFunc) to be defau
 
 
 ## Default Parameters Can Only Depend on Other Default Parameters (DPCODODP)
-
-(This arcana has inaccuracies; see docs/arcana/reports/DefaultParametersCanOnlyDependOnOtherDefaultParameters-DPCODODP-report.md for corrections.)
 
 We had:
 
@@ -1721,8 +1687,6 @@ For now, we resolve it by only doing the hail mary for call sites.
 
 # Instantiator Accesses Parts of Coord Generic Args (IAPCGA)
 
-(This arcana has inaccuracies; see docs/arcana/reports/InstantiatorAccessesPartsOfCoordGenericArgs-IAPCGA-report.md for corrections.)
-
 As part of MNRFGC, a coord has no placeholder itself, it's instead a collection of a placeholder region and a placeholder kind (and maybe one day, a placeholder ownership?).
 
 
@@ -1730,8 +1694,6 @@ This led to a complication in the instantiator, which accesses things like
 
 
 # Coercing Calls And Lookups (CCAL)
-
-(This arcana has inaccuracies; see docs/arcana/reports/CoercingCallsAndLookups-CCAL-report.md for corrections.)
 
 We have a case:
 
@@ -1762,8 +1724,6 @@ When we're just resolving something, we instead resolve them against the calling
 
 
 # Only Include Reachables for Call Rules' Results (OIRCRR)
-
-(This arcana has inaccuracies; see docs/arcana/reports/OnlyIncludeReachablesForCallRulesResults-OIRCRR-report.md for corrections.)
 
 We have a bug where the Spork<...>(...) call site sees that it's calling:
 
@@ -1837,8 +1797,6 @@ The moral of the story is that we can get bounds from anywhere, and making their
 
 
 # Instantiation Bound Args Match Instantiation Bound Params (IBAMIBP)
-
-(This arcana has inaccuracies; see docs/arcana/reports/InstantiationBoundArgsMatchInstantiationBoundParams-IBAMIBP-report.md for corrections.)
 
 FunctionT has an InstantiationBoundArgumentsT instance named instantiationBoundParams. This is similar to the callsite InstantiationBoundArgumentsT's that are inside the coutputs.
 

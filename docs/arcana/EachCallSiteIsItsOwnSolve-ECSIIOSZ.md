@@ -1,7 +1,5 @@
 # Each Call-Site Is Its Own Solve (ECSIIOSZ)
 
-(This arcana has inaccuracies; see docs/arcana/reports/EachCallSiteIsItsOwnSolve-ECSIIOSZ-report.md for corrections.)
-
 Every call-site in source code — every `Some<T>(x)`, every `[]&E(size, callable)`, every `add(list, 7)` — is lowered by the postparser into its own self-contained vector of solver rules, and the typing pass spins up a fresh `InferCompiler` solver instance per call-site to resolve them.
 
 Call-site solves don't share state. Each gets its own rule vector, its own rune-to-type map, its own initial-knowns, and its own conclusion map.
@@ -20,7 +18,7 @@ It also maps cleanly to Vale's two solve modes, `solveForDefining` vs `solveForR
 
 The rule vector is self-contained *except* for "portal" rules that only make sense relative to the caller. `RuneParentEnvLookupSR` must be preprocessed out into initial-knowns (MKRFA). Default generic-param rules must be added incrementally rather than up front (DRSINI). Site-specific rules (`ResolveSR`, `CallSiteFuncSR`, `DefinitionFuncSR`) must be filtered for the right solve mode (SROACSD). The calling function's env must be threaded through as `InferEnv.callingEnv` (CSSNCE).
 
-**⚠ MKRFA is unenforced and leaky — refactor soon.** The MKRFA preprocessing obligation is the least robust part of this contract. It's a prose cross-reference with no type-level or runtime enforcement, and the value solver's `RuneParentEnvLookupSR` handler at `CompilerSolver.scala:852` is a silent no-op that conceals violations. Three `ArrayCompiler` expression entry points violated MKRFA undetected from 2022 until April 2026. Every new expression-scoped solver caller is a candidate to repeat this bug. See `docs/historical/mkrfa-protocol-leak.md` for the full write-up and queued remediation (extract the fold into an `InferCompiler` helper; replace the no-op with `vwat()`). Declaration-scoped callers (`FunctionCompilerSolvingLayer`, `StructCompilerGenericArgsLayer`, `ImplCompiler`) are safe *by accident*: their rule sources happen never to emit `RuneParentEnvLookupSR`.
+**⚠ MKRFA is unenforced and leaky — refactor soon.** The MKRFA preprocessing obligation is the least robust part of this contract. It's a prose cross-reference with no type-level or runtime enforcement, and the value solver's `RuneParentEnvLookupSR` handler at `CompilerSolver.scala:852` is a silent no-op that conceals violations. Three `ArrayCompiler` expression entry points violated MKRFA undetected from 2022 until April 2026. Every new expression-scoped solver caller is a candidate to repeat this bug. See the historical MKRFA write-up for the full detail and queued remediation (extract the fold into an `InferCompiler` helper; replace the no-op with `vwat()`). Declaration-scoped callers (`FunctionCompilerSolvingLayer`, `StructCompilerGenericArgsLayer`, `ImplCompiler`) are safe *by accident*: their rule sources happen never to emit `RuneParentEnvLookupSR`.
 
 **Interaction with LAGTNGZ.** Per-call-site solving is the substrate on which LAGTNGZ operates: because lambdas are template-expanded per call site (not stamped once by the Instantiator), each fresh solve independently produces its own `LambdaCallFunctionTemplateNameT` with its own baked-in argTypes, and no state leaks between expansions. Two call sites passing a lambda with different concrete types yield two independent solves and therefore two independent function entries.
 
@@ -38,7 +36,7 @@ The rule vector is self-contained *except* for "portal" rules that only make sen
   `RuneParentEnvLookupSR` handler "a silent no-op that conceals violations" and queues "replace the
   no-op with `vwat()`" — that landed: `compiler_solver.rs:1053` is
   `panic!("vwat: RuneParentEnvLookupSR should have been MKRFA-preprocessed…")`. The same false claim
-  sits under a "⚠ URGENCY" header in `docs/historical/mkrfa-protocol-leak.md`.
+  sits under a "⚠ URGENCY" header in the historical MKRFA write-up.
 - Cites `CompilerSolver.scala:852` — a Scala path, in a tree with no Scala.
 - Four of the codes carrying this doc's actual content have **no file anywhere**: DBDAR, SROACSD,
   MKRFA, CSSNCE. The setup contract is stated by reference to SROACSD and MKRFA in particular.

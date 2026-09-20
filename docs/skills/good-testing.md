@@ -1,1 +1,0 @@
-../../Luz/skills/good-testing.md

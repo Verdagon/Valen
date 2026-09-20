@@ -1,9 +1,8 @@
 # Rust Interop — instantiator design
 
 Living design doc for how the instantiator (`src/instantiating/`) takes part in Rust interop. It is
-the source of truth for this subsystem. The handoff (`docs/handoffs/rust-interop-handoff.md`) points
-here and holds none of what belongs here. The design source of truth for the wider feature is
-`docs/architecture/vale-rust-interop-architecture.md`.
+the source of truth for this subsystem. The design source of truth for the wider feature is
+the Rust-interop architecture design.
 
 ## Design (human-only)
 
@@ -198,13 +197,13 @@ Both suites live in `src/typing/test/rust_interop/cases.rs`:
   `rust` package coordinate.
 
 ### Documented
-- `docs/architecture/vale-rust-interop-architecture.md` (v0.1.0): §2.8 "Vale tells rustc the leaves;
+- The Rust-interop architecture design (v0.1.0): §2.8 "Vale tells rustc the leaves;
   rustc walks the rest"; §5.2 single-symbol (our backend emits the real body under the same
   rustc-mangled symbol via `fill_extra_modules`, and a partition filter removes rustc's placeholder) is
   the mechanism behind the Design's "swapped out by our backend"; §19 the `per_instance_mir` provider
   and its `ReifyFnPointer` dep discovery; §13.7 "the instantiator's `per_instance_mir` provider"; §9.5
   transitive Rust deps surface through the nearest exported ancestor.
-- `docs/handoffs/rust-interop-handoff.md` (current working tree): the leaf and no-wrapper direction;
+- The current interop working notes (working tree): the leaf and no-wrapper direction;
   the three interop core touch-points; the two ignored probes.
 
 ### Undocumented

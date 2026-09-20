@@ -1,1 +1,0 @@
-../../Luz/skills/luz-add-skill.md

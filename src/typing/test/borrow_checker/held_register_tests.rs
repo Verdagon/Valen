@@ -3,7 +3,7 @@
 //! never bound to a named local. If a sibling argument churns the group it points into while it waits,
 //! consuming it in the outer call is a use-after-churn. Unlike `use_after_churn_tests`' named-local
 //! cases, the reference here is an unnamed temporary — the case the borrowing-design doc's
-//! "Held register" section calls out specifically. See `docs/architecture/borrowing-design.md`.
+//! "Held register" section calls out specifically. See `src/typing/docs/architecture/borrowing-design.md`.
 
 use super::util::{assert_borrow_error_renders_with_arrays, assert_compiles_clean_with_arrays};
 

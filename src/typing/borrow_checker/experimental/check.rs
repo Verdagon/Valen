@@ -1,4 +1,4 @@
-//! The borrow checker's entry point, per `docs/architecture/borrowing-design.md`.
+//! The borrow checker's entry point, per `src/typing/docs/architecture/borrowing-design.md`.
 //!
 //! `check_function` runs three phases: `groupify_function` builds the grouped body (each reference
 //! binding carries its group, each call its churns and joint-argument facts), `check_usages` walks it

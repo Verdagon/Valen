@@ -5,7 +5,7 @@
 //! spoils. It walks the canonical `ExpressionGE` in evaluation order; the four nodes the checker acts on
 //! are handled directly. A `let` of a borrow registers the local under the borrow's group; `if` runs
 //! each branch from the pre-branch state and unions the non-diverging invalidations; `while` pre-applies
-//! its body's churns, so there is no fixpoint. See `docs/architecture/borrowing-design.md`.
+//! its body's churns, so there is no fixpoint. See `src/typing/docs/architecture/borrowing-design.md`.
 
 use bumpalo::Bump;
 use indexmap::IndexMap;

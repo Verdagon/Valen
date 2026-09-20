@@ -43,8 +43,6 @@ If something is internable, there should be no way to make it other than via an 
 
 ## Design Proposals
 
-<!-- Claude adds concise simple proposals here. The human ratifies by moving them up into the Design section above. -->
-
 **P2 — The typing pass ignores regions and groups.**
 Per the borrow-checker design, the typing pass does nothing with regions or groups. It ignores them
 entirely rather than tracking or solving them: a rule's region (e.g. a `BorrowRef`'s region) is not a

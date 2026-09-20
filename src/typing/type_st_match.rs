@@ -20,7 +20,7 @@ where
   's: 't,
 {
   /// Phase 2A dyn upcastability
-  /// VCOORD: check this against ~/.claude/plans/true-phase-2a-please-validated-walrus.md
+  /// VCOORD: re-verify this
   /// Some(coerced value kind) when `peeled_arg`'s template differs from the param's expected
   /// value-type template AND the arg implements that expected interface; else None. Reuses
   /// get_parents (the same super-finding the compiler already uses for upcasts elsewhere) rather
