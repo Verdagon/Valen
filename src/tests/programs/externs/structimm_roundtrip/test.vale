@@ -1,5 +1,3 @@
-// Round-trip: Vale→C→Vale where C stashes a share ref and returns it.
-// Proves the handle stays valid across a boundary hop.
 exported struct Widget share { n int; }
 
 extern func roundtrip(w Widget) Widget;

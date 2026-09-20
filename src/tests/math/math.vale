@@ -1,6 +1,4 @@
 
-// TSUGAR: original signatures took primitives by value (a int, b int) etc.
-// Post-flip switched to &int / &float to match binary call auto-borrow conventions.
 func min(a &int, b &int) int {
   return if (a <= b) { __copy_prim(a) } else { __copy_prim(b) };
 }

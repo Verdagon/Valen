@@ -1,6 +1,3 @@
-// Isolates the auto-gen'd IFoo_typeTag + IFoo_asBar + TAG_* constants for
-// interface dispatch from C. Three-impl interface exercises all three
-// downcast primitives.
 sealed exported interface IShape share { }
 
 exported struct Circle share { radius int; }

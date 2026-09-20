@@ -1,9 +1,3 @@
-// Example B — the case Rust's `&mut` cannot express. `a` and `b` share group g, so neither is
-// whole-function noalias. Two separate loops each use only one of them, so block-scoped restrict proves `a`
-// sole in loop 1 and `b` sole in loop 2 — LLVM keeps each field in a register across its loop's opaque
-// `noopBarrier()` calls, driven purely by the block-scoped metadata (there is no param-level noalias to
-// lean on). `noopBarrier` is an opaque C extern.
-
 extern func noopBarrier();
 
 exported struct Ship { fuel int; }

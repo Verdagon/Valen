@@ -1,6 +1,3 @@
-// Interface with a single impl — edge case for tag dispatch (does the tag
-// switch cover exactly one case? does the auto-gen'd tag emit a valid single
-// tag constant?).
 sealed exported interface OnlyOne share { }
 
 exported struct TheOne share { val int; }

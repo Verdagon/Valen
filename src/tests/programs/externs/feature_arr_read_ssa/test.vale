@@ -1,6 +1,3 @@
-// A static-sized array can't cross the C boundary by value, so wrap it in an
-// exported struct and hand C a borrow (pointer) to that. C reads the array field
-// out of the struct's known layout.
 exported struct IntTriple { values StaticArray<3, int>; }
 
 extern func testArrRead(triple &IntTriple) int;

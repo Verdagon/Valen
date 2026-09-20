@@ -1,9 +1,8 @@
-// Isolates the auto-gen'd Arr_len + Arr_at for a runtime-sized array.
 export #[]int as MyIntArray;
 
 extern func testArrRead(arr #[]int) int;
 
 exported func main() int {
-  a = #[]int(6, {_ * 2});  // 0, 2, 4, 6, 8, 10 → sum 30
+  a = #[]int(6, {_ * 2});
   return testArrRead(a) + 12;
 }

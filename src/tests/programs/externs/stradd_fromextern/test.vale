@@ -1,6 +1,3 @@
-// Replay coverage for the __vbi_addStr + __vbi_castI32Str intrinsics: Vale
-// pulls two ints from C, converts each to str, concats. Records/replays cover
-// that the intrinsic bodies don't rely on any non-recorded side channel.
 extern func cGetA() int;
 extern func cGetB() int;
 

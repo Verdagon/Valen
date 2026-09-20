@@ -1,6 +1,3 @@
-// Isolates the auto-gen'd Foo_fieldName getter primitives.
-// Struct has a primitive field and a nested-share field; C reads both,
-// dealiases the intermediate NEW ref from the share-field getter.
 exported struct Inner share { x int; }
 exported struct Outer share { name int; inner Inner; }
 

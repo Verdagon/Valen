@@ -1,5 +1,4 @@
 
-// Vale-visible wrapper that resolves to the __vbi_streq compiler intrinsic.
 func streq<ga', gb'>(
   aContainerStr &str in ga,
   aBegin int,

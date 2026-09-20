@@ -31,8 +31,6 @@ func print(f float) void {
 }
 
 // VCOORD: this all should go away at some point
-// Borrow-taking overloads so generic `where func print(&E)void` constraints can
-// resolve when E is a primitive (e.g. listprintutils.vale's println).
 func print(i &int) void {
   print(&str(__copy_prim(i)));
 }
