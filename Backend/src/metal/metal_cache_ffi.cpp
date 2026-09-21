@@ -1,7 +1,3 @@
-// Implementation of metal_cache_ffi.h. Each function is a thin, faithful 1:1 wrapper that
-// reinterpret_casts the opaque handles to the underlying onion C++ types and forwards to
-// MetalCache::get* or `new`s the instruction. No lowering here. Types are onion Kind*, and
-// placement / index resolution / deref lowering all happen downstream in codegen.
 
 #include "metal_cache_ffi.h"
 
@@ -31,8 +27,6 @@ inline PackageCoordinate* pc(PackageCoordHandle* h)      { return reinterpret_ca
 inline RegionId*          rid(RegionIdHandle* h)         { return reinterpret_cast<RegionId*>(h); }
 inline Name*              nm(NameHandle* h)              { return reinterpret_cast<Name*>(h); }
 inline Kind*              knd(KindHandle* h)             { return reinterpret_cast<Kind*>(h); }
-// Always-borrow operands: the instantiator types these `&BorrowRefIT`, so the handle is a
-// BorrowRef. Fail loud (mirroring the instantiator) if it ever isn't.
 inline BorrowRef*         brf(KindHandle* h)             { auto b = dynamic_cast<BorrowRef*>(knd(h)); assert(b != nullptr); return b; }
 inline Prototype*         proto(PrototypeHandle* h)      { return reinterpret_cast<Prototype*>(h); }
 inline Local*             loc(LocalHandle* h)            { return reinterpret_cast<Local*>(h); }
@@ -55,11 +49,10 @@ inline std::vector<Local*> locals(LocalHandle* const* ptr, size_t count) {
   return vec;
 }
 
-}  // namespace
+}
 
 #define VIS __attribute__((visibility("default")))
 
-// --- Lifecycle ---
 
 extern "C" VIS MetalCacheHandle* metal_cache_new(void) {
   return reinterpret_cast<MetalCacheHandle*>(new CacheOwner());
@@ -69,13 +62,11 @@ extern "C" VIS void metal_cache_free(MetalCacheHandle* h) {
   delete owner(h);
 }
 
-// Internal accessor used by ffi.cpp's backend_compile_program to reach the inner MetalCache.
 extern "C" __attribute__((visibility("default")))
 MetalCache* metal_cache_ffi_inner(MetalCacheHandle* h) {
   return &owner(h)->cache;
 }
 
-// --- Singletons ---
 
 extern "C" VIS PackageCoordHandle* metal_cache_builtin_package_coord(MetalCacheHandle* h) {
   return reinterpret_cast<PackageCoordHandle*>(cache(h)->builtinPackageCoord);
@@ -109,7 +100,6 @@ extern "C" VIS KindHandle* metal_cache_void(MetalCacheHandle* h) {
   return reinterpret_cast<KindHandle*>(cache(h)->voidType);
 }
 
-// --- Interned getters ---
 
 extern "C" VIS PackageCoordHandle* metal_cache_get_package_coordinate(
     MetalCacheHandle* h,
@@ -207,8 +197,7 @@ extern "C" VIS InterfaceMethodHandle* metal_cache_get_interface_method(
 extern "C" VIS LocalHandle* metal_cache_get_local(
     MetalCacheHandle* h, const char* id_ptr, size_t id_len,
     const char* name_ptr, size_t name_len, KindHandle* kind, SourceLocationHandle* source_loc) {
-  (void)h;  // Locals are constructed per-mention; identity is the `id` string (BlockState keys
-            // on it), so multiple handles for one source local are fine.
+  (void)h;
   return reinterpret_cast<LocalHandle*>(
       new Local(VarNameM{str(id_ptr, id_len)}, str(name_ptr, name_len), knd(kind), srcloc(source_loc)));
 }
@@ -219,7 +208,6 @@ extern "C" VIS SourceLocationHandle* metal_cache_get_source_location(
       cache(h)->getSourceLocation(str(file_ptr, file_len), line, col));
 }
 
-// --- Non-interned constructors ---
 
 extern "C" VIS StructMemberHandle* metal_struct_member_new(
     const char* full_name_ptr, size_t full_name_len,
@@ -307,7 +295,6 @@ extern "C" VIS FunctionHandle* metal_function_new(
       new Function(proto(prototype), ex(body), srcloc(source_loc)));
 }
 
-// --- Expression constructors (onion nodes, 1:1) ---
 
 extern "C" VIS ExpressionHandle* metal_expr_constant_void(SourceLocationHandle* source_loc) {
   return reinterpret_cast<ExpressionHandle*>(new ConstantVoid(srcloc(source_loc)));
@@ -467,7 +454,6 @@ extern "C" VIS ExpressionHandle* metal_expr_while(ExpressionHandle* block, KindH
   return reinterpret_cast<ExpressionHandle*>(new While(srcloc(source_loc), ex(block), knd(result)));
 }
 
-// --- Arrays ---
 
 extern "C" VIS ExpressionHandle* metal_expr_new_array_from_values(
     ExpressionHandle* const* elements, size_t element_count, KindHandle* result, KindHandle* array_type, SourceLocationHandle* source_loc) {
@@ -518,7 +504,6 @@ extern "C" VIS ExpressionHandle* metal_expr_destroy_mut_runtime_sized_array(Expr
   return reinterpret_cast<ExpressionHandle*>(new DestroyRuntimeSizedArray(srcloc(source_loc), ex(array_expr)));
 }
 
-// --- Package builder ---
 
 struct PackageBuilder {
   MetalCache* cache;
@@ -603,14 +588,10 @@ extern "C" VIS void metal_package_builder_add_extern_kind(
     PackageBuilderHandle* h, const char* p, size_t n, KindHandle* v) {
   PB(h)->externNameToKind[str(p, n)] = knd(v);
 }
-// One imported extern struct's layout, keyed by its humanized name (matching add_struct/add_extern_kind).
 extern "C" VIS void metal_package_builder_add_struct_layout(
     PackageBuilderHandle* h, const char* p, size_t n, uint64_t size, uint64_t align) {
   PB(h)->structLayouts[str(p, n)] = OpaqueStructLayout{size, align};
 }
-// One extern function's ABI: the return coercion plus an ordered array of per-argument coercions,
-// keyed by the extern symbol (matching add_extern_function). The arg coercions are a genuine
-// positional list, so they cross as an array; the symbol->abi map itself crosses per-entry.
 extern "C" VIS void metal_package_builder_add_extern_abi(
     PackageBuilderHandle* h, const char* p, size_t n,
     CoercionFFI ret, const CoercionFFI* args, size_t args_len) {
@@ -622,8 +603,6 @@ extern "C" VIS void metal_package_builder_add_extern_abi(
   }
   PB(h)->externAbis[str(p, n)] = std::move(abi);
 }
-// One function's per-parameter noalias verdict, keyed by humanized name (matching add_function). Its
-// presence marks the function as borrow-checker-analyzed.
 extern "C" VIS void metal_package_builder_add_param_noalias(
     PackageBuilderHandle* h, const char* p, size_t n,
     const bool* param_noalias, size_t param_noalias_len) {
@@ -652,7 +631,6 @@ extern "C" VIS PackageHandle* metal_package_builder_finish(PackageBuilderHandle*
   return reinterpret_cast<PackageHandle*>(pkg);
 }
 
-// --- Program builder ---
 
 struct ProgramBuilder {
   MetalCache* cache;

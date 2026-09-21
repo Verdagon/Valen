@@ -6,17 +6,10 @@
 #include "ffihandlestructs.h"
 
 FfiHandleStructs::FfiHandleStructs(LLVMContextRef context) {
-  // Per @HTSLVBDTCZ, these two named structs are the only handle types in the
-  // whole program: every concrete kind shares __ConcreteHandle and every
-  // interface shares __InterfaceHandle. Per-class distinctness is added later,
-  // in the C typedef emitters.
   auto int64LT = LLVMInt64TypeInContext(context);
-  // Concrete handle: { i64 obj } — 8 bytes.
   concreteHandleStructLT = LLVMStructCreateNamed(context, "__ConcreteHandle");
   std::array<LLVMTypeRef, 1> concreteMembersLT{int64LT};
   LLVMStructSetBody(concreteHandleStructLT, concreteMembersLT.data(), concreteMembersLT.size(), false);
-  // Interface handle: { i64 obj, i64 typeinfo } — 16 bytes. Field order is
-  // obj=0, typeinfo=1.
   interfaceHandleStructLT = LLVMStructCreateNamed(context, "__InterfaceHandle");
   std::array<LLVMTypeRef, 2> interfaceMembersLT{int64LT, int64LT};
   LLVMStructSetBody(interfaceHandleStructLT, interfaceMembersLT.data(), interfaceMembersLT.size(), false);
@@ -26,7 +19,6 @@ FfiHandleExplodedMembers FfiHandleStructs::explodeForRegularConcrete(
     GlobalState* globalState, FunctionState* functionState, LLVMBuilderRef builder, LLVMValueRef handleLE) {
   assert(LLVMTypeOf(handleLE) == concreteHandleStructLT);
   auto objPtrI64LE = LLVMBuildExtractValue(builder, handleLE, 0, "objPtrI64");
-  // Concretes carry no type info; the pointer alone identifies the object.
   return FfiHandleExplodedMembers{objPtrI64LE, nullptr};
 }
 

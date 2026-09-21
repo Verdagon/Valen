@@ -15,12 +15,7 @@ Externs::Externs(LLVMModuleRef mod, LLVMContextRef context, int ptrSizeBits) {
   auto int64LT = LLVMInt64TypeInContext(context);
   auto voidPtrLT = LLVMPointerType(int8LT, 0);
   auto int8PtrLT = LLVMPointerType(int8LT, 0);
-  // C `size_t` width — matches pointer width on every target we care
-  // about. i64 on x86_64/arm64, i32 on wasm32. Used for libc functions
-  // whose signatures take/return size_t (malloc, memcpy, strlen, etc.).
   auto sizeTLT = LLVMIntTypeInContext(context, ptrSizeBits);
-  // C `int` width — always i32 on the targets we support. Used for libc
-  // functions that take/return `int` (exit, getchar, fclose, strncmp ret).
   auto cIntLT = int32LT;
 
   censusContains = addExtern(mod, "__vcensusContains", int64LT, {voidPtrLT});
@@ -48,13 +43,10 @@ Externs::Externs(LLVMModuleRef mod, LLVMContextRef context, int ptrSizeBits) {
   fread = addExtern(mod, "fread", sizeTLT, {int8PtrLT, sizeTLT, sizeTLT, int8PtrLT});
   fwrite = addExtern(mod, "fwrite", sizeTLT, {int8PtrLT, sizeTLT, sizeTLT, int8PtrLT});
 
-  // Runtime-support (__vale_rt_) helpers for __vbi_ string intrinsics — see
-  // Backend/builtins/strings.c.
   valeRtI64ToAsciiLF   = addExtern(mod, "__vale_rt_i64_to_ascii",   int32LT, {int64LT, int8PtrLT, int32LT});
   valeRtFloatToAsciiLF = addExtern(mod, "__vale_rt_float_to_ascii", int32LT, {LLVMDoubleTypeInContext(context), int8PtrLT, int32LT});
   valeRtBytesFindLF    = addExtern(mod, "__vale_rt_bytes_find",     int32LT, {int8PtrLT, int32LT, int8PtrLT, int32LT});
   valeRtWriteStdoutLF  = addExtern(mod, "__vale_rt_write_stdout",   voidLT,  {int8PtrLT, int32LT});
-  // Runtime-support helpers for __vbi_getMainArg — see Backend/builtins/mainargs.c.
   valeRtGetMainArgLenLF = addExtern(mod, "__vale_rt_get_main_arg_len", int32LT,   {int64LT});
   valeRtGetMainArgPtrLF = addExtern(mod, "__vale_rt_get_main_arg_ptr", int8PtrLT, {int64LT});
 

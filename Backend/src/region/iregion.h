@@ -383,7 +383,6 @@ public:
       LoadResult sourceRef) = 0;
 
   // For instance regions, this will return the handle's type.
-  // The C-ABI type a ref of this region crosses the FFI boundary as.
   virtual LLVMTypeRef getExternalType(ValueKind* refMT) = 0;
 
   virtual LoadResult loadElementFromSSA(

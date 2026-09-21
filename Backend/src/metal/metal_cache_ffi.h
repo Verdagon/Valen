@@ -1,17 +1,3 @@
-// C ABI for MetalCache and its onion IR node types. Consumed by FrontendRust's
-// `backend_ffi::metal_cache` module to populate the cache in-process from the Rust
-// instantiated IR (HinputsI).
-//
-// This layer is dumb, faithful 1:1 plumbing: each builder constructs the corresponding
-// onion node (metal/instructions.h) with exactly the fields the IR carries. There is no
-// Kind / ownership / location, no member-name→index, no Deref/load fusion, no
-// placement. All lowering is done downstream in C++ codegen. Types are the onion
-// `KindHandle*` (a bare kind is owned; the wrap builders express references).
-//
-// Conventions:
-//   - All handle types are opaque pointers, kept distinct for type safety on the Rust side.
-//   - Strings pass as `(const char* ptr, size_t len)` and are NOT NUL-terminated.
-//   - Returned interned pointers are owned by the MetalCache; do NOT free.
 
 #ifndef METAL_CACHE_FFI_H_
 #define METAL_CACHE_FFI_H_
@@ -27,7 +13,7 @@ typedef struct MetalCacheHandle      MetalCacheHandle;
 typedef struct PackageCoordHandle    PackageCoordHandle;
 typedef struct RegionIdHandle        RegionIdHandle;
 typedef struct NameHandle            NameHandle;
-typedef struct KindHandle            KindHandle;       // base; Int*, StructKind*, BorrowRef*, ... all use this
+typedef struct KindHandle            KindHandle;
 typedef struct PrototypeHandle       PrototypeHandle;
 typedef struct LocalHandle           LocalHandle;
 typedef struct InterfaceMethodHandle InterfaceMethodHandle;
@@ -37,7 +23,7 @@ typedef struct StructDefHandle       StructDefHandle;
 typedef struct InterfaceDefHandle    InterfaceDefHandle;
 typedef struct FunctionHandle        FunctionHandle;
 typedef struct ExpressionHandle      ExpressionHandle;
-typedef struct SourceLocationHandle  SourceLocationHandle;  // DWARF source location (file:line:col)
+typedef struct SourceLocationHandle  SourceLocationHandle;
 typedef struct PackageHandle         PackageHandle;
 typedef struct ProgramHandle         ProgramHandle;
 typedef struct StaticSizedArrayDefHandle StaticSizedArrayDefHandle;
@@ -45,22 +31,16 @@ typedef struct RuntimeSizedArrayDefHandle RuntimeSizedArrayDefHandle;
 typedef struct PackageBuilderHandle  PackageBuilderHandle;
 typedef struct ProgramBuilderHandle  ProgramBuilderHandle;
 
-// How one argument or return value crosses an extern boundary; mirrors CoercionKind/Coercion in
-// metal/ast.h. `kind` is the CoercionKind ordinal; `bits` is the integer width for DirectInt/Cast or
-// a Pair's first component width (ignored otherwise); `bits2` is a Pair's second component width.
-// Passed to metal_package_builder_add_extern_abi. Field order/types must match the Rust mirror.
 typedef struct CoercionFFI {
   uint32_t kind;
   uint32_t bits;
   uint32_t bits2;
 } CoercionFFI;
 
-// --- Lifecycle ---
 
 MetalCacheHandle* metal_cache_new(void);
 void              metal_cache_free(MetalCacheHandle*);
 
-// --- Singletons (mirror the fields auto-initialized in MetalCache's ctor) ---
 
 PackageCoordHandle* metal_cache_builtin_package_coord(MetalCacheHandle*);
 RegionIdHandle*     metal_cache_rcimm_region_id(MetalCacheHandle*);
@@ -74,9 +54,6 @@ KindHandle*         metal_cache_str(MetalCacheHandle*);
 KindHandle*         metal_cache_never(MetalCacheHandle*);
 KindHandle*         metal_cache_void(MetalCacheHandle*);
 
-// --- Interned getters ---
-//
-// Each mirrors a `MetalCache::get*` method; structurally-equal args return the same pointer.
 
 PackageCoordHandle* metal_cache_get_package_coordinate(
     MetalCacheHandle*,
@@ -93,7 +70,6 @@ NameHandle* metal_cache_get_name(
     PackageCoordHandle* package_coord,
     const char* name_ptr, size_t name_len);
 
-// Base kinds.
 KindHandle* metal_cache_get_int(MetalCacheHandle*, RegionIdHandle* region, int32_t bits);
 KindHandle* metal_cache_get_bool(MetalCacheHandle*, RegionIdHandle* region);
 KindHandle* metal_cache_get_str(MetalCacheHandle*, RegionIdHandle* region);
@@ -107,7 +83,6 @@ KindHandle* metal_cache_get_interface_kind(MetalCacheHandle*, NameHandle* name);
 KindHandle* metal_cache_get_static_sized_array(MetalCacheHandle*, NameHandle* name);
 KindHandle* metal_cache_get_runtime_sized_array(MetalCacheHandle*, NameHandle* name);
 
-// Onion wrap kinds: ownership as a layer around the base kind (mirrors KindIT's wraps).
 KindHandle* metal_cache_get_borrow_ref(MetalCacheHandle*, KindHandle* inner);
 KindHandle* metal_cache_get_own_ref(MetalCacheHandle*, KindHandle* inner);
 KindHandle* metal_cache_get_share_ref(MetalCacheHandle*, KindHandle* inner);
@@ -122,16 +97,13 @@ PrototypeHandle* metal_cache_get_prototype(
 InterfaceMethodHandle* metal_cache_get_interface_method(
     MetalCacheHandle*, PrototypeHandle* prototype, int32_t virtual_param_index);
 
-// A local is a name + its onion kind; the lowerer constructs each once and reuses the handle.
 LocalHandle* metal_cache_get_local(
     MetalCacheHandle*, const char* id_ptr, size_t id_len,
     const char* name_ptr, size_t name_len, KindHandle* kind, SourceLocationHandle* source_loc);
 
-// Interns a DWARF source location (file:line:col). A NULL loc (or empty file) means "no source info".
 SourceLocationHandle* metal_cache_get_source_location(
     MetalCacheHandle*, const char* file_ptr, size_t file_len, int32_t line, int32_t col);
 
-// --- Non-interned constructors (raw `new` on the C++ side) ---
 
 StructMemberHandle* metal_struct_member_new(
     const char* full_name_ptr, size_t full_name_len,
@@ -145,8 +117,6 @@ EdgeHandle* metal_edge_new(
     PrototypeHandle* const* struct_prototypes,
     size_t pair_count);
 
-// Mutability encoding: 0=IMMUTABLE, 1=MUTABLE
-// Weakability encoding: 0=WEAKABLE, 1=NON_WEAKABLE
 StructDefHandle* metal_struct_def_new(
     NameHandle* name,
     KindHandle* struct_kind,
@@ -168,14 +138,10 @@ InterfaceDefHandle* metal_interface_def_new(
 FunctionHandle* metal_function_new(
     PrototypeHandle* prototype, ExpressionHandle* body, SourceLocationHandle* loc);
 
-// --- Expression constructors (one per onion ExpressionIE node) ---
-//
-// Each produces a freshly-allocated Expression*; no interning. Type fields are onion
-// KindHandle*; the `result` mirrors the IR node's result kind where it carries one.
 
 ExpressionHandle* metal_expr_constant_void(SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_constant_int(int64_t value, int32_t bits, SourceLocationHandle* loc);
-ExpressionHandle* metal_expr_constant_bool(int32_t value /* 0 or 1 */, SourceLocationHandle* loc);
+ExpressionHandle* metal_expr_constant_bool(int32_t value , SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_constant_f64(double value, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_constant_str(const char* value_ptr, size_t value_len, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_break(SourceLocationHandle* loc);
@@ -184,17 +150,14 @@ ExpressionHandle* metal_expr_discard(ExpressionHandle* expr, KindHandle* source_
 ExpressionHandle* metal_expr_block(ExpressionHandle* inner, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_consecutor(ExpressionHandle* const* exprs, size_t expr_count, KindHandle* result, SourceLocationHandle* loc);
 
-// ArgLookup { param_index, tyype }
 ExpressionHandle* metal_expr_argument(int32_t param_index, KindHandle* tyype, SourceLocationHandle* loc);
 
-// Locals / lets.
 ExpressionHandle* metal_expr_stackify(LocalHandle* variable, ExpressionHandle* expr, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_let_and_lend(LocalHandle* variable, ExpressionHandle* expr, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_restackify(LocalHandle* variable, ExpressionHandle* source_expr, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_unstackify(LocalHandle* variable, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_local_lookup(LocalHandle* local_variable, KindHandle* result, SourceLocationHandle* loc);
 
-// Deref / member & array lookups.
 ExpressionHandle* metal_expr_deref(ExpressionHandle* inner, KindHandle* source_type, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_member_lookup(
     ExpressionHandle* struct_expr, KindHandle* struct_type, int32_t member_index, const char* member_name_ptr, size_t member_name_len, KindHandle* member_type, KindHandle* result, SourceLocationHandle* loc);
@@ -203,11 +166,9 @@ ExpressionHandle* metal_expr_static_sized_array_lookup(
 ExpressionHandle* metal_expr_runtime_sized_array_lookup(
     ExpressionHandle* array_expr, KindHandle* array_type, ExpressionHandle* index_expr, KindHandle* index_type, KindHandle* result, SourceLocationHandle* loc);
 
-// Mutate (unified store over a destination lvalue).
 ExpressionHandle* metal_expr_mutate(
     ExpressionHandle* destination_expr, KindHandle* destination_type, ExpressionHandle* source_expr, KindHandle* source_type, KindHandle* result, bool has_alias_scope, const uint32_t* scope_ptr, size_t scope_len, uint32_t group_count, SourceLocationHandle* loc);
 
-// Construct / destroy.
 ExpressionHandle* metal_expr_new_struct(
     KindHandle* struct_kind, KindHandle* result,
     ExpressionHandle* const* args, size_t arg_count, SourceLocationHandle* loc);
@@ -216,7 +177,6 @@ ExpressionHandle* metal_expr_destroy(
     LocalHandle* const* destination_locals, size_t local_count, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_copy_prim(ExpressionHandle* inner, KindHandle* source_type, KindHandle* result, bool has_alias_scope, const uint32_t* scope_ptr, size_t scope_len, uint32_t group_count, SourceLocationHandle* loc);
 
-// Upcast / subtype.
 ExpressionHandle* metal_expr_struct_to_interface_upcast(
     ExpressionHandle* inner_expr, KindHandle* source_type, KindHandle* target_interface, NameHandle* impl_name, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_interface_to_interface_upcast(
@@ -228,7 +188,6 @@ ExpressionHandle* metal_expr_as_subtype(
     KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_is_same_instance(ExpressionHandle* left, KindHandle* left_type, ExpressionHandle* right, KindHandle* right_type, SourceLocationHandle* loc);
 
-// Weak refs.
 ExpressionHandle* metal_expr_weak_alias(ExpressionHandle* inner_expr, KindHandle* source_type, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_lock_weak(
     ExpressionHandle* inner_expr, KindHandle* source_type,
@@ -236,7 +195,6 @@ ExpressionHandle* metal_expr_lock_weak(
     NameHandle* some_impl_name, NameHandle* none_impl_name,
     KindHandle* result, SourceLocationHandle* loc);
 
-// Calls.
 ExpressionHandle* metal_expr_call(
     PrototypeHandle* callable, ExpressionHandle* const* args, size_t arg_count, KindHandle* result, bool has_facts, const uint32_t* touched_ptr, size_t touched_len, uint32_t group_count, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_extern_call(
@@ -245,13 +203,11 @@ ExpressionHandle* metal_expr_interface_call(
     PrototypeHandle* super_function_prototype, int32_t virtual_param_index, int32_t index_in_edge,
     ExpressionHandle* const* args, size_t arg_count, KindHandle* result, SourceLocationHandle* loc);
 
-// Control flow.
 ExpressionHandle* metal_expr_if(
     ExpressionHandle* condition, ExpressionHandle* then_call, ExpressionHandle* else_call,
     KindHandle* then_result_type, KindHandle* else_result_type, KindHandle* result, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_while(ExpressionHandle* block, KindHandle* result, SourceLocationHandle* loc);
 
-// Arrays.
 ExpressionHandle* metal_expr_new_array_from_values(
     ExpressionHandle* const* elements, size_t element_count, KindHandle* result, KindHandle* array_type, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_new_mut_runtime_sized_array(
@@ -272,7 +228,6 @@ ExpressionHandle* metal_expr_destroy_static_sized_array_into_locals(
     LocalHandle* const* destination_locals, size_t local_count, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_destroy_mut_runtime_sized_array(ExpressionHandle* array_expr, SourceLocationHandle* loc);
 
-// --- Package builder ---
 
 PackageBuilderHandle* metal_package_builder_new(
     MetalCacheHandle* cache, PackageCoordHandle* package_coord);
@@ -316,7 +271,6 @@ void metal_package_builder_add_param_noalias(
 
 PackageHandle* metal_package_builder_finish(PackageBuilderHandle*);
 
-// --- Program builder ---
 
 ProgramBuilderHandle* metal_program_builder_new(MetalCacheHandle* cache);
 void metal_program_builder_add_package(
@@ -329,4 +283,4 @@ void metal_program_free(ProgramHandle*);
 }
 #endif
 
-#endif  // METAL_CACHE_FFI_H_
+#endif

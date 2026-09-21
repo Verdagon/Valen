@@ -457,10 +457,6 @@ LLVMValueRef buildCallWith64BitSExt(
     LLVMBuilderRef builder,
     RawFuncPtrLE functionLE,
     std::vector<LLVMValueRef> argsLE) {
-  // Trunc/SExt each i64 arg down (or up) to the callee's declared param
-  // width. LLVMBuildIntCast2 picks the right cast based on widths; we
-  // pass signed=false because the libc args we coerce here are size_t
-  // (unsigned, always positive at our call sites).
   std::vector<LLVMValueRef> coercedArgs;
   coercedArgs.reserve(argsLE.size());
   unsigned numParams = LLVMCountParamTypes(functionLE.funcLT);
@@ -486,8 +482,6 @@ LLVMValueRef buildCallWith64BitSExt(
   auto retLT = LLVMGetReturnType(functionLE.funcLT);
   if (LLVMGetTypeKind(retLT) == LLVMIntegerTypeKind &&
       LLVMGetIntTypeWidth(retLT) < 64) {
-    // SExt (not ZExt) so that callers can still see `result < 0` for
-    // libc errno-style returns from strncmp / fclose / etc.
     return LLVMBuildSExt(
         builder, resultLE, LLVMInt64TypeInContext(globalState->context), "ret64");
   }

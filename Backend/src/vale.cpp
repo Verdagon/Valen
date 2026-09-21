@@ -104,10 +104,7 @@ void makeExternOrExportFunction(
     bool isExport);
 
 void optimize(LLVMModuleRef mod, ValeOptimizationLevel optLevel);
-// Compiles the program's Vale code into the module. If the program exports a `main`, also
-// assembles the Vale entry (region setup/cleanup + the __Vale_Main wrapper) and returns its
-// prototype for the caller to emit an entry symbol from; returns nullptr in library mode
-// (no `main` export), where the caller emits no entry.
+
 Prototype* compileValeCode(GlobalState* globalState, MetalCache* metalCache, Program* program);
 
 void initInternalExterns(GlobalState* globalState) {
@@ -361,11 +358,6 @@ void generateExports(GlobalState* globalState) {
 
       if (auto structMT = dynamic_cast<StructKind*>(kind)) {
         auto structDefM = program->getStruct(structMT);
-        // Under the opaque-handle FFI, shared struct kinds don't expose their
-        // member layout to C, so no forward-decls needed. Mutable structs
-        // never emitted these here either (only exported members would show
-        // up in C-visible signatures anyway).
-
         auto region = (structDefM->sharedness == Sharedness::SHARED ? (IRegion*)globalState->rcImm : globalState->mutRegion);
         auto defString = region->generateStructDefsC(package, structDefM);
         resultC << defString;
@@ -400,8 +392,6 @@ void generateExports(GlobalState* globalState) {
       makeExternOrExportFunction(globalState, headerC, sourceC, packageCoord, package, exportName, prototype, true);
     }
   }
-  // Backend-generated FFI accessor exports live in a backend-owned registry
-  // rather than the input AST's exportNameToFunction; emit their C the same way.
   for (auto[packageCoord, package] : program->packages) {
     auto autoIter = globalState->autoExportsByPackage.find(packageCoord);
     if (autoIter == globalState->autoExportsByPackage.end())
@@ -429,13 +419,6 @@ void generateExports(GlobalState* globalState) {
   }
   auto outputDir = globalState->opt->outputDir;
 
-
-  // Emit a `str` opaque-handle typedef per package. Str is a compiler
-  // built-in kind so it doesn't come through exportNameToKind, but under the
-  // opaque-handle FFI it needs the same 8-byte concrete-handle typedef that
-  // user-authored shared structs get (str is a concrete kind). Includes the
-  // __vale builtin package because a handful of vale-side str primitives use
-  // it in their generated signatures.
   for (auto[packageCoord, package] : program->packages) {
     auto& strHeader = packageCoordToHeaderNameToC[packageCoord].emplace("str", std::stringstream()).first->second;
     auto name = packageCoord->projectName + "_str";
@@ -477,9 +460,6 @@ void generateExports(GlobalState* globalState) {
   builtinExportsCode << "#include <stdlib.h>" << std::endl;
   builtinExportsCode << "#include <string.h>" << std::endl;
   builtinExportsCode << "typedef int32_t ValeInt;" << std::endl;
-  // str crosses the opaque-handle FFI as an opaque handle, so there is no
-  // C-visible string layout to emit here. Kept in sync with the checked-in
-  // Backend/builtins/ValeBuiltins.h.
   builtinExportsCode << "#endif" << std::endl;
 
   std::string builtinsFilePath = makeIncludeDirectory(globalState) + "/ValeBuiltins.h";
@@ -894,12 +874,6 @@ Prototype* compileValeCode(GlobalState* globalState, MetalCache* metalCachePtr, 
     }
   }
 
-  // Register auto-generated per-share-type exports (alias/dealias/ref_eq).
-  // RCImm's declare/define*ExtraFunctions emitted the LLVM bodies during the
-  // earlier RCImm registration phase; here we record each accessor's export
-  // name + prototype in the backend-owned autoExportsByPackage registry (not
-  // the input AST), which the export loops below read to emit their C wrappers
-  // + headers.
   for (auto[packageCoord, package] : program.packages) {
     for (auto[exportName, kind] : package->exportNameToKind) {
       auto structKind = dynamic_cast<StructKind*>(kind);
@@ -920,7 +894,6 @@ Prototype* compileValeCode(GlobalState* globalState, MetalCache* metalCachePtr, 
         autoExports.emplace(exportName + "_dealias", dealiasP);
         autoExports.emplace(exportName + "_ref_eq", refEqP);
 
-        // Per-field getters + per-implemented-interface upcasts for struct kinds.
         if (structKind) {
           auto structDefM = program.getStruct(structKind);
           for (int i = 0; i < (int)structDefM->members.size(); i++) {
@@ -938,7 +911,6 @@ Prototype* compileValeCode(GlobalState* globalState, MetalCache* metalCachePtr, 
           autoExports.emplace(exportName + "_new", newP);
         }
 
-        // Length + at() for RSA/SSA kinds.
         if (rsaKind) {
           auto lenP = globalState->rcImm->getRsaLenPrototype(rsaKind);
           auto atP = globalState->rcImm->getRsaAtPrototype(rsaKind);
@@ -954,7 +926,6 @@ Prototype* compileValeCode(GlobalState* globalState, MetalCache* metalCachePtr, 
           autoExports.emplace(exportName + "_new", newP);
         }
 
-        // typeTag + per-edge downcasts for interface kinds.
         if (interfaceKind) {
           auto typeTagP = globalState->rcImm->getTypeTagPrototype(interfaceKind);
           autoExports.emplace(exportName + "_typeTag", typeTagP);
@@ -972,7 +943,6 @@ Prototype* compileValeCode(GlobalState* globalState, MetalCache* metalCachePtr, 
       }
     }
   }
-  // Register str primitive auto-exports.
   {
     auto strKind = globalState->metalCache->str;
     auto strLenP = globalState->rcImm->getStrLenPrototype();
@@ -1032,9 +1002,6 @@ Prototype* compileValeCode(GlobalState* globalState, MetalCache* metalCachePtr, 
     }
   }
 
-  // If the program exports a `main`, assemble the Vale entry: region setup/cleanup and the
-  // __Vale_Main wrapper. No `main` = library mode — emit only the exported functions and
-  // return nullptr, and the caller emits no entry symbol either.
   Prototype* mainM = nullptr;
   for (auto[packageCoord, package] : programPtr->packages) {
     for (auto[exportName, prototype] : package->exportNameToFunction) {
@@ -1260,12 +1227,6 @@ void optimize(LLVMModuleRef mod, ValeOptimizationLevel optLevel) {
   MPM.run(*llvm::unwrap(mod), MAM);
 }
 
-// Print the LLVM IR (if requested) and verify the module. Shared tail of both the
-// standalone and borrowed compile paths, run once a module's Vale IR is fully emitted.
-// Returns 0 on success, or ExitCode::VerifyFailed if verification is enabled and fails.
-// A failure is returned as an rc (not errorExit/exit'd): the borrowed/interop path runs
-// in-process inside the driving test binary, where an exit() would abort the whole suite
-// rather than fail one test — the caller propagates the rc so it surfaces cleanly.
 int32_t finalizeCompile(GlobalState* globalState) {
   finalizeDebugInfo(globalState);
 
@@ -1285,7 +1246,6 @@ int32_t finalizeCompile(GlobalState* globalState) {
     if (error) {
       bool failed = (*error != '\0');
       if (failed) {
-        // Print the diagnostic so it's visible, then return a failure rc instead of exiting.
         std::cerr << "Module verification failed:\n" << error << std::endl;
       }
       LLVMDisposeMessage(error);
@@ -1307,10 +1267,6 @@ static void loadSourcePaths(
   }
 }
 
-// Full standalone (valec) pipeline: copy the FFI options into ValeOptions, create the
-// owned LLVM handles, emit all of the program's Vale IR (including the libc `main` entry),
-// then optimize, emit the object, and dispose. The FFI entry in ffi.cpp is a one-line
-// `extern "C"` wrapper.
 static int32_t compileStandalone(
     MetalCache* metalCache, Program* program,
     const BackendCompileOptionsFFI* ffi_opts,
@@ -1338,13 +1294,9 @@ static int32_t compileStandalone(
     makeEntryFunction(&globalState, valeMainPrototype, "main", /*emitLibcShim=*/true);
   }
 
-  // Exports must be generated after the entry/main assembly above — the export
-  // accessors depend on it (this matched the original order; running it earlier
-  // segfaulted the emitted programs).
   generateExports(&globalState);
 
   if (int32_t rc = finalizeCompile(&globalState)) {
-    // Verification failed — don't optimize/emit an object from invalid IR.
     LLVMDisposeModule(mod);
     LLVMDisposeTargetMachine(machine);
     return rc;
@@ -1381,16 +1333,9 @@ static int32_t compileStandalone(
   return 0;
 }
 
-// Unwrap the opaque cache handle (defined in metal_cache_ffi.cpp).
 typedef struct MetalCacheHandle MetalCacheHandle;
 extern "C" MetalCache* metal_cache_ffi_inner(MetalCacheHandle*);
 
-// Borrowed-mode compile: rustc lends only its LLVMContext + Module (as opaque handles),
-// Vale emits its IR into that module, and control returns to rustc. rustc owns optimization
-// and object emission (they run after this) so unlike compileStandalone we do NOT
-// optimize, generateOutput, or dispose any of the borrowed handles. We also skip the
-// libc `main` entry and main setup/cleanup: rustc's libstd provides `main` (arch 5.6).
-// With no machine, GlobalState reads its data layout off the (rustc-preset) module.
 static int32_t compileIntoModuleFromRustc(
     MetalCache* metalCache, Program* program,
     const BackendCompileOptionsFFI* ffi_opts,
@@ -1413,39 +1358,19 @@ static int32_t compileIntoModuleFromRustc(
       /*machine=*/nullptr,
       dataLayout);
   loadSourcePaths(program, sourcePaths, numSourcePaths);
-  // A `main` export makes this a Vale binary — emit `__vale_main` for the stub's Rust
-  // `fn main` to call (rustc's libstd owns the real libc `main`, so no libc shim). No
-  // `main` is a Vale library: exported functions only, no entry.
   Prototype* valeMainPrototype = compileValeCode(&globalState, metalCache, program);
   if (valeMainPrototype != nullptr) {
-    // Single-symbol (arch §5.2): emit the entry under rustc's mangled __vale_main symbol when the
-    // driver supplied one, so the stub's `fn main` (which calls the Rust name __vale_main) links to
-    // Vale's real body rather than rustc's unreachable!() placeholder (removed by the partition
-    // filter). Empty = the literal __vale_main (standalone, or no explicit symbol).
     std::string entryName =
         (entrySymbol != nullptr && entrySymbol[0] != '\0') ? std::string(entrySymbol) : "__vale_main";
     makeEntryFunction(&globalState, valeMainPrototype, entryName, /*emitLibcShim=*/false);
   }
-  // Rust->Vale callbacks: for each Vale trait-impl method that Rust calls, emit a wrapper under its
-  // rustc-mangled symbol that adapts the Rust ABI and forwards to the internal Vale body (single-
-  // symbol, arch §5.2). The bodies were emitted by compileValeCode above, so lookups resolve now.
   for (size_t i = 0; i < numCallbacks; i++) {
     emitInboundCallbackWrapper(
         &globalState, program, callbacks[i].symbol, callbacks[i].vale_name);
   }
-  // generateExports (the C-ABI export headers/sources) is deliberately NOT called here: it
-  // is the standalone-valec C-FFI boundary, it requires an outputDir and writes files to
-  // disk, and interop exports go through single-symbol instead (Vale bodies emitted under
-  // rustc-mangled names). So the interop path emits IR into the module only.
   return finalizeCompile(&globalState);
 }
 
-// The single unified backend entry: takes one BackendInputsFFI and dispatches by
-// `mode`. Whether that means the standalone build (own context/machine/module,
-// object emission) or the borrowed-mode emit into rustc's lent module is a backend
-// implementation detail hidden behind this one entry. Caller retains ownership of
-// cache/program (and, in interop mode, the borrowed context/module); nothing is
-// freed here.
 extern "C" __attribute__((visibility("default")))
 int32_t backend_compile(const BackendInputsFFI* in) {
   MetalCache* cache = metal_cache_ffi_inner(reinterpret_cast<MetalCacheHandle*>(in->cache));

@@ -2,7 +2,6 @@
 #include "ast.h"
 
 bool isValueType(Kind* kind) {
-  // A value kind is exactly one that is not a reference wrap — i.e. a ValueKind.
   return dynamic_cast<ValueKind*>(kind) != nullptr;
 }
 
@@ -17,8 +16,6 @@ ValueKind* peel_all_references(Kind* kind) {
     } else if (auto weakRef = dynamic_cast<WeakRef*>(kind)) {
       kind = weakRef->inner;
     } else {
-      // Not a wrap ⇒ a value kind. Every non-wrap Kind subclass derives from ValueKind, so this
-      // dynamic_cast always succeeds; it's how we hand back the witness type.
       auto result = dynamic_cast<ValueKind*>(kind);
       assert(result);
       return result;

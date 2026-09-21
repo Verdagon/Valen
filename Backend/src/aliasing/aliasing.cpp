@@ -98,7 +98,6 @@ void attachAccessAliasScope(
     LLVMValueRef inst,
     const std::vector<uint32_t>& groupIndices,
     uint32_t groupCount) {
-  // This access is in `groupIndices`; every *other* group is disjoint and cannot alias it.
   attachAliasScope(globalState, functionState, inst, groupIndices, noaliasComplement(groupIndices, groupCount));
 }
 

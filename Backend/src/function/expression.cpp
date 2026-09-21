@@ -270,8 +270,6 @@ Ref translateExpressionInner(
     return toRef(globalState->getRegion(resultType), resultType, localAddr);
   } else if (auto letAndLend = dynamic_cast<LetAndLend*>(expr)) {
     buildFlare(FL(), globalState, functionState, builder, typeid(*expr).name());
-    // Store the value into the local (the Stackify half), then hand back a pointer to that local's
-    // storage as the borrow (the LocalLookup half) — this is how you take an address of a value.
     auto refToStore =
         translateExpression(globalState, functionState, blockState, builder, letAndLend->expr);
     globalState->getRegion(letAndLend->variable->type)
@@ -441,8 +439,6 @@ Ref translateExpressionInner(
                   functionState, bodyBuilder, arrayType, arrayKind,
                   arraySpilledLiveRef,
                   inBoundsIndexLE);
-          // loadElementFromSSA yields a *borrow* of the element; load the value out to hand to the
-          // consumer, which takes the element by value.
           auto elementBorrowRef = elementLoadResult.move();
           auto elementBorrowType = globalState->metalCache->getBorrowRef(elementType);
           auto elementRef =
@@ -653,8 +649,6 @@ Ref translateExpressionInner(
             ->loadElementFromSSA(
                 functionState, builder, arrayType, arrayKind, arrayLiveRef,
                 indexInBoundsLE);
-    // loadElementFromSSA yields a *borrow* of the element (like loadMember), so its source ownership
-    // is a borrow of elementType, not elementType itself.
     auto resultRef =
         globalState->getRegion(resultValueType)
             ->upgradeLoadResultToRefWithTargetOwnership(

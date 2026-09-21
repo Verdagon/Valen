@@ -4,7 +4,6 @@
 #include <llvm-c/Core.h>
 #include "../../function/expressions/shared/afl.h"
 #include "../rcimm/rcimm.h"
-#include "../common/defaultlayout/structsrouter.h"
 #include "../common/wrcweaks/wrcweaks.h"
 #include "../../globalstate.h"
 #include "../../function/function.h"

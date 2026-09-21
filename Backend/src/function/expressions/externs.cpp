@@ -91,17 +91,10 @@ Ref buildCallOrSideCall(
     LLVMBuilderRef builder,
     Prototype* prototype,
     const std::vector<Ref>& valeArgRefs) {
-  // An interop extern carries an ABI descriptor (from rustc's FnAbi) saying how each argument and the
-  // return crosses (the CoercionKind per arg/return, see metal/ast.h). A C extern has none; it takes the
-  // descriptor-less path in each branch below.
   // VCOORD: this is temporary until we get much better C interop that does coerce to C ABI.
   const ExternAbi* abi = lookupExternAbi(globalState, prototype);
   bool hasAbi = abi != nullptr;
 
-  // buildBoundarySignature is the single source of the declared LLVM parameter/return types (it is also
-  // what declareExternFunction declares the extern from). The marshaling below builds each argument to
-  // the type sig.paramTypesL declares, and reads sig.usesReturnOutParam for the return, so the call site
-  // is driven from the same signature the declaration is, not kept in sync by hand.
   auto sig = buildBoundarySignature(globalState, prototype);
 
   auto hostArgsLE = std::vector<LLVMValueRef>{};
@@ -120,11 +113,6 @@ Ref buildCallOrSideCall(
       auto argValueKind = peel_all_references(valeArgRefMT);
       if ((c.kind == CoercionKind::DirectInt || c.kind == CoercionKind::Cast)
           && dynamic_cast<StructKind*>(argValueKind)) {
-        // rustc passes this small struct in a single register integer (DirectInt for a scalar-repr
-        // struct, Cast for a memory-repr one). Reinterpret the Vale struct's bytes as that integer, whose
-        // type buildBoundarySignature already declared for this parameter. The slot is that integer type,
-        // so its alloca carries the integer's alignment, which the struct's natural alignment could
-        // underprovide.
         auto valeArgLE =
             globalState->getRegion(argValueKind)
                 ->checkValidReference(FL(), functionState, builder, true, valeArgRefMT, valeArg);
@@ -137,10 +125,6 @@ Ref buildCallOrSideCall(
         continue;
       }
       if (c.kind == CoercionKind::DirectPtr) {
-        // The host wants a pointer. A borrow already crosses as one, so its sent value is a pointer.
-        // A consuming owned value (a drop's `*mut T`, where Vale holds the value inline) is not, so
-        // spill it to a slot and pass the slot's address. `drop_in_place` runs on it in place; Vale
-        // keeps ownership of the stack slot.
         auto sentLE = sendValeObjectIntoHost(globalState, functionState, builder, valeArgRefMT, valeArg);
         if (LLVMGetTypeKind(LLVMTypeOf(sentLE)) != LLVMPointerTypeKind) {
           sentLE = makeBackendLocal(functionState, builder, LLVMTypeOf(sentLE), "ptrCoerceSlot", sentLE);
@@ -149,18 +133,12 @@ Ref buildCallOrSideCall(
         continue;
       }
       if (c.kind == CoercionKind::Indirect) {
-        // Per @EACBIPZ, a large struct crosses as an indirect pointer, not byval: spill the moved owned
-        // value to a slot (like the fall-through move below) and pass the slot's address, with no `byval`
-        // attribute.
         auto sentLE = sendValeObjectIntoHost(globalState, functionState, builder, valeArgRefMT, valeArg);
         auto slot = makeBackendLocal(functionState, builder, LLVMTypeOf(sentLE), "indirectArgSlot", sentLE);
         hostArgsLE.push_back(slot);
         continue;
       }
       if (c.kind == CoercionKind::Pair && dynamic_cast<StructKind*>(argValueKind)) {
-        // rustc passes this small struct as two register scalars. Spill the Vale struct to a slot,
-        // reinterpret it as {iN,iM}, and load each field as its declared integer param — the two-register
-        // analog of the DirectInt/Cast single-integer arm above. Pushes TWO host args for one Vale arg.
         auto valeArgLE =
             globalState->getRegion(argValueKind)
                 ->checkValidReference(FL(), functionState, builder, true, valeArgRefMT, valeArg);
@@ -179,15 +157,8 @@ Ref buildCallOrSideCall(
             LLVMBuildLoad2(builder, i1, LLVMBuildStructGEP2(builder, pairLT, slot, 1, "apf1"), "argP1"));
         continue;
       }
-      // A scalar DirectInt already is its integer. Fall through.
     }
 
-    // Per @FRMACZ, the boundary does no RC. A share arg is *moved* into C by
-    // normal Vale operations: the arg expression already produced an owned +1
-    // (aliased if the value is used again, moved if it's a last use) exactly as
-    // it would for a normal call, and that owned +1 crosses to C here. C owns
-    // the arg and discharges it explicitly. Adding an alias here would be a
-    // second +1 with no counterpart in the normal-call path — a leak.
     hostArgsLE.push_back(
         sendValeObjectIntoHost(globalState, functionState, builder, valeArgRefMT, valeArg));
   }
@@ -212,10 +183,6 @@ Ref buildCallOrSideCall(
 
   auto returnKind = peel_all_references(prototype->returnType);
 
-  // Whether the return crosses via an sret out-pointer comes straight from the signature, so the call
-  // site and declareExternFunction agree by construction. An interop sret slot is the Vale value type
-  // itself (sized by the struct-layout map), so the load already yields translateType(returnKind); a C
-  // extern uses the `{i64}` handle type instead.
   bool retIndirect = sig.usesReturnOutParam;
   auto slotLT = hasAbi
       ? globalState->getRegion(returnKind)->translateType(returnKind)
@@ -230,8 +197,6 @@ Ref buildCallOrSideCall(
 
     auto resultLE = buildMaybeNeverCall(globalState, builder, externFuncL, hostArgsLE);
     if (hasAbi) {
-      // Match the declared `sret` attribute at the call site so the out-pointer is lowered into the
-      // platform's hidden result register (x8 on aarch64), not an ordinary arg register.
       unsigned sretKind = LLVMGetEnumAttributeKindForName("sret", 4);
       auto sretAttr = LLVMCreateTypeAttribute(globalState->context, sretKind, slotLT);
       LLVMAddCallSiteAttribute(resultLE, 1u, sretAttr);
@@ -445,19 +410,7 @@ Ref buildExternCall(
         ->dealias(FL(), functionState, builder, expectedType, args[0]);
     return toRef(globalState->getRegion(prototype->returnType), prototype->returnType, resultLenLE);
   }
-  // ─── String intrinsics ────────────────────────────────────────────────
   // VCOORD: TEMPORARY: this whole section exists only until str is a proper Vale
-  // class (a struct in stdlib source with its methods written in Vale).
-  // Once that lands, these operators become ordinary Vale code and the
-  // backend keeps at most a few tiny leaf intrinsics; the __vale_rt_
-  // helpers stay as their runtime support.
-  //
-  // These implement Vale's string operators (`+`, `str(int)`, `streq`, ...).
-  // Each intrinsic:
-  //  1. Picks between mutStrRef/immStrRef based on arg ownership (like __vbi_strLength).
-  //  2. Uses checkRefLive → getStringBytesPtr/getStringLen to read source data.
-  //  3. Calls mallocStr (RCImm's) or a C helper for allocation of new strs.
-  //  4. Dealiases every share-typed arg exactly once before returning.
   else if (prototype->name->name == "__vbi_addStr" ||
            prototype->name->name == "__vbi_streq" ||
            prototype->name->name == "__vbi_strcmp" ||
@@ -495,13 +448,6 @@ Ref buildExternCall(
           return resultRef;
         };
     if (prototype->name->name == "__vbi_addStr") {
-      // Allocate result = concat(a[aBegin..aEnd], b[bBegin..bEnd]).
-      // mallocStr allocates totalLen bytes and does one strncpy from
-      // aStart — that strncpy stops at the first null in a's chars (Vale
-      // strings are null-terminated at their length, so we don't over-read
-      // the allocation), padding the rest of totalLen with zeros. Its
-      // output would be wrong when a or b contain internal nulls, so we
-      // overwrite both halves with explicit memcpys below.
       auto totalLenLE = LLVMBuildAdd(builder, aLenLE, bLenLE, "totalLen");
       auto strResultRef = globalState->getRegion(globalState->metalCache->str)
           ->mallocStr(functionState, builder, totalLenLE, aStartLE);
@@ -521,8 +467,6 @@ Ref buildExternCall(
     } else if (prototype->name->name == "__vbi_streq") {
       // Return (aLen == bLen) && memcmp(aStart, bStart, aLen) == 0.
       auto lenEqLE = LLVMBuildICmp(builder, LLVMIntEQ, aLenLE, bLenLE, "lenEq");
-      // Even if lengths differ, we still call strncmp with the shorter length
-      // to keep the IR straight-line; then AND with lenEq.
       auto minLenLE = LLVMBuildSelect(builder,
           LLVMBuildICmp(builder, LLVMIntSLT, aLenLE, bLenLE, "aShorter"),
           aLenLE, bLenLE, "minLen");
@@ -551,9 +495,6 @@ Ref buildExternCall(
       return dealiasBothAndReturn(
           toRef(globalState->getRegion(prototype->returnType), prototype->returnType, resultLE));
     } else if (prototype->name->name == "__vbi_strindexof") {
-      // __vbi_strindexof — search for b in a. Delegate to C helper.
-      // Helper returns i32; buildCallWith64BitSExt sign-extends to i64. Trunc
-      // back so the return type matches Vale int (i32).
       auto findI64LE = buildCallWith64BitSExt(globalState, builder,
           globalState->externs->valeRtBytesFindLF,
           {aStartLE, aLenLE, bStartLE, bLenLE});
@@ -649,12 +590,8 @@ Ref buildExternCall(
     auto int64LT = LLVMInt64TypeInContext(globalState->context);
     auto iLE = checkValidInternalReference(FL(), globalState, functionState, builder, true, prototype->params[0], args[0]);
     auto iI64LE = LLVMBuildSExt(builder, iLE, int64LT, "iI64");
-    // buildCallWith64BitSExt sign-extends i32 return to i64; truncate back
-    // because mallocStr asserts i32 length.
     auto lenI64LE = buildCallWith64BitSExt(globalState, builder, globalState->externs->valeRtGetMainArgLenLF, {iI64LE});
     auto lenI32LE = LLVMBuildTrunc(builder, lenI64LE, int32LT, "lenI32");
-    // Pointer return passes through unmodified (buildCallWith64BitSExt only
-    // sign-extends integer returns narrower than 64 bits).
     auto bytesPtrLE = buildCallWith64BitSExt(globalState, builder, globalState->externs->valeRtGetMainArgPtrLF, {iI64LE});
     return globalState->getRegion(globalState->metalCache->str)
         ->mallocStr(functionState, builder, lenI32LE, bytesPtrLE);
@@ -666,17 +603,14 @@ Ref buildExternCall(
     assert(args.size() == 1);
     auto int8LT = LLVMInt8TypeInContext(globalState->context);
     auto int32LT = LLVMInt32TypeInContext(globalState->context);
-    // 32-byte buffer covers i64 and double representations comfortably.
     const int bufSize = 32;
     auto bufTypeLT = LLVMArrayType(int8LT, bufSize);
     auto bufLE = makeBackendLocal(functionState, builder, bufTypeLT, "asciiBuf", LLVMGetUndef(bufTypeLT));
-    // Bitcast [32 x i8] alloca → i8*
     auto bufPtrLE = LLVMBuildBitCast(builder, bufLE, LLVMPointerType(int8LT, 0), "asciiBufPtr");
     auto bufSizeLE = LLVMConstInt(int32LT, bufSize, false);
     auto xLE = checkValidInternalReference(FL(), globalState, functionState, builder, true, prototype->params[0], args[0]);
     LLVMValueRef writtenLE = nullptr;
     if (prototype->name->name == "__vbi_castI32Str") {
-      // Widen to i64 and call the same helper.
       auto xI64LE = LLVMBuildSExt(builder, xLE, LLVMInt64TypeInContext(globalState->context), "xI64");
       writtenLE = buildCallWith64BitSExt(globalState, builder, globalState->externs->valeRtI64ToAsciiLF, {xI64LE, bufPtrLE, bufSizeLE});
     } else if (prototype->name->name == "__vbi_castI64Str") {
@@ -684,8 +618,6 @@ Ref buildExternCall(
     } else {
       writtenLE = buildCallWith64BitSExt(globalState, builder, globalState->externs->valeRtFloatToAsciiLF, {xLE, bufPtrLE, bufSizeLE});
     }
-    // buildCallWith64BitSExt sign-extends the i32 return to i64; truncate
-    // back before handing to mallocStr, which asserts i32 length.
     auto writtenI32LE = LLVMBuildTrunc(builder, writtenLE, int32LT, "writtenI32");
     return globalState->getRegion(globalState->metalCache->str)
         ->mallocStr(functionState, builder, writtenI32LE, bufPtrLE);

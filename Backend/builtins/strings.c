@@ -1,13 +1,3 @@
-// Primitive-typed helpers used by the __vbi_* string intrinsics in
-// Backend/src/function/expressions/externs.cpp. All operations that touch
-// share `str` refs (allocation, RC management) happen Vale-side inside the
-// intrinsic; C only handles raw byte buffers and format conversions.
-//
-// Naming: functions prefixed with `__vbi_` are recognized by the Backend as
-// compiler intrinsics — they never exist as real symbols. Functions prefixed
-// with `__vale_rt_` are Vale's compiler runtime support library (compare
-// LLVM's compiler-rt): real linked symbols that compiler-emitted IR calls
-// directly, invisible to the language and outside the FFI machinery.
 
 #include <stdint.h>
 #include <string.h>

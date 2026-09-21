@@ -21,15 +21,6 @@ struct FfiHandleExplodedMembers {
       typeInfoPtrI64LE(typeInfoPtrI64LE_) {}
 };
 
-// The FFI handle types that cross the C boundary, each sized to exactly what
-// its ref layer needs. Per @HTSLVBDTCZ, all concretes share one of these types
-// and all interfaces share the other; per-class distinctness lives only in the
-// C typedefs.
-//   - concrete (struct/str/RSA/SSA): { i64 obj }              — 8 bytes
-//   - interface:                     { i64 obj, i64 typeinfo } — 16 bytes
-// Fields are plain i64 pointer bits (PtrToInt/IntToPtr), no compression. They
-// stay LLVM structs (not bare i64) so per-kind C typedefs keep type
-// distinctness and the explicit-pointer-param ABI machinery is untouched.
 struct FfiHandleStructs {
   explicit FfiHandleStructs(LLVMContextRef context);
 

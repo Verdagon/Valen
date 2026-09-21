@@ -31,17 +31,10 @@ public:
   RawFuncPtrLE censusAdd;
   RawFuncPtrLE censusRemove;
 
-  // Vale's compiler runtime support library (compare LLVM's compiler-rt):
-  // real linked C symbols that compiler-emitted IR calls directly, invisible
-  // to the language and outside the FFI machinery. Used by the __vbi_ string
-  // intrinsics; impls live in Backend/builtins/strings.c and each
-  // takes/returns primitive types only.
   RawFuncPtrLE valeRtI64ToAsciiLF;
   RawFuncPtrLE valeRtFloatToAsciiLF;
   RawFuncPtrLE valeRtBytesFindLF;
   RawFuncPtrLE valeRtWriteStdoutLF;
-  // Runtime-support helpers for the __vbi_getMainArg intrinsic. Impls live
-  // in Backend/builtins/mainargs.c.
   RawFuncPtrLE valeRtGetMainArgLenLF;
   RawFuncPtrLE valeRtGetMainArgPtrLF;
 

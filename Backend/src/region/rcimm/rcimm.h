@@ -490,9 +490,6 @@ public:
   Prototype* getSsaLenPrototype(StaticSizedArrayT* ssaKind);
   Prototype* getSsaAtPrototype(StaticSizedArrayT* ssaKind);
 
-  // Read-only view of the edges declared for a given interface, in the order
-  // they were seen at declareEdge time. Used by the auto-export loop and by
-  // RCImm::generateInterfaceDefsC to emit TAG_* constants.
   const std::vector<Edge*>* getEdgesForInterface(InterfaceKind* interfaceKind);
 private:
   void declareConcreteAliasFunction(ValueKind* valeKind);

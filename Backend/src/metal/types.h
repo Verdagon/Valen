@@ -228,11 +228,6 @@ public:
 };
 
 
-// The onion "wrap" layers, mirroring the instantiated IR's KindIT
-// (BorrowRefIT / OwnRefIT / ShareRefIT / WeakRefIT). Ownership is which wrap surrounds the
-// base kind, or none: an owned value is a bare kind with zero wraps (an owned Ship is a
-// StructKind directly). Placement (inline vs yonder) is derived from this shape at codegen,
-// not stored, so there is no ownership/location field here. There is no region/group on a wrap.
 class BorrowRef : public Kind {
 public:
   Kind* inner;
@@ -275,13 +270,7 @@ public:
 
 bool isValueType(Kind* kind);
 
-// Strips every onion ref wrap (BorrowRef/OwnRef/ShareRef/WeakRef) off `kind` and
-// returns the underlying concrete kind (StructKind, InterfaceKind, an array, Int, ...) as a
-// ValueKind* — a compile-time witness that the result carries no reference wrap.
-// A bare value type is returned unchanged.
 ValueKind* peel_all_references(Kind* kind);
-// A ValueKind is already wrap-free, so peeling one is redundant. Delete this overload to make that
-// a compile error — if you hold a ValueKind*, use it directly instead of re-peeling.
 ValueKind* peel_all_references(ValueKind* kind) = delete;
 
 class IContainer {

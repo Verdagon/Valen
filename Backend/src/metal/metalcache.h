@@ -26,7 +26,6 @@ V& makeIfNotPresent(std::unordered_map<K, V, H, E>* map, const K& key, F&& makeE
   return iter->second;
 }
 
-// Prototype interning keys on its param list of onion Kind*.
 struct HashKindVec {
   AddressHasher<Kind*> hasher;
   HashKindVec(AddressHasher<Kind*> hasher_) : hasher(hasher_) {}
@@ -187,7 +186,6 @@ public:
         [&](){ return new RegionId(packageCoordinate, nameStr); });
   }
 
-  // Onion wrap kinds: ownership as a layer around the base kind, interned by the inner kind.
   BorrowRef* getBorrowRef(Kind* inner) {
     return makeIfNotPresent(&borrowRefs, inner, [&](){ return new BorrowRef(inner); });
   }
@@ -245,7 +243,6 @@ public:
   std::unordered_map<RegionId*, Never*, AddressHasher<RegionId*>> nevers;
   std::unordered_map<RegionId*, USize*, AddressHasher<RegionId*>> usizes;
 
-  // Onion wrap-kind interning, keyed by the inner kind.
   std::unordered_map<Kind*, BorrowRef*, AddressHasher<Kind*>> borrowRefs;
   std::unordered_map<Kind*, OwnRef*, AddressHasher<Kind*>> ownRefs;
   std::unordered_map<Kind*, ShareRef*, AddressHasher<Kind*>> shareRefs;
@@ -264,7 +261,6 @@ public:
 
   std::unordered_map<Prototype*, std::unordered_map<int, InterfaceMethod*>, AddressHasher<Prototype*>> interfaceMethods;
 
-  // Source locations for DWARF, interned by "file:line:col".
   std::unordered_map<std::string, SourceLocation*> sourceLocations;
 
   RegionId* rcImmRegionId = nullptr;

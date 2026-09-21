@@ -26,8 +26,6 @@ GlobalState::GlobalState(
     regionIdByKind(0, addressNumberer->makeHasher<Kind*>())
 {}
 
-// Out-of-line so the region types held by GlobalState's `unique_ptr` members only need to
-// be complete here (where they are), not in every TU that destroys a GlobalState.
 GlobalState::~GlobalState() = default;
 
 std::vector<LLVMTypeRef> GlobalState::getInterfaceFunctionTypesNonPointer(InterfaceKind* kind) {
@@ -121,9 +119,6 @@ IRegion* GlobalState::getRegion(Kind* typeM) {
     return getRegion(str->regionId);
   } else if (dynamic_cast<StaticSizedArrayT*>(valueTypeM) ||
              dynamic_cast<RuntimeSizedArrayT*>(valueTypeM)) {
-    // SSAs/RSAs are always in the mut region (no immutable array kind exists),
-    // so resolve directly instead of requiring a per-kind registration that the
-    // owned-array-across-FFI path never performs.
     return getRegion(metalCache->mutRegionId);
   } else {
     auto iter = regionIdByKind.find(valueTypeM);

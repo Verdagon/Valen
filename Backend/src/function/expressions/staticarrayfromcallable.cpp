@@ -22,7 +22,6 @@ Ref translateStaticArrayFromCallable(
 
   auto ssaDefMT = globalState->program->getStaticSizedArray(staticSizedArrayMT);
   auto elementType = ssaDefMT->elementType;
-  // The generator is the receiver (param 0) of the per-element generator method.
   auto generatorType = staticArrayFromCallable->generatorMethod->params[0];
   auto generatorValueType = peel_all_references(generatorType);
   auto resultValueType = peel_all_references(staticArrayFromCallable->result);

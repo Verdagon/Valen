@@ -33,11 +33,6 @@ ValeFuncPtrLE declareFunction(
   auto valeFunctionL =
       addValeFunction(globalState, valeFunctionNameL.c_str(), valeReturnTypeL, valeParamTypesL);
 
-  // Mark each parameter the borrow checker proved is the sole reference into its group as `noalias`
-  // (LLVM's `restrict`). lookupParamNoalias returns null when the function was not analyzed (generated,
-  // extern, or checker disabled) — nothing is marked then. When present it is one bool per parameter,
-  // so a length mismatch is a carrier bug, not a case to tolerate. Only pointer args are eligible; a
-  // non-pointer would fail the verifier.
   if (const std::vector<bool>* paramNoalias =
           lookupParamNoalias(globalState, functionM->prototype);
       paramNoalias && !globalState->opt->suppress_alias_metadata) {
@@ -75,10 +70,6 @@ void exportFunction(GlobalState* globalState, Package* package, const std::strin
 
   // The full name should end in _0, _1, etc. The exported name shouldnt.
   assert(abiExportName != prototypeM->name->name);
-  // Per @FRMACZ, this export thunk is a silent shim: it receives the host args
-  // without touching their RC and forwards them to the real Vale function, which
-  // consumes them as a normal callee. The return is likewise handed to C without
-  // any RC adjustment, and C owns it.
   LLVMValueRef exportFunctionL = LLVMAddFunction(globalState->mod, abiExportName.c_str(), exportFunctionTypeL);
   LLVMSetLinkage(exportFunctionL, LLVMExternalLinkage);
 
@@ -155,8 +146,6 @@ RawFuncPtrLE declareExternFunction(
   if (package->packageCoordinate->projectName == "rust") {
     abiFuncNameL = package->getFunctionExternName(prototypeM);
   } else {
-    // This is the name of the Valen-generated shim that calls the actual extern C function.
-    // We should remove this one day (see @BDCABIBZ)
     abiFuncNameL = std::string("vale_abi_") + package->packageCoordinate->projectName + "_" + package->getFunctionExternName(prototypeM);
   }
 

@@ -41,14 +41,7 @@ public:
   LLVMDIBuilderRef dibuilder = nullptr;
   LLVMMetadataRef compileUnit = nullptr;
   LLVMMetadataRef difile = nullptr;
-  // Per-source-path DIFile cache, populated lazily as Vale functions with a
-  // non-empty sourceFilePath are declared (see attachDISubprogram in
-  // debugging.cpp). Keys are the file path the frontend FFI passes in.
   std::unordered_map<std::string, LLVMMetadataRef> diFileCache;
-  // Per-Kind DIType cache, populated lazily on the first dbg.declare for a local
-  // of that type (see getOrCreateDIType in debugging.cpp). Models Vale primitives
-  // (Int/Bool/Float) precisely; everything else gets a pointer-sized "ref"
-  // DIBasicType so the local still appears in lldb without walking its fields.
   std::unordered_map<Kind*, LLVMMetadataRef> diTypeCache;
 
   ValeOptions *opt = nullptr;
@@ -82,10 +75,6 @@ public:
 
 //  LLVMValueRef genMalloc = nullptr, genFree = nullptr;
 
-  // The FFI handle types the outside world uses to refer to our objects, each
-  // sized to exactly what its ref layer needs. See ffihandlestructs.h.
-  // Per @HTSLVBDTCZ, all concrete kinds share one LLVM handle type and all
-  // interfaces share one; per-class distinctness lives only in the C typedefs.
   std::unique_ptr<FfiHandleStructs> ffiHandleStructs;
 
   // This is a global, we can return this when we want to return never. It should never actually be
@@ -108,11 +97,6 @@ public:
   // These contain the extra methods that Backend adds to particular interfaces.
   std::unordered_map<Prototype*, ValeFuncPtrLE, AddressHasher<Prototype*>> extraFunctions;
 
-  // Backend-owned registry of the auto-generated FFI accessor exports
-  // (alias/dealias/ref_eq/getters/upcast/asSubstruct/typeTag/_new/_len/_at/str
-  // primitives), grouped per package. Mirrors Package::exportNameToFunction but
-  // lives here so codegen doesn't mutate the input AST. The emitters read this
-  // alongside each package's frontend-provided exports.
   std::unordered_map<
       PackageCoordinate*,
       std::unordered_map<std::string, Prototype*>,

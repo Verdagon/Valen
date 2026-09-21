@@ -22,9 +22,6 @@ public:
         dynamic_cast<Float *>(typeM) != nullptr;
   }
 
-  // Phase 1 of Option A2 (vcoord-handoff.md): primitives can flow non-Own (borrow-flavor), so
-  // translatePrimitive always returns the scalar type regardless of ownership. Phase 2 (when
-  // `*int_ptr = 42` semantics land) will dispatch on ownership — scalar for Own, pointer for Borrow.
   LLVMTypeRef translatePrimitive(GlobalState* globalState, ValueKind* referenceM) {
     if (auto innt = dynamic_cast<Int*>(referenceM)) {
       return LLVMIntTypeInContext(globalState->context, innt->bits);

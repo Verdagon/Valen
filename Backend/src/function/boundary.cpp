@@ -10,11 +10,6 @@ bool translatesToCVoid(GlobalState* globalState, ValueKind* returnMT) {
       || returnMT == globalState->metalCache->voidType;
 }
 
-// The single source of truth for what LLVM type a full param/return type crosses
-// the C-ABI boundary as (S8). One branch per Kind, no fallthrough: a reference
-// wrap crosses as a pointer to its value, void/never as void, and every other
-// value kind as its own C-ABI representation (getExternalType). Both the param and
-// return paths derive from this.
 static LLVMTypeRef hostBoundaryType(GlobalState* globalState, Kind* valeRefMT) {
   auto valeKind = peel_all_references(valeRefMT);
   auto valueLT = globalState->getRegion(valeKind)->getExternalType(valeKind);
@@ -54,16 +49,12 @@ static LLVMTypeRef hostBoundaryType(GlobalState* globalState, Kind* valeRefMT) {
   }
 }
 
-// A by-value aggregate return crosses through a hidden sret out-parameter rather
-// than a real return value — true exactly when its boundary type is a by-value
-// struct (a pointer or scalar return needs none).
 bool returnNeedsOutParam(GlobalState* globalState, Kind* returnRefMT) {
   return LLVMGetTypeKind(hostBoundaryType(globalState, returnRefMT)) == LLVMStructTypeKind;
 }
 
 LLVMTypeRef translateExternReturnType(GlobalState* globalState, Kind* returnRefMT) {
   if (returnNeedsOutParam(globalState, returnRefMT)) {
-    // Returned through the out-parameter instead.
     return LLVMVoidTypeInContext(globalState->context);
   }
   return hostBoundaryType(globalState, returnRefMT);
@@ -71,8 +62,6 @@ LLVMTypeRef translateExternReturnType(GlobalState* globalState, Kind* returnRefM
 
 // VCOORD: revisit this
 const ExternAbi* lookupExternAbi(GlobalState* globalState, Prototype* prototypeM) {
-  // Only externs whose package is in the program and carries a descriptor have one; a builtin extern
-  // (e.g. __vbi_*) whose package isn't in the program falls through to the descriptor-less path.
   auto pkgIter = globalState->program->packages.find(prototypeM->name->packageCoord);
   if (pkgIter == globalState->program->packages.end()) {
     return nullptr;
@@ -82,8 +71,6 @@ const ExternAbi* lookupExternAbi(GlobalState* globalState, Prototype* prototypeM
   return iter == externAbis.end() ? nullptr : &iter->second;
 }
 
-// The borrow checker's per-parameter noalias verdict for this function, or nullptr if the function was
-// not analyzed (generated, extern, or the checker was disabled). Presence — not a bool — is the signal.
 const std::vector<bool>* lookupParamNoalias(GlobalState* globalState, Prototype* prototypeM) {
   auto pkgIter = globalState->program->packages.find(prototypeM->name->packageCoord);
   if (pkgIter == globalState->program->packages.end()) {
@@ -97,14 +84,11 @@ const std::vector<bool>* lookupParamNoalias(GlobalState* globalState, Prototype*
 // VCOORD: revisit this
 BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* prototypeM) {
   if (const ExternAbi* abi = lookupExternAbi(globalState, prototypeM)) {
-    // Descriptor-driven (interop): build the signature from the per-arg/return coercions so it matches
-    // exactly what buildCallOrSideCall marshals. A pointer is opaque under LLVM 21, so any ptr type serves.
     auto voidLT = LLVMVoidTypeInContext(globalState->context);
     auto ptrLT = LLVMPointerType(LLVMInt8TypeInContext(globalState->context), 0);
     bool usesReturnOutParam = abi->ret.kind == CoercionKind::Indirect;
     std::vector<LLVMTypeRef> paramTypesL;
     if (usesReturnOutParam) {
-      // Per @EACBIPZ, an Indirect return crosses through this hidden sret out-pointer.
       paramTypesL.push_back(ptrLT);  // first parameter
     }
     for (const Coercion& c : abi->args) {
@@ -114,7 +98,6 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
         case CoercionKind::DirectInt:
         case CoercionKind::Cast:
           paramTypesL.push_back(LLVMIntTypeInContext(globalState->context, c.directIntBits)); break;
-        // Per @EACBIPZ, an Indirect arg (like a DirectPtr borrow) is a plain pointer, no byval.
         case CoercionKind::DirectPtr:
         case CoercionKind::Indirect:
         case CoercionKind::LocationPtr: // implicit `#[track_caller]` (see @TCHAPZ).
@@ -127,9 +110,6 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
           break;
       }
     }
-    // Every coercion maps 1:1 to a Vale param, except a `#[track_caller]` fn's hidden &Location
-    // (see @TCHAPZ). Valen doesn't have it as a param, but rustc does.
-    // Here we take that into account when comparing the params' length.
     bool hasLocationArg = !abi->args.empty() && abi->args.back().kind == CoercionKind::LocationPtr;
     assert(abi->args.size() - (hasLocationArg ? 1u : 0u) == prototypeM->params.size());
     LLVMTypeRef returnLT;
@@ -155,7 +135,6 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
     return BoundarySignature{returnLT, std::move(paramTypesL), usesReturnOutParam};
   }
 
-  // Descriptor-less (C extern): the structural path, where every by-value aggregate return uses sret.
   bool usesReturnOutParam = returnNeedsOutParam(globalState, prototypeM->returnType);
   std::vector<LLVMTypeRef> paramTypesL;
   if (usesReturnOutParam) {

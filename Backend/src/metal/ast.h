@@ -69,9 +69,6 @@ public:
   // Per-extern ABI descriptors, keyed by the extern symbol (like externNameToFunction). Empty for
   // descriptor-less C externs; buildCallOrSideCall reads it to coerce each crossing.
   std::unordered_map<std::string, ExternAbi> externAbis;
-  // The borrow checker's per-parameter `noalias` verdict, keyed by humanized function name. An entry's
-  // presence means the function was analyzed; declareFunction reads it via lookupParamNoalias to mark
-  // the sole-reference pointer params `noalias`. A function with no entry is left unmarked.
   std::unordered_map<std::string, std::vector<bool>> paramNoaliasByName;
   // These are inverses of the above maps
   std::unordered_map<Prototype*, std::string, AddressHasher<Prototype*>> functionToExportName;
@@ -204,8 +201,6 @@ public:
 //  }
 
   std::string getKindExportName(ValueKind* kind, bool includeProjectName) const {
-    // The export name of a kind is its own C ABI type name; the onion wrap a reference adds is not
-    // part of it, so callers pass the peeled ValueKind.
     if (auto innt = dynamic_cast<Int *>(kind)) {
       return std::string() + "int" + std::to_string(innt->bits) + "_t";
     } else if (dynamic_cast<Bool *>(kind)) {
@@ -257,9 +252,6 @@ public:
     assert(iter != kindToExternName.end());
     return packageCoordinate->projectName + "_" + iter->second;
   }
-  // The extern's real callee symbol, verbatim: the human C name for a C extern, or rustc's mangled
-  // name for a Rust-interop leaf. This is not the the Valen-generated shim that calls out to C.
-  // See @BDCABIBZ.
   std::string getFunctionExternName(Prototype* kind) const {
     auto iter = functionToExternName.find(kind);
     assert(iter != functionToExternName.end());
@@ -471,8 +463,6 @@ class Function {
 public:
     Prototype* prototype;
     Expression* block;
-    // Source declaration location for DWARF DISubprogram emission — required at
-    // construction. Null means no source info (synthetic / extern).
     SourceLocation* sourceLocation;
 
     Function(
@@ -485,7 +475,6 @@ public:
 };
 
 // Interned
-// Onion: types are onion Kind* (ownership is the wrap; placement is derived at codegen).
 class Prototype {
 public:
     Name* name;
@@ -501,7 +490,7 @@ public:
       returnType(returnType_) {}
 };
 
-// A variable's identity. Unique only within the containing function.
+// Unique only within the containing function.
 struct VarNameM {
   std::string name;
 
@@ -531,28 +520,22 @@ struct OpaqueStructLayout {
   uint64_t sizeBytes;
   uint64_t alignBytes;
 };
-// How one argument or return value crosses an extern boundary. Used for Rust interop, will
-// eventually be used for C interop as well (instead of the current shim approach).
 enum class CoercionKind {
-  Ignore,     // not passed at all: a unit `()` return, like the drop shim's
-  DirectInt,  // in a register as an integer of `directIntBits` bits: a small struct, e.g. Counter -> i32
-  DirectPtr,  // as a pointer: a borrow (&self, &mut self) or a *mut T
-  Indirect,   // through memory by pointer, per @EACBIPZ: a large struct like the 48-byte Domino, as an
-              // sret out-parameter for a return or a pointer to a caller-made copy for an argument
-  Cast,       // a small struct rustc casts to one integer of `directIntBits` bits: its bytes cross as
-              // that integer, e.g. an 8-byte struct as an i64. Distinct from DirectInt in that the
-              // struct is a memory-class aggregate, and the integer needs its own alignment on reassembly.
-  Pair,       // a small struct rustc passes as two register scalars (ScalarPair), e.g. {i32,i32}: it
-              // crosses as two integers (`directIntBits`, `directIntBits2`), reassembled into the struct.
+  Ignore,
+  DirectInt,  // in a register as an integer of `directIntBits` bits
+  DirectPtr,  // as a pointer
+  Indirect,   // through memory by pointer, per @EACBIPZ, e.g. a large struct
+  Cast,       // a small struct rustc casts to one integer of `directIntBits` bits, its bytes cross as
+              // that integer.
+  Pair,       // crosses as two integers (`directIntBits`, `directIntBits2`), reassembled into the struct.
   LocationPtr,// the hidden `&Location` arg of a `#[track_caller]` Rust func. Has no corresponding Vale
               // argument. We pass a null ptr for it, because Valen uses panic=abort anyway (see @TCHAPZ).
 };
 struct Coercion {
   CoercionKind kind;
-  uint32_t directIntBits;   // width when kind == DirectInt / Cast, or a Pair's first component; else ignored
-  uint32_t directIntBits2;  // a Pair's second component width; ignored otherwise
+  uint32_t directIntBits;   // width when kind == DirectInt / Cast, or a Pair's first component, else ignored.
+  uint32_t directIntBits2;  // a Pair's second component width, else ignored.
 };
-// One extern function's ABI: how its return and each argument cross.
 struct ExternAbi {
   Coercion ret;
   std::vector<Coercion> args;

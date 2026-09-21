@@ -129,13 +129,6 @@ LLVMValueRef makeEntryFunction(
   auto voidPtrLT = LLVMPointerType(int8LT, 0);
   auto int8PtrLT = LLVMPointerType(int8LT, 0);
 
-  // Standalone/owned mode (emitLibcShim) makes `entryName` the actual libc entry:
-  // `int main(int argc, char** argv)`, so wasi-libc's _start shim (which expects exactly
-  // that) can find and call it; argc gets sign-extended to i64 and stored into Vale's
-  // arg globals, and the Vale main's i64 return is truncated to i32 (POSIX exit codes use
-  // the low byte). Borrowed/rustc mode emits a plain `int <entryName>()` (e.g.
-  // `__vale_main`) — rustc's own `main` already ran libc startup and owns argc/argv, so
-  // no params, no wasi alias, no arg reads.
   LLVMTypeRef functionTypeL;
   if (emitLibcShim) {
     auto entryParamsLT = std::vector<LLVMTypeRef>{ int32LT, LLVMPointerType(LLVMPointerType(int8LT, 0), 0) };
@@ -176,8 +169,6 @@ LLVMValueRef makeEntryFunction(
       buildMaybeNeverCallV(
           globalState, entryBuilder, calleeUserFunction, {});
 
-  // Vale main returns i64 (Vale Int); C main returns i32. Truncate.
-  // POSIX/wasi exit codes only use the low byte anyway.
   auto resultI32LE = LLVMBuildTrunc(entryBuilder, resultLE, int32LT, "exitCodeI32");
   LLVMBuildRet(entryBuilder, resultI32LE);
   LLVMDisposeBuilder(entryBuilder);

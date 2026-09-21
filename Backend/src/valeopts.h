@@ -17,7 +17,6 @@ enum class ValeOptimizationLevel {
 };
 
 
-// Compiler options. Populated from BackendCompileOptionsFFI via loadFromFfi.
 struct ValeOptions {
     std::string outputDir;
 
@@ -34,9 +33,6 @@ struct ValeOptions {
     bool includeBoundsChecks = true;
     bool useAtomicRc = false;
     bool printMemOverhead = false;
-    // DWARF debug-info emission (valec --debug / -g). When true, createModule
-    // spins up a DIBuilder and functions get DISubprograms + per-statement
-    // DILocations.
     bool debug = false;
     // Suppress every aliasing optimization hint (`!alias.scope`/`!noalias` metadata,
     // parameter `noalias` attribute), keeping `nounwind`. Test-only.
@@ -44,8 +40,7 @@ struct ValeOptions {
 };
 
 // Copy fields out of the FFI POD into a ValeOptions. Returns 1 on success,
-// 0 or negative on malformed input (only opt_level is validated; all other
-// fields are trusted).
+// 0 or negative on malformed input.
 int loadFromFfi(ValeOptions *opt, const BackendCompileOptionsFFI *ffi);
 
 #endif

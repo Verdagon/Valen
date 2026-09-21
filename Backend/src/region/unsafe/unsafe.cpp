@@ -86,8 +86,6 @@ Ref Unsafe::allocate(
   auto structM = globalState->program->getStruct(structKind);
 
   assert(structM->sharedness == Sharedness::SINGLE);
-  // A SINGLE struct is an inline value: assemble it in a register from the member values, with no
-  // wrapper, control block, or address.
   auto innerStructLT = kindStructs.getStructInnerStruct(structKind);
   LLVMValueRef structValueLE = LLVMGetUndef(innerStructLT);
   for (int i = 0; i < structM->members.size(); i++) {
@@ -316,10 +314,6 @@ void Unsafe::declareStruct(
 void Unsafe::defineStruct(
     StructDefinition* structM) {
   std::vector<LLVMTypeRef> innerStructMemberTypesL;
-  // A producer may have recorded a size for this struct on its package (an imported extern struct,
-  // sized from e.g. rustc's layout_of). Only real imported packages carry layouts; builtin structs
-  // (the __vale package may not even be in the program) fall through to the normal member path.
-  // VCOORD: enforce that something should either have members or have an opaque layout, not both/neither
   const OpaqueStructLayout* layout = nullptr;
   auto pkgIter = globalState->program->packages.find(structM->kind->fullName->packageCoord);
   if (pkgIter != globalState->program->packages.end()) {
@@ -330,8 +324,6 @@ void Unsafe::defineStruct(
     }
   }
   if (layout != nullptr) {
-    // Its members are opaque (none crossed), so size it as one aligned blob from the producer's
-    // layout. [size/align x i{align*8}] carries both the right size and alignment.
     uint64_t sizeBytes = layout->sizeBytes;
     uint64_t alignBytes = layout->alignBytes;
     assert(alignBytes > 0 && sizeBytes % alignBytes == 0);
@@ -504,13 +496,8 @@ Ref Unsafe::upgradeLoadResultToRefWithTargetOwnership(
     LoadResult sourceLoadResult) {
   auto sourceRef = sourceLoadResult.move();
   if (sourceType == targetType) {
-    // Same wrap (a value type, own->own, borrow->borrow, weak->weak): the loaded value already has
-    // the target ownership, so hand it back.
     return sourceRef;
   }
-  // The only ownership change a load performs is lending a borrow of an owning member/element: in the
-  // fast region own and borrow share a representation (a pointer, no refcount), so it's a pure pointer
-  // re-tag. Weakening is an explicit BorrowToWeak node, never a load-time upgrade.
   assert(dynamic_cast<WeakRef*>(sourceType) == nullptr && dynamic_cast<WeakRef*>(targetType) == nullptr);
   return transmutePtr(globalState, functionState, builder, false, sourceType, targetType, sourceRef);
 }
@@ -591,9 +578,6 @@ LoadResult Unsafe::loadElementFromSSA(
     InBoundsLE indexInBoundsLE) {
   auto ssaDef = globalState->program->getStaticSizedArray(ssaMT);
   auto elementType = ssaDef->elementType;
-  // A SINGLE array borrow is a pointer to its (control-block-free) inner [N x elem]; GEP to element i
-  // and yield a *borrow* of its storage (the element pointer), like loadMember. No load here — the
-  // caller Derefs to read the value.
   assert(LLVMGetTypeKind(LLVMTypeOf(arrayRef.refLE)) == LLVMPointerTypeKind);
   auto elementLT = globalState->getRegion(elementType)->translateType(elementType);
   LLVMValueRef indices[2] = { constI32LE(globalState, 0), indexInBoundsLE.refLE };
@@ -702,14 +686,10 @@ Ref Unsafe::loadMember(
   auto structRefLE =
       globalState->getRegion(structValueType)
           ->checkValidReference(FL(), functionState, builder, true, structRefMT, structRefV);
-  // A SINGLE struct reference is a pointer to its (control-block-free) inner struct, so GEP to the
-  // member and load it, rather than extractvalue-ing out of an inline aggregate value.
   auto innerStructLT = kindStructs.getStructInnerStruct(structKindM);
   assert(LLVMGetTypeKind(LLVMTypeOf(structRefLE)) == LLVMPointerTypeKind);
   auto ptrToMemberLE =
       LLVMBuildStructGEP2(builder, innerStructLT, structRefLE, memberIndex, memberName.c_str());
-  // A member lookup yields a *borrow* of the member's storage — the GEP pointer itself — which the
-  // caller Derefs to read the value. No load here.
   auto memberBorrowType = globalState->metalCache->getBorrowRef(expectedMemberType);
   return toRef(globalState->getRegion(memberBorrowType), memberBorrowType, ptrToMemberLE);
 }
@@ -757,10 +737,6 @@ std::string Unsafe::generateInterfaceDefsC(
 
 
 LLVMTypeRef Unsafe::getExternalType(ValueKind* kind) {
-  // Per @HTSLVBDTCZ, all concretes share one handle type and all interfaces
-  // share one; kind distinctness lives in the C typedefs, not this type.
-  // Same right-sized handle structs the share region uses: mut concretes cross
-  // as 8-byte { i64 obj }, mut interfaces as 16-byte { i64 obj, i64 typeinfo }.
   if (dynamic_cast<StructKind*>(kind) ||
       dynamic_cast<StaticSizedArrayT*>(kind) ||
       dynamic_cast<RuntimeSizedArrayT*>(kind)) {
@@ -771,7 +747,6 @@ LLVMTypeRef Unsafe::getExternalType(ValueKind* kind) {
     // Bool crosses the C boundary as i8 (see sendValeObjectIntoHost / receiveHostObjectIntoVale).
     return LLVMInt8TypeInContext(globalState->context);
   } else {
-    // Other primitives (Int/Float/Void/Never) cross as their scalar C-ABI type.
     DefaultPrimitives primitives;
     return primitives.translatePrimitive(globalState, kind);
   }
@@ -900,8 +875,6 @@ std::string Unsafe::getExportName(
     Package* package,
     ValueKind* kind,
     bool includeProjectName) {
-  // Mirrors RCImm::getExportName: primitives get their raw C type names; concretes cross as
-  // right-sized handle value-type typedefs (no `*` suffix). Placement is not part of the ABI name.
   // VCOORD: make sure this is in the right place and isnt duplicated
   if (auto innt = dynamic_cast<Int*>(kind)) {
     return std::string() + "int" + std::to_string(innt->bits) + "_t";

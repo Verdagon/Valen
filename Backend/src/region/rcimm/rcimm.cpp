@@ -310,8 +310,6 @@ void RCImm::declareEdge(Edge* edge) {
   auto freeNameL = globalState->freeName->name + "__" + edge->interfaceName->fullName->name + "__" + edge->structName->fullName->name;
   declareExtraFunction(globalState, freeThunkPrototype, freeNameL);
 
-  // Track edge order so the typeTag body and generateInterfaceDefsC agree on
-  // the tag value assigned to each substruct.
   edgesByInterface[edge->interfaceName].push_back(edge);
 
   declareConcreteAsSubstructFunction(edge);
@@ -941,13 +939,8 @@ void RCImm::checkValidReference(
 //  exit(1);
 //}
 
-// The opaque handle typedefs emitted for share-typed exports, each sized to
-// exactly what its ref layer needs and matching the LLVM handle structs that
-// cross the ABI boundary (see ffihandlestructs.h): concrete kinds get 8 bytes,
-// interface kinds get 16.
 std::string RCImm::generateStructDefsC(
     Package* currentPackage,
-
     StructDefinition* structDefM) {
   auto name = currentPackage->getKindExportName(structDefM->kind, true);
   return generateConcreteHandleStructDefC(currentPackage, name);
@@ -958,8 +951,7 @@ std::string RCImm::generateInterfaceDefsC(
   auto name = currentPackage->getKindExportName(interfaceDefM->kind, true);
   std::stringstream s;
   // Emit the TAG_* constants first so users can `switch (typeTag(...))` over
-  // them by name. Order matches the tag values returned by the typeTag body,
-  // both of which follow the order in which edges were declared (SITTX).
+  // them by name.
   auto edges = getEdgesForInterface(interfaceDefM->kind);
   if (edges != nullptr) {
     for (int i = 0; i < (int)edges->size(); i++) {
@@ -987,15 +979,6 @@ std::string RCImm::generateStaticSizedArrayDefsC(
 }
 
 LLVMTypeRef RCImm::getExternalType(ValueKind* refMT) {
-  // Per @HTSLVBDTCZ, all concretes share one handle type and all interfaces
-  // share one; kind distinctness lives in the C typedefs, not this type.
-  // Under the opaque-handle FFI model, share refs cross the boundary as a
-  // right-sized handle struct: concretes (struct/str/RSA/SSA) as 8 bytes,
-  // interfaces as 16. The RC stays live during the extern call; C sees an
-  // opaque handle.
-  // The emitted handle typedefs (and the whole per-package C header ABI) are
-  // pinned by the *_export_headers_golden tests in
-  // src/end_to_end_tests/tests/externs.rs.
   if (dynamic_cast<InterfaceKind*>(refMT)) {
     return globalState->getFfiHandleStructs()->getInterfaceHandleStructLT();
   }
@@ -1005,7 +988,6 @@ LLVMTypeRef RCImm::getExternalType(ValueKind* refMT) {
       dynamic_cast<Str*>(refMT)) {
     return globalState->getFfiHandleStructs()->getConcreteHandleStructLT();
   }
-  // Primitives (Int/Bool/Float/Void) and Never cross as their C-ABI types.
   if (auto innt = dynamic_cast<Int*>(refMT)) {
     { assert(false); throw 1337; }
   } else if (dynamic_cast<Bool*>(refMT)) {
@@ -1108,9 +1090,6 @@ std::string RCImm::getExportName(
     Package* package,
     ValueKind* kind,
     bool includeProjectName) {
-  // Under the opaque-handle FFI, shared kinds cross as right-sized handle
-  // value-type typedefs (8B concrete / 16B interface, no `*` suffix).
-  // Primitives get their raw C type names.
   if (auto innt = dynamic_cast<Int*>(kind)) {
     return std::string() + "int" + std::to_string(innt->bits) + "_t";
   } else if (dynamic_cast<Bool*>(kind)) {
@@ -1134,9 +1113,6 @@ Prototype* RCImm::getAliasPrototype(ValueKind* valeKind) {
       globalState->metalCache->getShareRef(valeKind);
   auto nameL = globalState->aliasName->name + "__" + globalState->getKindName(valeKind)->name;
   auto perKindName = globalState->metalCache->getName(globalState->metalCache->builtinPackageCoord, nameL);
-  // Per @FRMACZ, `_alias` is C's explicit +1 primitive and returns the same
-  // handle it took, so C can alias inline at a use site (e.g.
-  // `Foo_name(Foo_alias(o))`) instead of a separate statement.
   return globalState->metalCache->getPrototype(
       perKindName, refMT, {refMT});
 }
@@ -1161,8 +1137,6 @@ void RCImm::defineConcreteAliasFunction(ValueKind* valeKind) {
   defineFunctionBodyV(
       globalState, prototype,
       [&](FunctionState* functionState, LLVMBuilderRef builder) -> void {
-        // Non-consuming +1 primitive: bump the RC and hand the same handle back
-        // so the caller keeps its original AND gets an independent owned handle.
         auto objectRefMT = prototype->params[0];
         auto objectRef =
             toRef(globalState->getRegion(objectRefMT), objectRefMT,
@@ -1189,8 +1163,6 @@ void RCImm::defineConcreteDealiasFunction(ValueKind* valeKind) {
         auto objectRef =
             toRef(globalState->getRegion(objectRefMT), objectRefMT,
                   functionState->getParam(UserArgIndex{0}));
-        // Per @FRMACZ, `_dealias` is C's explicit -1 primitive: the boundary
-        // receive doesn't touch RC, and this body drops the object's RC by one.
         dealias(FL(), functionState, builder, objectRefMT, objectRef);
         LLVMBuildRet(builder, makeVoid(globalState));
       });
@@ -1243,10 +1215,6 @@ void RCImm::defineConcreteFieldGetter(StructDefinition* structDefM, int memberIn
             loadMember(functionState, builder, structRefMT, structLiveRef,
                        memberIndexCopy, memberRefMT, memberRefMT, member->name);
 
-        // Per @FRMACZ, an accessor is a normal Vale function: it consumes its
-        // receiver (the struct arg, moved in by C) and returns an owned member.
-        // Alias the member (+1) before dealiasing the struct, so if dropping the
-        // struct's last ref would cascade a member dealias, the member survives.
         alias(FL(), functionState, builder, memberRefMT, memberRef);
         dealias(FL(), functionState, builder, structRefMT, structRef);
 
@@ -1318,10 +1286,6 @@ void RCImm::defineConcreteTypeTagFunction(InterfaceKind* interfaceKind) {
         auto int32LT = LLVMInt32TypeInContext(globalState->context);
         auto itableLT = kindStructs.getInterfaceTableStruct(interfaceKind);
 
-        // Chain of selects: for each edge, if itablePtrLE matches the edge's
-        // known itable pointer, return that edge's index; otherwise fall
-        // through. Terminates in a runtime-unreachable -1 that buildAssertV
-        // catches — the last matched select value ends up chosen.
         auto resultLE = LLVMConstInt(int32LT, (uint32_t)-1, true);
         if (edges != nullptr) {
           for (int i = (int)edges->size() - 1; i >= 0; i--) {
@@ -1340,8 +1304,6 @@ void RCImm::defineConcreteTypeTagFunction(InterfaceKind* interfaceKind) {
         buildAssertV(globalState, functionState, builder, validLE,
             "Interface ref did not match any known substruct edge in typeTag");
 
-        // Normal Vale move semantics: consume the interface arg (moved in by C).
-        // The result is a plain int, so nothing to alias.
         dealias(FL(), functionState, builder, interfaceRefMT, interfaceRef);
 
         LLVMBuildRet(builder, resultLE);
@@ -1385,10 +1347,6 @@ void RCImm::defineConcreteAsSubstructFunction(Edge* edge) {
         auto resultStructRef =
             toRef(globalState->getRegion(structRefMT), structRefMT, resultStructRefLE);
 
-        // Normal Vale move semantics: the downcast result and the interface
-        // arg are the same object. Alias the result (+1) before dealiasing the
-        // interface receiver (-1) so the object survives — net zero, i.e. the
-        // incoming owned ref is moved out as the struct ref.
         alias(FL(), functionState, builder, structRefMT, resultStructRef);
         dealias(FL(), functionState, builder, interfaceRefMT, interfaceRef);
 
@@ -1461,7 +1419,6 @@ void RCImm::defineConcreteRsaLenFunction(RuntimeSizedArrayDefinitionT* rsaDef) {
             getRuntimeSizedArrayLength(
                 functionState, builder, arrRefMT, arrLiveRef);
 
-        // Normal Vale move semantics: consume the array arg (moved in by C).
         dealias(FL(), functionState, builder, arrRefMT, arrRef);
 
         auto lenLE =
@@ -1493,7 +1450,6 @@ void RCImm::defineConcreteRsaAtFunction(RuntimeSizedArrayDefinitionT* rsaDef) {
         auto arrLiveRef =
             checkRefLive(FL(), functionState, builder, arrRefMT, arrRef);
 
-        // Bounds check: assert 0 <= index < length.
         auto lenRef =
             getRuntimeSizedArrayLength(
                 functionState, builder, arrRefMT, arrLiveRef);
@@ -1514,9 +1470,6 @@ void RCImm::defineConcreteRsaAtFunction(RuntimeSizedArrayDefinitionT* rsaDef) {
                 arrLiveRef, indexInBoundsLE).move();
 
         auto elementRefMT = rsaDef->elementType;
-        // Normal Vale move semantics: return the element as an owned ref (+1)
-        // and consume the array arg. Alias the element before dealiasing the
-        // array so it survives the array's drop.
         alias(FL(), functionState, builder, elementRefMT, elementRef);
         dealias(FL(), functionState, builder, arrRefMT, arrRef);
 
@@ -1539,8 +1492,6 @@ void RCImm::defineConcreteSsaLenFunction(StaticSizedArrayDefinitionT* ssaDef) {
       globalState, prototype,
       [this, prototype, size]
       (FunctionState* functionState, LLVMBuilderRef builder) -> void {
-        // SSA length is a compile-time constant, but the array arg is still
-        // moved in by C, so normal Vale move semantics consume it.
         auto arrRefMT = prototype->params[0];
         auto arrRef =
             toRef(globalState->getRegion(arrRefMT), arrRefMT,
@@ -1589,8 +1540,6 @@ void RCImm::defineConcreteSsaAtFunction(StaticSizedArrayDefinitionT* ssaDef) {
                 arrLiveRef, indexInBoundsLE).move();
 
         auto elementRefMT = ssaDef->elementType;
-        // Normal Vale move semantics: return the element owned (+1), consume
-        // the array. Alias the element before dealiasing the array.
         alias(FL(), functionState, builder, elementRefMT, elementRef);
         dealias(FL(), functionState, builder, arrRefMT, arrRef);
 
@@ -1678,7 +1627,6 @@ void RCImm::defineConcreteSsaNewFunction(StaticSizedArrayDefinitionT* ssaDef) {
                     functionState->getParam(UserArgIndex{i})));
         }
 
-        // The element params flow directly into the array, mirroring the struct case.
         auto arrRef =
             constructStaticSizedArray(functionState, builder, arrRefMT, ssaDef->kind, elementRefs);
         auto arrLE = checkValidReference(FL(), functionState, builder, false, arrRefMT, arrRef);
@@ -1704,9 +1652,6 @@ void RCImm::defineConcreteUpcastFunction(Edge* edge) {
                 structRefMT, edge->structName, structRef,
                 interfaceRefMT, edge->interfaceName);
 
-        // Normal Vale move semantics: result and struct arg are the same
-        // object. Alias the result (+1) before dealiasing the struct receiver
-        // (-1) — net zero, the incoming owned ref moves out as the interface.
         alias(FL(), functionState, builder, interfaceRefMT, interfaceRef);
         dealias(FL(), functionState, builder, structRefMT, structRef);
 
@@ -1745,7 +1690,6 @@ void RCImm::defineStrPrimitives() {
                             functionState->getParam(UserArgIndex{0}));
         auto strLiveRef = checkRefLive(FL(), functionState, builder, strRefMT, strRef);
         auto lenLE = getStringLen(functionState, builder, strRefMT, strLiveRef);
-        // Normal Vale move semantics: consume the str arg (moved in by C).
         dealias(FL(), functionState, builder, strRefMT, strRef);
         LLVMBuildRet(builder, lenLE);
       });
@@ -1769,9 +1713,6 @@ void RCImm::defineStrPrimitives() {
         auto byteLE = LLVMBuildLoad2(builder, int8LT, charPtrLE, "byteVal");
         auto byteAsI32LE = LLVMBuildZExt(builder, byteLE, int32LT, "byteI32");
 
-        // Normal Vale move semantics: consume the str arg. The byte is already
-        // loaded into a register above, so dealiasing the str now is safe even
-        // if it drops the last ref.
         dealias(FL(), functionState, builder, strRefMT, strRef);
         LLVMBuildRet(builder, byteAsI32LE);
       });
@@ -1805,9 +1746,6 @@ void RCImm::defineConcreteRefEqFunction(ValueKind* valeKind) {
         auto bI64LE = LLVMBuildPtrToInt(builder, bPtrLE, int64LT, "bI64");
         auto eqLE = LLVMBuildICmp(builder, LLVMIntEQ, aI64LE, bI64LE, "refEq");
 
-        // Normal Vale move semantics: ref_eq consumes both operands (moved in
-        // by C). The pointers are already compared into registers above, so
-        // dealiasing now is safe. Bool result has no RC.
         dealias(FL(), functionState, builder, refMT, aRef);
         dealias(FL(), functionState, builder, refMT, bRef);
 

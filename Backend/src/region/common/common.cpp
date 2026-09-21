@@ -1362,10 +1362,6 @@ Ref normalLocalLoad(GlobalState* globalState, FunctionState* functionState, LLVM
   return sourceRef;
 }
 
-// Per @HTSLVBDTCZ, these emit the per-kind C typedefs that give each class its
-// own distinct C type, even though all concretes (and all interfaces) share one
-// LLVM handle type internally. The typedef name is the kind's export name
-// verbatim. Both regions (RCImm and Unsafe) emit through these.
 std::string generateConcreteHandleStructDefC(Package* currentPackage, const std::string& name) {
   // Concrete handle: 8-byte { i64 obj }. See ffihandlestructs.h.
   return std::string() + "typedef struct " + name + " { uint64_t _reserved; } " + name + ";\n";

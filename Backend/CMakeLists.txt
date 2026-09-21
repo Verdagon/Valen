@@ -92,7 +92,6 @@ set(BACKEND_LIB_SRCS
 
 		src/region/common/common.cpp
 		src/region/common/defaultlayout/structs.cpp
-		src/region/common/defaultlayout/structsrouter.cpp
 		src/region/rcimm/rcimm.cpp
 		src/region/common/wrcweaks/wrcweaks.cpp
 		src/region/common/fatweaks/fatweaks.cpp

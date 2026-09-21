@@ -34,7 +34,7 @@ enum class RefCountCategory {
 
 class Expression {
 public:
-    // Null is a valid explicit "synthetic node" (no source).
+    // Null is a valid generated node (no source).
     SourceLocation* sourceLocation;
 
     explicit Expression(SourceLocation* sourceLocation_) : sourceLocation(sourceLocation_) {}
@@ -273,8 +273,6 @@ public:
       Expression(sourceLocation_), destinationExpr(destinationExpr_), destinationType(destinationType_), sourceExpr(sourceExpr_), sourceType(sourceType_), result(result_), hasAliasScope(hasAliasScope_), groupIndices(std::move(groupIndices_)), groupCount(groupCount_) {}
 };
 
-
-// TODO: replace LocalLoad with this perhaps?
 class LocalLookup : public Expression {
 public:
   Local* localVariable;
@@ -760,8 +758,6 @@ public:
     Expression* inner;
     Kind* sourceType;
     Kind* result;
-    // When hasAliasScope, this load accesses the groups `groupIndices` (of `groupCount` groups in this
-    // function), so codegen tags it `!alias.scope {groupIndices}` + `!noalias {every other group}`.
     bool hasAliasScope;
     std::vector<uint32_t> groupIndices;
     uint32_t groupCount;
