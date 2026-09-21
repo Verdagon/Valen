@@ -1,5 +1,5 @@
 use super::super::compiler_test_compilation::compiler_test_compilation;
-use crate::builtins::builtins::{builtin_source_for_arrays, empty_v_builtins_stub};
+use crate::builtins::builtins::{builtin_source_for_arith, builtin_source_for_arrays, empty_v_builtins_stub};
 use crate::code_source::{CodeSource, Source};
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;
@@ -178,6 +178,29 @@ pub fn assert_borrow_error_renders_with_arrays(code: &str, expected: &str) {
   );
   let err = compile.get_compiler_outputs().err().expect("expected a borrow error, got Ok");
   assert_humanized_eq(&humanize_compile_error(&mut compile, err), expected);
+}
+
+pub fn assert_compiles_clean_with_arith(code: &str) {
+  let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code_source = CodeSource::new(vec![
+    builtin_source_for_arith(&parse_arena, &parser_keywords),
+    new_test_code_map(&parse_arena, code),
+    Source::Fn(empty_v_builtins_stub),
+  ]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  compile.expect_compiler_outputs();
 }
 
 /// Like `assert_compiles_clean`, but the code source also carries the array builtins.

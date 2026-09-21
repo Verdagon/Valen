@@ -168,7 +168,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
         self.check_expr(coutputs, function_s, arena, group_tree, *index_expr, next_held_num)?;
       }
-      ExpressionGE::MemberLookup(_) => unimplemented!(),
+      ExpressionGE::MemberLookup(MemberLookupGE { struct_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *struct_expr, next_held_num)?;
+      }
     }
     Ok(())
   }

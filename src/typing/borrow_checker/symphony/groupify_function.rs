@@ -444,11 +444,89 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           array_expr: array_ge,
           array_type: array_gt,
           index_expr: index_ge,
-          result: bump_g.alloc(BorrowRefGT{ inner: array_gt.element_type, group: *array_group }),
+          result: bump_g.alloc(BorrowRefGT{
+            inner: array_gt.element_type,
+            group: Self::group_path_child(
+              &bump_g,
+              *array_group,
+              GroupChildStepG::ChildElements { },
+              array_gt.element_type)
+          }),
         })))
       }
-      ExpressionTE::MemberLookup(MemberLookupTE { .. }) => unimplemented!(),
+      ExpressionTE::MemberLookup(MemberLookupTE { range, struct_expr: struct_expr_te, member_name, result, .. }) => {
+        let source_struct_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *struct_expr_te, local_rune_to_templata, local_to_type_g)?;
+        let (struct_group_templata, source_kind_gt) =
+            match source_struct_ge.result() {
+              KindGT::BorrowRef(BorrowRefGT {
+                                  inner: struct_value_gt,
+                                  group: group_expr
+                                }) => (group_expr, struct_value_gt),
+              _ => panic!("Expected borrow ref in member lookup"),
+            };
+        let source_struct_gt =
+            match source_kind_gt {
+              KindGT::Struct(s) => *s,
+              _ => panic!("Expected struct in member lookup"),
+            };
+
+        let member_name_str =
+            match member_name {
+              IVarNameT::Member(MemberNameT { imprecise_name: CodeNameS { name, .. }, .. }) => name,
+              _ => panic!("Unexpected var name {:?}", member_name),
+            };
+
+        let member_name_to_locally_phrased_member_type =
+            self.translate_struct_members(coutputs, bump_g, *source_struct_gt);
+        let member_gt =
+            member_name_to_locally_phrased_member_type.get(member_name_str)
+                .expect("Couldn't find member");
+
+        let result_gt =
+            bump_g.alloc(BorrowRefGT{
+              inner: *member_gt,
+              group: Self::group_path_child(
+                &bump_g,
+                *struct_group_templata,
+                GroupChildStepG::Member { member_name: *member_name_str },
+                *member_gt)
+            });
+        Ok(ExpressionGE::MemberLookup(bump_g.alloc(MemberLookupGE {
+          range: *range,
+          struct_expr: source_struct_ge,
+          member_name: *member_name,
+          result: result_gt,
+        })))
+      }
     }
+  }
+
+  fn group_path_child<'g>(
+      bump_g: &'g Bump,
+      existing_path: GroupTemplataG<'s, 't, 'g>,
+      new_step: GroupChildStepG<'s>,
+      new_type: KindGT<'s, 't, 'g>
+  ) -> GroupTemplataG<'s, 't, 'g> {
+    assert!(existing_path.group.len() == 1); // unimplemneted
+    let existing_group_path = existing_path.group[0];
+
+    assert!(!existing_group_path.ellipsis); // unimplemented
+
+    let mut member_group_path_steps = Vec::new();
+    member_group_path_steps.extend_from_slice(existing_group_path.steps);
+    member_group_path_steps.push(new_step);
+    let member_group_templata =
+        GroupTemplataG {
+          group: bump_g.alloc_slice_copy(&[
+            GroupPathG {
+              root: existing_group_path.root,
+              steps: bump_g.alloc_slice_copy(member_group_path_steps.as_slice()),
+              ellipsis: false, // TODO
+            }
+          ]),
+          kind: new_type,
+        };
+    member_group_templata
   }
 
   fn translate_struct_members<'g>(
@@ -755,7 +833,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       ITypeST::Int(_) => {}
       ITypeST::Tuple(_) => unimplemented!(),
-      ITypeST::Name(_) => unimplemented!(),
+      ITypeST::Name(_) => {}
       ITypeST::WeakRef(_) => unimplemented!(),
       ITypeST::OwnRef(_) => unimplemented!(),
       ITypeST::Pack(_) => unimplemented!(),
@@ -989,7 +1067,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                     let group_expr_g =
                       match group_rune_to_type_gt.get(rune) {
                         Some(existing) => {
-                          unimplemented!()
+                          match existing {
+                            ITemplataG::Group(existing_group) => *existing_group,
+                            _ => panic!("Group rune {:?} was bound to a non-group templata", rune),
+                          }
                         }
                         None => {
                           let group_templata_g =
