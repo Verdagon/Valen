@@ -472,6 +472,7 @@ pub fn generate_stub_source_from_vale(vale_source: &str) -> Result<String, Strin
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
+    borrow_checker_enabled: true,
   };
 
   let mut scout = ScoutCompilation::new(

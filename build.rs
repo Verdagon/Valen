@@ -20,9 +20,11 @@ fn main() {
   let llvm_config = locate_llvm_config();
   let llvm_dir = run(&llvm_config, &["--cmakedir"]);
 
+  let rust_interop = env::var_os("CARGO_FEATURE_RUST_INTEROP").is_some();
   let dst = cmake::Config::new(&backend_dir)
     .define("LLVM_DIR", &llvm_dir)
     .define("CMAKE_BUILD_TYPE", "Debug")
+    .define("VALE_RUST_INTEROP", if rust_interop { "ON" } else { "OFF" })
     .build_target("backend_lib")
     .build();
 

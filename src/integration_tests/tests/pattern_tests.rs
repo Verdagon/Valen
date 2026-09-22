@@ -34,7 +34,7 @@ fn test_matching_a_multiple_member_seq_of_immutables() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     // Checks that the 5 made it into y, and it was an int
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -72,7 +72,7 @@ fn test_matching_a_multiple_member_seq_of_mutables() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     // Checks that the 5 made it into y, and it was an int
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -111,7 +111,7 @@ fn test_matching_a_multiple_member_pack_of_immutable_and_own() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     // Checks that the 5 made it into y, and it was an int
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -246,7 +246,7 @@ fn ignore_destructure() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,

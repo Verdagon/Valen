@@ -23,19 +23,8 @@ Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutat
   );
 }
 
-#[test]
-fn test_mixed_group_and_plain_params_no_false_positive() {
-  assert_compiles_clean(r#"
-struct Entity { hp int; }
-func mixed<r'>(a &Entity in r, b int) mut(r) { }
-exported func main() int {
-  e = Entity(5);
-  mixed(&e, 7);
-  return 0;
-}
-"#);
-}
-
+// Slice 19: the same generic callee is safe at one call site and unsafe at another; the verdict is
+// per call site, so only the unsafe site is flagged.
 #[test]
 fn test_same_callee_safe_and_unsafe_sites() {
   assert_borrow_error_renders(

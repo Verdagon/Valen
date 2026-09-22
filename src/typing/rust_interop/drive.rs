@@ -255,6 +255,7 @@ pub(crate) fn run_driven_rustc(
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: true,
+    borrow_checker_enabled: true,
   };
 
   let hinputs_slot: RefCell<Option<HinputsT>> = RefCell::new(None);
@@ -464,11 +465,12 @@ impl<'ctx, 's, 't, 'p> Callbacks for DrivenCallbacks<'ctx, 's, 't, 'p> {
     let compiling = tcx.crate_name(rustc_span::def_id::LOCAL_CRATE).to_string();
     let logging = LoggingOracle::new(&real, &compiling);
 
+    let mut global_options = self.global_options.clone();
+    global_options.borrow_checker_enabled = self.borrow_check;
     let options = TypingPassOptions {
-      global_options: self.global_options.clone(),
+      global_options,
       debug_out: Arc::new(|x: &str| println!("{}", x)),
       tree_shaking_enabled: true,
-      borrow_checker_enabled: self.borrow_check,
     };
 
     let code_map = scout.get_code_map().expect("getCodeMap failed");

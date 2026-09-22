@@ -1,14 +1,3 @@
-mod attack_tests;
-mod ellipsis_tests;
-mod held_register_tests;
-mod joint_argument_move_tests;
-mod joint_argument_tests;
-mod noalias_facts_tests;
-mod producer_gate_tests;
-mod group_facts_tests;
-mod robustness_tests;
-mod same_group_aliasing_tests;
-mod synthesized_callee_tests;
-mod use_after_churn_tests;
-mod walk_completeness_tests;
-mod util;
+pub(crate) mod util;
+mod borrow_checker_pass_tests;
+mod borrow_checker_error_tests;

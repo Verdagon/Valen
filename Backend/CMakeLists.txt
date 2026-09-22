@@ -65,7 +65,6 @@ llvm_map_components_to_libnames(llvm_libs ${LLVM_LINK_COMPONENTS})
 
 set(BACKEND_LIB_SRCS
 		src/vale.cpp
-        src/rust_interop/rust_interop.cpp
 		src/globalstate.cpp
 		src/metal/ast.cpp
 		src/metal/metal_cache_ffi.cpp
@@ -129,8 +128,16 @@ set(BACKEND_LIB_SRCS
 		src/aliasing/aliasing.cpp
 )
 
+if(VALE_RUST_INTEROP)
+	list(APPEND BACKEND_LIB_SRCS src/rust_interop/rust_interop.cpp)
+endif()
+
 add_library(backend_lib STATIC ${BACKEND_LIB_SRCS})
 target_link_libraries(backend_lib ${llvm_libs})
 target_compile_features(backend_lib PRIVATE cxx_std_17)
+
+if(VALE_RUST_INTEROP)
+	target_compile_definitions(backend_lib PRIVATE VALE_RUST_INTEROP)
+endif()
 
 

@@ -1,4 +1,5 @@
 pub mod arrays;
+pub mod borrow_check_tests;
 pub mod debugger;
 pub mod downcast;
 pub mod extern_header_goldens;
@@ -8,7 +9,6 @@ pub mod inline;
 pub mod lambdas;
 pub mod misc;
 pub mod native_walker;
-pub mod noalias;
 pub mod strings;
 pub mod structs;
 pub mod virtuals;

@@ -14,6 +14,7 @@ use crate::typing::infer_compiler::IConclusionResolveError;
 use crate::typing::infer_compiler::IResolvingError;
 use crate::typing::overload_resolver::IFindFunctionFailureReason;
 use crate::typing::test::compiler_test_compilation::compiler_test_compilation;
+use crate::typing::test::compiler_test_compilation::compiler_test_compilation_without_borrow_check;
 use crate::typing::test::humanize_helper::{assert_humanized_eq, humanize_compile_error};
 use crate::typing::types::types::IntT;
 use crate::typing::types::types::KindT;
@@ -394,7 +395,7 @@ exported func main() void {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -576,7 +577,7 @@ exported func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,

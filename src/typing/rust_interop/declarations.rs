@@ -1135,10 +1135,10 @@ mod tests {
         use_optimized_solver: true,
         verbose_errors: true,
         debug_output: false,
+        borrow_checker_enabled: true,
       },
       debug_out: Arc::new(|_: &str| {}),
       tree_shaking_enabled: true,
-      borrow_checker_enabled: true,
     }
   }
 

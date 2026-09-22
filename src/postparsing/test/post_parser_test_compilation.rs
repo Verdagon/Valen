@@ -24,6 +24,7 @@ where
     use_optimized_solver: true,
     verbose_errors: false,
     debug_output: false,
+    borrow_checker_enabled: true,
   };
   let packages_to_build = vec![PackageCoordinate::test_tld(parse_arena, parser_keywords)];
   ScoutCompilation::new(

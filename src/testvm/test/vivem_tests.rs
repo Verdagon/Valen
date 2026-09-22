@@ -14,7 +14,7 @@ use crate::typing::typing_interner::TypingInterner;
 use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::testvm::von::{IVonData, VonInt};
 
-fn run_vale(code: &str, with_builtins: bool) -> IVonData {
+fn run_vale(code: &str, with_builtins: bool, borrow_checker_enabled: bool) -> IVonData {
     let parse_bump = Bump::new();
     let scout_bump = Bump::new();
     let typing_bump = Bump::new();
@@ -48,6 +48,7 @@ fn run_vale(code: &str, with_builtins: bool) -> IVonData {
         use_optimized_solver: true,
         verbose_errors: true,
         debug_output: true,
+        borrow_checker_enabled,
     };
     let instantiator_options = InstantiatorCompilationOptions {
         debug_out: Arc::new(|x: &str| println!("{}", x)),
@@ -62,7 +63,6 @@ fn run_vale(code: &str, with_builtins: bool) -> IVonData {
         code_source,
         global_options,
         instantiator_options,
-        true, // borrow_checker_enabled
         &instantiating_bump,
     );
 
@@ -86,7 +86,7 @@ fn run_vale(code: &str, with_builtins: bool) -> IVonData {
 
 #[test]
 fn return_7() {
-    let von = run_vale("exported func main() int { return 7; }", false);
+    let von = run_vale("exported func main() int { return 7; }", false, true);
     match von {
         IVonData::Int(VonInt { value: 7 }) => {}
         other => panic!("expected VonInt(7), got {:?}", other),
@@ -99,7 +99,7 @@ fn adding() {
 import v.builtins.arith.*;
 exported func main() int { return 52 + 53 + 54; }
 ";
-    let von = run_vale(code, true);
+    let von = run_vale(code, true, false);
     match von {
         IVonData::Int(VonInt { value: 159 }) => {}
         other => panic!("expected VonInt(159), got {:?}", other),

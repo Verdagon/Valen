@@ -30,7 +30,9 @@
 #include "error.h"
 #include "translatetype.h"
 #include "externs.h"
+#ifdef VALE_RUST_INTEROP
 #include "rust_interop/rust_interop.h"
+#endif
 
 #include <cstring>
 
@@ -1357,10 +1359,12 @@ static int32_t compileIntoModuleFromRustc(
         (entrySymbol != nullptr && entrySymbol[0] != '\0') ? std::string(entrySymbol) : "__vale_main";
     makeEntryFunction(&globalState, valeMainPrototype, entryName, /*emitLibcShim=*/false);
   }
+#ifdef VALE_RUST_INTEROP
   for (size_t i = 0; i < numCallbacks; i++) {
     emitInboundCallbackWrapper(
         &globalState, program, callbacks[i].symbol, callbacks[i].vale_name);
   }
+#endif
   return finalizeCompile(&globalState);
 }
 

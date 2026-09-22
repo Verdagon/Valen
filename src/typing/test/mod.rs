@@ -8,13 +8,13 @@ mod compiler_mutate_tests;
 mod compiler_ownership_tests;
 mod compiler_project_tests;
 mod compiler_solver_tests;
-mod compiler_test_compilation;
+pub(crate) mod compiler_test_compilation;
 mod compiler_tests;
 mod compiler_virtual_tests;
-mod humanize_helper;
+pub(crate) mod humanize_helper;
 mod in_progress_tests;
 #[cfg(feature = "rust_interop")]
 mod rust_interop;
 mod todo_tests;
 pub mod traverse;
-mod borrow_checker;
+pub(crate) mod borrow_checker;

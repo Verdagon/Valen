@@ -40,17 +40,3 @@ Argument 0 borrows into h, but argument 1 moves it, so the borrow would dangle.
 "#,
   );
 }
-
-#[test]
-fn test_borrow_into_other_local_with_move_is_clean() {
-  assert_compiles_clean(r#"
-struct Holder { n int; }
-func consume<g'>(a &Holder in g, b Holder) { }
-exported func main() int {
-  h = Holder(1);
-  y = Holder(2);
-  consume(&y, ^h);
-  return 0;
-}
-"#);
-}

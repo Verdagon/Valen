@@ -33,7 +33,6 @@ where
   pub instantiated_compilation: InstantiatedCompilation<'s, 'ctx, 't, 'i, 'p>,
 }
 
-
 impl<'s, 'ctx, 't, 'i, 'p> FullCompilation<'s, 'ctx, 't, 'i, 'p>
 where
   's: 't,
@@ -64,7 +63,6 @@ where
       code_source,
       options.global_options,
       instantiator_options,
-      true, // borrow_checker_enabled
       instantiating_bump,
     );
     FullCompilation { instantiated_compilation }
@@ -79,37 +77,25 @@ where 's: 't, 's: 'i, 'p: 'ctx, 'i: 't,
     self.instantiated_compilation.get_code_map()
   }
 
-
-
   pub fn get_parseds(&mut self) -> Result<FileCoordinateMap<'p, (FileP<'p>, Vec<RangeL>)>, FailedParse<'p>> {
     self.instantiated_compilation.get_parseds()
   }
-
-
 
   pub fn get_vpst_map(&mut self) -> Result<FileCoordinateMap<'p, String>, FailedParse<'p>> {
     self.instantiated_compilation.get_vpst_map()
   }
 
-
-
   pub fn get_scoutput(&mut self) -> Result<&FileCoordinateMap<'s, ProgramS<'s>>, ICompileErrorS<'s>> {
     self.instantiated_compilation.get_scoutput()
   }
-
-
 
   pub fn get_compiler_outputs(&mut self) -> Result<&HinputsT<'s, 't>, ICompileErrorT<'s, 't>> {
     self.instantiated_compilation.get_compiler_outputs()
   }
 
-
-
   pub fn expect_compiler_outputs(&mut self) -> &HinputsT<'s, 't> {
     self.instantiated_compilation.expect_compiler_outputs()
   }
-
-
 
   pub fn get_monouts(&mut self) -> &HinputsI<'s, 'i> {
     self.instantiated_compilation.get_monouts()

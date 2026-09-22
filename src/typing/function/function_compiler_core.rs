@@ -345,7 +345,7 @@ where
     coutputs.add_function(header_sig, function2);
 
     // Run borrow checking, and copy the aliasing info out
-    if self.opts.borrow_checker_enabled {
+    if self.opts.global_options.borrow_checker_enabled {
       let check_arena = Bump::new();
       let aliasing_info_g =
         self.check_function(coutputs, full_env_snapshot.function, function2, &check_arena)?;

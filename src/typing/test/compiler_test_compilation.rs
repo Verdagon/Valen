@@ -20,12 +20,12 @@ fn test_typing_pass_options() -> TypingPassOptions {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: true,
+    borrow_checker_enabled: true,
   };
   TypingPassOptions {
     global_options,
     debug_out: Arc::new(|x: &str| println!("{}", x)),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: true,
   }
 }
 
@@ -95,7 +95,7 @@ where
   let test_module = parse_arena.intern_str("test");
   let test_tld = parse_arena.intern_package_coordinate(test_module, &[]);
   let mut options = test_typing_pass_options();
-  options.borrow_checker_enabled = false;
+  options.global_options.borrow_checker_enabled = false;
   typing_pass_compilation_for_test(
     typing_interner,
     scout_arena,

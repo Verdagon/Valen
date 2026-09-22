@@ -136,6 +136,7 @@ pub struct Options<'a> {
   pub use_overload_index: bool,
   pub verbose_errors: bool,
   pub debug_output: bool,
+  pub borrow_check: bool,
 }
 
 
@@ -182,6 +183,14 @@ fn parse_opts_recursive<'a>(
         exit(22);
       }
       opts.sanity_check = list[index + 1].parse().unwrap_or(false);
+      parse_opts_recursive(parse_arena, opts, list, index + 2)
+    }
+    "--borrow_check" => {
+      if index + 1 >= list.len() {
+        eprintln!("--borrow_check requires a value");
+        exit(22);
+      }
+      opts.borrow_check = list[index + 1].parse().unwrap_or(true);
       parse_opts_recursive(parse_arena, opts, list, index + 2)
     }
     "--include_builtins" => {
@@ -417,6 +426,7 @@ where
       use_optimized_solver: opts.use_optimized_solver,
       verbose_errors: opts.verbose_errors,
       debug_output: opts.debug_output,
+      borrow_checker_enabled: opts.borrow_check,
     },
     debug_out: if opts.debug_output {
       Arc::new(|s: &str| println!("#: {}", s))

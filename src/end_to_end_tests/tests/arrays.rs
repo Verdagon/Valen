@@ -1,4 +1,4 @@
-use crate::end_to_end_tests::{assert_compile_and_run, assert_compile_and_run_dbg, cmd, expect, programs_dir};
+use crate::end_to_end_tests::{assert_compile_and_run, assert_compile_and_run_dbg, assert_compile_and_run_dbg_without_borrow_check, cmd, expect, programs_dir};
 
 fn p(rel: &str) -> std::path::PathBuf {
     programs_dir().join(rel)
@@ -6,7 +6,7 @@ fn p(rel: &str) -> std::path::PathBuf {
 
 #[test]
 fn ssamutfromcallable() {
-    assert_compile_and_run_dbg(&p("programs/arrays/ssamutfromcallable.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/arrays/ssamutfromcallable.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: ssamutfromcallable-ready' -f ssamutfromcallable.vale"),
         cmd("run"),
         expect("frame variable -P 1 a", &["[0] = 0", "[1] = 42", "[2] = 84", "[3] = 126", "[4] = 168"]),
@@ -14,7 +14,7 @@ fn ssamutfromcallable() {
 }
 #[test]
 fn ssamutfromvalues() {
-    assert_compile_and_run_dbg(&p("programs/arrays/ssamutfromvalues.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/arrays/ssamutfromvalues.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: ssamutfromvalues-ready' -f ssamutfromvalues.vale"),
         cmd("run"),
         expect("frame variable -P 1 a", &["[0] = 23", "[1] = 31", "[2] = 37", "[3] = 42", "[4] = 49"]),

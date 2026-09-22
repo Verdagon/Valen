@@ -62,6 +62,9 @@ pub struct BuildArgs {
   #[arg(long, default_value_t = true)]
   sanity_check: bool,
 
+  #[arg(long, default_value_t = true)]
+  borrow_check: bool,
+
   #[arg(long, default_value_t = false)]
   no_std: bool,
 
@@ -247,6 +250,7 @@ pub fn build_stuff(compiler_dir: &Path, args: BuildArgs) {
     &project_non_vale_input_declarations,
     args.benchmark,
     args.sanity_check,
+    args.borrow_check,
     args.verbose,
     args.debug_output,
     args.include_builtins,

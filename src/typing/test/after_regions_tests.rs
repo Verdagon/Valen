@@ -81,7 +81,7 @@ exported func main() {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -223,7 +223,7 @@ exported func main() bool {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -267,7 +267,7 @@ exported func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -556,7 +556,7 @@ exported func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -624,7 +624,7 @@ exported func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -657,7 +657,7 @@ exported func main() int {
     new_test_package_source(&parse_arena, "ifunction.ifunction1"),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -689,7 +689,7 @@ exported func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,

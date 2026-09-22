@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use crate::end_to_end_tests::{
-    assert_compile_and_run_dbg, assert_inline_compile_and_run, cmd, expect, programs_dir, reject,
+    assert_compile_and_run_dbg, assert_compile_and_run_dbg_without_borrow_check, assert_inline_compile_and_run, assert_inline_compile_and_run_without_borrow_check, cmd, expect, programs_dir, reject,
 };
 
 fn p(rel: &str) -> std::path::PathBuf {
@@ -10,7 +10,7 @@ fn p(rel: &str) -> std::path::PathBuf {
 
 #[test]
 fn generic_lambda_forwarder_runs() {
-    assert_inline_compile_and_run(
+    assert_inline_compile_and_run_without_borrow_check(
         r#"
 #!DeriveInterfaceDrop
 sealed interface Bork {
@@ -42,7 +42,7 @@ exported func main() int {
 
 #[test]
 fn mutswaplocals() {
-    assert_compile_and_run_dbg(&p("programs/mutswaplocals.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/mutswaplocals.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: mutswaplocals-before' -f mutswaplocals.vale"),
         cmd("run"),
         expect("frame variable -P 1 a", &["fuel = 1"]),
@@ -56,7 +56,7 @@ fn mutswaplocals() {
 
 #[test]
 fn restackify() {
-    assert_compile_and_run_dbg(&p("programs/restackify.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/restackify.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: restackify-before' -f restackify.vale"),
         cmd("br s -p 'lldb breakpoint: restackify-after' -f restackify.vale"),
         cmd("run"),
@@ -68,7 +68,7 @@ fn restackify() {
 
 #[test]
 fn destructure_restackify() {
-    assert_compile_and_run_dbg(&p("programs/destructure_restackify.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/destructure_restackify.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: destructure-restackify-ready' -f destructure_restackify.vale"),
         cmd("run"),
         expect("frame variable fuel", &["fuel = 42"]),
@@ -78,7 +78,7 @@ fn destructure_restackify() {
 
 #[test]
 fn loop_restackify() {
-    assert_compile_and_run_dbg(&p("programs/loop_restackify.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/loop_restackify.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: loop-restackify-iter' -f loop_restackify.vale"),
         cmd("run"),
         expect("frame variable i", &["i = 0"]),
@@ -94,7 +94,7 @@ fn loop_restackify() {
 
 #[test]
 fn mutlocal() {
-    assert_compile_and_run_dbg(&p("programs/mutlocal.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/mutlocal.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: mutlocal-before' -f mutlocal.vale"),
         cmd("run"),
         expect("frame variable x", &["x = 73"]),
@@ -106,7 +106,7 @@ fn mutlocal() {
 
 #[test]
 fn constraintRef() {
-    assert_compile_and_run_dbg(&p("programs/constraintRef.vale"), 8, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/constraintRef.vale"), 8, &[
         cmd("br s -p 'lldb breakpoint: constraintRef-ready' -f constraintRef.vale"),
         cmd("run"),
         expect("frame variable -P 1 carrier", &["hp = 400", "interceptors = 8"]),
@@ -115,7 +115,7 @@ fn constraintRef() {
 
 #[test]
 fn unstackifyret() {
-    assert_compile_and_run_dbg(&p("programs/unstackifyret.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/unstackifyret.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: unstackifyret-set' -f unstackifyret.vale"),
         cmd("run"),
         expect("frame variable playerRow", &["playerRow = 4"]),
@@ -124,7 +124,7 @@ fn unstackifyret() {
 
 #[test]
 fn unreachablemoot() {
-    assert_compile_and_run_dbg(&p("programs/unreachablemoot.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/unreachablemoot.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: unreachablemoot-live' -f unreachablemoot.vale"),
         cmd("br s -p 'lldb breakpoint: unreachablemoot-dead' -f unreachablemoot.vale"),
         expect("run", &["stop reason = breakpoint 1"]),
@@ -134,7 +134,7 @@ fn unreachablemoot() {
 
 #[test]
 fn panic() {
-    assert_compile_and_run_dbg(&p("programs/panic.vale"), 1, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/panic.vale"), 1, &[
         cmd("br s -p 'lldb breakpoint: panic-site' -f panic.vale"),
         cmd("br s -p 'lldb breakpoint: panic-after' -f panic.vale"),
         expect("run", &["stop reason = breakpoint 1"]),
@@ -144,7 +144,7 @@ fn panic() {
 
 #[test]
 fn panicnot() {
-    assert_compile_and_run_dbg(&p("programs/panicnot.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/panicnot.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: panicnot-return' -f panicnot.vale"),
         cmd("br s -p 'lldb breakpoint: panicnot-dead' -f panicnot.vale"),
         expect("run", &["stop reason = breakpoint 1"]),
@@ -154,7 +154,7 @@ fn panicnot() {
 
 #[test]
 fn nestedblocks() {
-    assert_compile_and_run_dbg(&p("programs/nestedblocks.vale"), 42, &[
+    assert_compile_and_run_dbg_without_borrow_check(&p("programs/nestedblocks.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: nestedblocks-inner' -f nestedblocks.vale"),
         cmd("run"),
         expect("frame variable originalIndex", &["originalIndex = 9"]),

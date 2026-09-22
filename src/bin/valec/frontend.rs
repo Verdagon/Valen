@@ -23,6 +23,7 @@ pub fn compile_in_process(
   _project_non_vale_inputs: &[ProjectNonValeInputDeclaration],
   benchmark: bool,
   sanity_check: bool,
+  borrow_check: bool,
   verbose: bool,
   debug_output: bool,
   include_builtins: bool,
@@ -42,6 +43,8 @@ pub fn compile_in_process(
     frontend_args.push("--sanity_check".to_string());
     frontend_args.push("true".to_string());
   }
+  frontend_args.push("--borrow_check".to_string());
+  frontend_args.push(borrow_check.to_string());
   if verbose {
     frontend_args.push("--verbose".to_string());
   }
@@ -82,6 +85,7 @@ pub fn compile_in_process(
       use_overload_index: true,
       verbose_errors: false,
       debug_output: false,
+      borrow_check: true,
     },
     frontend_args,
   );

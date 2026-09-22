@@ -1,4 +1,5 @@
 use super::compiler_test_compilation::compiler_test_compilation;
+use super::compiler_test_compilation::compiler_test_compilation_without_borrow_check;
 use crate::builtins::builtins::empty_v_builtins_stub;
 use crate::code_source::{CodeSource, Source};
 use crate::keywords::Keywords;
@@ -95,7 +96,7 @@ exported func main() int {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,

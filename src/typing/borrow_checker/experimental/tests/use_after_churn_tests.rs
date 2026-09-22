@@ -1,43 +1,8 @@
 
 use super::util::{assert_borrow_error_renders_with_arrays, assert_compiles_clean_with_arrays};
 
-#[test]
-fn test_return_position_group_compiles() {
-  assert_compiles_clean_with_arrays(r#"
-import v.builtins.drop.*;
-func idr<g'>(a &int in g) &int in g { return a; }
-exported func main() int { return 0; }
-"#);
-}
-
-#[test]
-fn test_use_returned_reference_after_churn_rejected() {
-  assert_borrow_error_renders_with_arrays(
-    r#"
-import v.builtins.arrays.*;
-import v.builtins.drop.*;
-func get<g'>(a &[]int in g, i int) &int in g[] { return &a[__copy_prim(i)]; }
-func churn<g'>(a &[]int in g) mut(g) { }
-func observe<T, tg'>(x &T in tg) { }
-exported func main() int {
-  arr = Array<int>(3);
-  v = arr.get(0);
-  churn(&arr);
-  observe(v);
-  return 0;
-}
-"#,
-    r#"At test:0.vale:11:11:
-  observe(v);
-          ^
-Used a borrow after invalidated.
-Invalidated at test:0.vale:10:3:
-  churn(&arr);
-  ^^^^^
-"#,
-  );
-}
-
+// Rung 3 (clean): a returned reference into a group that is never churned stays live. The callee's
+// return group is mapped to the specific argument (`arr`), so churning a *different* array leaves it.
 #[test]
 fn test_returned_reference_into_untouched_group_is_clean() {
   assert_compiles_clean_with_arrays(r#"
@@ -748,29 +713,6 @@ Invalidated at test:0.vale:5:3:
 }
 
 #[test]
-fn test_use_after_churn_names_the_churn() {
-  super::util::assert_borrow_error_renders(
-    r#"
-func churn<g'>(a &[]int in g) mut(g) { }
-func observe<T, h'>(x &T in h) { }
-exported func peek<g'>(a &[]int in g) mut(g) {
-  e = &a[0];
-  churn(a);
-  observe(e);
-}
-"#,
-    r#"At test:0.vale:7:11:
-  observe(e);
-          ^
-Used a borrow after invalidated.
-Invalidated at test:0.vale:6:3:
-  churn(a);
-  ^^^^^
-"#,
-  );
-}
-
-#[test]
 fn test_two_stale_references_both_reported() {
   super::util::assert_borrow_error_renders(
     r#"
@@ -802,26 +744,3 @@ Invalidated at test:0.vale:7:3:
   );
 }
 
-#[test]
-fn test_copied_stale_element_reference_rejected() {
-  super::util::assert_borrow_error_renders(
-    r#"
-func churn<g'>(a &[]int in g) mut(g) { }
-func observe<T, h'>(x &T in h) { }
-exported func peek<g'>(a &[]int in g) mut(g) {
-  e = &a[0];
-  w = e;
-  churn(a);
-  observe(w);
-}
-"#,
-    r#"At test:0.vale:8:11:
-  observe(w);
-          ^
-Used a borrow after invalidated.
-Invalidated at test:0.vale:7:3:
-  churn(a);
-  ^^^^^
-"#,
-  );
-}

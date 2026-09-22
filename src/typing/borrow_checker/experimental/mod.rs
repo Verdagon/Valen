@@ -4,3 +4,6 @@ pub mod check_usages;
 pub mod errors;
 pub mod grouped_ast;
 pub mod groupify;
+
+#[cfg(test)]
+mod tests;

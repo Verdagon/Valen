@@ -33,6 +33,7 @@ where
     use_optimized_solver: true,
     verbose_errors: false,
     debug_output: false,
+    borrow_checker_enabled: true,
   };
 
   let keywords_p = Keywords::new_for_parse(parse_arena);
@@ -72,6 +73,7 @@ where
     use_optimized_solver: true,
     verbose_errors: false,
     debug_output: false,
+    borrow_checker_enabled: true,
   };
 
   let keywords_p = Keywords::new_for_parse(parse_arena);

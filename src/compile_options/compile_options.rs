@@ -5,6 +5,7 @@ pub struct GlobalOptions {
   pub use_optimized_solver: bool,
   pub verbose_errors: bool,
   pub debug_output: bool,
+  pub borrow_checker_enabled: bool,
 }
 
 impl GlobalOptions {
@@ -15,6 +16,7 @@ impl GlobalOptions {
       use_optimized_solver: true,
       verbose_errors: false,
       debug_output: false,
+      borrow_checker_enabled: true,
     }
   }
 
@@ -25,6 +27,7 @@ impl GlobalOptions {
       use_optimized_solver: true,
       verbose_errors: true,
       debug_output: true,
+      borrow_checker_enabled: true,
     }
   }
 }

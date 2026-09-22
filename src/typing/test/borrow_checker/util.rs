@@ -1,4 +1,4 @@
-use super::super::compiler_test_compilation::compiler_test_compilation;
+use crate::typing::test::compiler_test_compilation::compiler_test_compilation;
 use crate::builtins::builtins::{builtin_source_for_arith, builtin_source_for_arrays, empty_v_builtins_stub};
 use crate::code_source::{CodeSource, Source};
 use crate::keywords::Keywords;

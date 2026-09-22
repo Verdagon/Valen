@@ -1,5 +1,7 @@
 #![allow(unused_imports, dead_code, unused_variables, unreachable_code)]
 use crate::integration_tests::tests::run_compilation::test;
+use crate::integration_tests::tests::run_compilation::test_without_borrow_check;
+use crate::integration_tests::tests::run_compilation::test_no_builtins_without_borrow_check;
 use crate::integration_tests::tests::run_compilation::test_no_builtins;
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;
@@ -106,7 +108,7 @@ fn make_nested_mut_struct() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -160,7 +162,7 @@ fn constructor_with_self() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     let source = load_expected("programs/structs/constructor.vale");
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -236,7 +238,7 @@ fn mutate_struct() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let source = load_expected("programs/structs/mutate.vale");
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_no_builtins(
+    let mut compile = test_no_builtins_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -261,7 +263,7 @@ fn mutate_inline_struct_member() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let source = load_expected("programs/structs/mutate_inline_struct.vale");
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_no_builtins(
+    let mut compile = test_no_builtins_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -286,7 +288,7 @@ fn mutate_inline_struct_member_borrow_sees_new_value() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let source = load_expected("programs/structs/mutate_inline_borrow.vale");
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_no_builtins(
+    let mut compile = test_no_builtins_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -311,7 +313,7 @@ fn mutate_inline_local_borrow_sees_new_value() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let source = load_expected("programs/structs/mutate_inline_local_borrow.vale");
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_no_builtins(
+    let mut compile = test_no_builtins_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -335,7 +337,7 @@ fn normal_destructure() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -369,7 +371,7 @@ fn sugar_destructure() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test(
+    let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -517,7 +519,7 @@ struct _Z {
         let keywords = Keywords::new_for_scout(&scout_arena);
         let parser_keywords = Keywords::new_for_parse(&parse_arena);
         let typing_interner = TypingInterner::new(&typing_bump);
-        let mut compile = test(
+        let mut compile = test_without_borrow_check(
             &compilation_bump,
             &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
             &instantiating_bump,

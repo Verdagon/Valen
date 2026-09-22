@@ -20,6 +20,7 @@ where
       use_optimized_solver: true,
       verbose_errors: true,
       debug_output: true,
+      borrow_checker_enabled: true,
     },
     parse_arena,
     keywords,

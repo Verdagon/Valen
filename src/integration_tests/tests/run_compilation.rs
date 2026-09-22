@@ -26,13 +26,14 @@ use crate::testvm::von::IVonData;
 use crate::typing::typing_interner::TypingInterner;
 use crate::utils::code_hierarchy::PackageCoordinate;
 
-fn global_options() -> GlobalOptions {
+fn global_options(borrow_checker_enabled: bool) -> GlobalOptions {
     GlobalOptions {
         sanity_check: true,
         use_overload_index: true,
         use_optimized_solver: true,
         verbose_errors: true,
         debug_output: true,
+        borrow_checker_enabled,
     }
 }
 
@@ -122,9 +123,50 @@ pub fn test_multi<'s, 'ctx, 't, 'i, 'p>(
     parser_keywords: &'ctx Keywords<'p>,
     parse_arena: &'ctx ParseArena<'p>,
     instantiating_bump: &'i Bump,
+    packages_to_build: Vec<&'p PackageCoordinate<'p>>,
+    sources: Vec<Source<'p>>,
+    include_builtins: bool,
+) -> RunCompilation<'s, 'ctx, 't, 'i, 'p>
+where 's: 't, 's: 'i, 'p: 'ctx,
+{
+    build_multi(
+        compilation_bump, typing_interner, scout_arena, keywords, parser_keywords, parse_arena,
+        instantiating_bump, packages_to_build, sources, include_builtins, true,
+    )
+}
+
+pub fn test_multi_without_borrow_check<'s, 'ctx, 't, 'i, 'p>(
+    compilation_bump: &'ctx Bump,
+    typing_interner: &'ctx TypingInterner<'s, 't>,
+    scout_arena: &'ctx ScoutArena<'s>,
+    keywords: &'ctx Keywords<'s>,
+    parser_keywords: &'ctx Keywords<'p>,
+    parse_arena: &'ctx ParseArena<'p>,
+    instantiating_bump: &'i Bump,
+    packages_to_build: Vec<&'p PackageCoordinate<'p>>,
+    sources: Vec<Source<'p>>,
+    include_builtins: bool,
+) -> RunCompilation<'s, 'ctx, 't, 'i, 'p>
+where 's: 't, 's: 'i, 'p: 'ctx,
+{
+    build_multi(
+        compilation_bump, typing_interner, scout_arena, keywords, parser_keywords, parse_arena,
+        instantiating_bump, packages_to_build, sources, include_builtins, false,
+    )
+}
+
+fn build_multi<'s, 'ctx, 't, 'i, 'p>(
+    compilation_bump: &'ctx Bump,
+    typing_interner: &'ctx TypingInterner<'s, 't>,
+    scout_arena: &'ctx ScoutArena<'s>,
+    keywords: &'ctx Keywords<'s>,
+    parser_keywords: &'ctx Keywords<'p>,
+    parse_arena: &'ctx ParseArena<'p>,
+    instantiating_bump: &'i Bump,
     mut packages_to_build: Vec<&'p PackageCoordinate<'p>>,
     mut sources: Vec<Source<'p>>,
     include_builtins: bool,
+    borrow_checker_enabled: bool,
 ) -> RunCompilation<'s, 'ctx, 't, 'i, 'p>
 where 's: 't, 's: 'i, 'p: 'ctx,
 {
@@ -140,8 +182,8 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     let code_source: &'ctx CodeSource<'p> = compilation_bump.alloc(CodeSource::new(all_sources));
     let compilation = InstantiatedCompilation::new(
         typing_interner, scout_arena, keywords, parser_keywords, parse_arena,
-        all_packages, code_source, global_options(), instantiator_options(),
-        true, instantiating_bump,
+        all_packages, code_source, global_options(borrow_checker_enabled), instantiator_options(),
+        instantiating_bump,
     );
     RunCompilation { compilation, scout_arena }
 }
@@ -172,8 +214,8 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     let code_source: &'ctx CodeSource<'p> = compilation_bump.alloc(CodeSource::new(sources));
     let compilation = InstantiatedCompilation::new(
         typing_interner, scout_arena, keywords, parser_keywords, parse_arena,
-        packages_to_build, code_source, global_options(), instantiator_options(),
-        borrow_checker_enabled, instantiating_bump,
+        packages_to_build, code_source, global_options(borrow_checker_enabled), instantiator_options(),
+        instantiating_bump,
     );
     RunCompilation { compilation, scout_arena }
 }

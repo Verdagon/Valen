@@ -111,6 +111,21 @@ pub fn compile_program(
         extra_c,
         configure_backend,
         Vec::new(),
+        true,
+    )
+}
+
+pub fn compile_program_without_borrow_check(
+    primary_vale: &Path,
+    extra_c: &[&Path],
+    configure_backend: impl FnOnce(&mut crate::backend_ffi::BackendCompileOptions),
+) -> CompiledProgram {
+    compile_inputs(
+        vec![primary_vale.to_path_buf()],
+        extra_c,
+        configure_backend,
+        Vec::new(),
+        false,
     )
 }
 
@@ -126,6 +141,23 @@ pub fn compile_inline(
         &[],
         configure_backend,
         vec![src_dir],
+        true,
+    )
+}
+
+pub fn compile_inline_without_borrow_check(
+    code: &str,
+    configure_backend: impl FnOnce(&mut crate::backend_ffi::BackendCompileOptions),
+) -> CompiledProgram {
+    let src_dir = tempfile::tempdir().unwrap();
+    let src_file = src_dir.path().join("test.vale");
+    std::fs::write(&src_file, code).unwrap();
+    compile_inputs(
+        vec![src_dir.path().to_path_buf()],
+        &[],
+        configure_backend,
+        vec![src_dir],
+        false,
     )
 }
 
@@ -142,6 +174,25 @@ pub fn compile_inline_debug(code: &str) -> (CompiledProgram, PathBuf) {
             opts.opt_level = BACKEND_OPT_LEVEL_O0;
         },
         vec![src_dir],
+        true,
+    );
+    (cp, src_file_path)
+}
+
+pub fn compile_inline_debug_without_borrow_check(code: &str) -> (CompiledProgram, PathBuf) {
+    let src_dir = tempfile::tempdir().unwrap();
+    let src_file = src_dir.path().join("test.vale");
+    fs::write(&src_file, code).unwrap();
+    let src_file_path = src_file.clone();
+    let cp = compile_inputs(
+        vec![src_dir.path().to_path_buf()],
+        &[],
+        |opts| {
+            opts.debug = true;
+            opts.opt_level = BACKEND_OPT_LEVEL_O0;
+        },
+        vec![src_dir],
+        false,
     );
     (cp, src_file_path)
 }
@@ -151,6 +202,7 @@ fn compile_inputs(
     extra_c: &[&Path],
     configure_backend: impl FnOnce(&mut crate::backend_ffi::BackendCompileOptions),
     keepalive: Vec<tempfile::TempDir>,
+    borrow_check: bool,
 ) -> CompiledProgram {
     let parse_bump = bumpalo::Bump::new();
     let parse_arena = crate::parse_arena::ParseArena::new(&parse_bump);
@@ -181,6 +233,8 @@ fn compile_inputs(
         "true".to_string(),
         "--sanity_check".to_string(),
         "false".to_string(),
+        "--borrow_check".to_string(),
+        borrow_check.to_string(),
     ];
     for input in &vale_inputs {
         cli_args.push(format!("vtest={}", input.display()));
@@ -199,6 +253,7 @@ fn compile_inputs(
             use_overload_index: true,
             verbose_errors: false,
             debug_output: false,
+            borrow_check: true,
         },
         cli_args,
     );
@@ -395,6 +450,16 @@ pub fn assert_compile_and_run(vale_path: &Path, expected: i32) {
     );
 }
 
+pub fn assert_compile_and_run_without_borrow_check(vale_path: &Path, expected: i32) {
+    let cp = compile_program_without_borrow_check(vale_path, &[], |_| {});
+    let r = cp.run(&[]);
+    assert_eq!(
+        r.exit_code, expected,
+        "stdout={:?} stderr={:?}",
+        r.stdout, r.stderr
+    );
+}
+
 pub fn assert_compile_and_run_with_c(
     vale_dir: &Path,
     extra_c: &[&Path],
@@ -409,8 +474,32 @@ pub fn assert_compile_and_run_with_c(
     );
 }
 
+pub fn assert_compile_and_run_with_c_without_borrow_check(
+    vale_dir: &Path,
+    extra_c: &[&Path],
+    expected: i32,
+) {
+    let cp = compile_program_without_borrow_check(vale_dir, extra_c, |_| {});
+    let r = cp.run(&[]);
+    assert_eq!(
+        r.exit_code, expected,
+        "stdout={:?} stderr={:?}",
+        r.stdout, r.stderr
+    );
+}
+
 pub fn assert_inline_compile_and_run(code: &str, expected: i32) {
     let cp = compile_inline(code, |_| {});
+    let r = cp.run(&[]);
+    assert_eq!(
+        r.exit_code, expected,
+        "stdout={:?} stderr={:?}",
+        r.stdout, r.stderr
+    );
+}
+
+pub fn assert_inline_compile_and_run_without_borrow_check(code: &str, expected: i32) {
+    let cp = compile_inline_without_borrow_check(code, |_| {});
     let r = cp.run(&[]);
     assert_eq!(
         r.exit_code, expected,
@@ -496,7 +585,7 @@ fn run_dbg_session(cp: &CompiledProgram, steps: &[Step]) {
     }
 }
 
-fn compile_fixture_debug(vale_path: &Path, native: bool) -> CompiledProgram {
+fn compile_fixture_debug(vale_path: &Path, native: bool, borrow_check: bool) -> CompiledProgram {
     let src_dir = tempfile::tempdir().unwrap();
     let base = vale_path.file_name().expect("fixture path has no file name");
     let dest = src_dir.path().join(base);
@@ -512,12 +601,33 @@ fn compile_fixture_debug(vale_path: &Path, native: bool) -> CompiledProgram {
             }
         },
         vec![src_dir],
+        borrow_check,
     )
 }
 
 pub fn assert_compile_and_run_dbg(vale_path: &Path, expected: i32, steps: &[Step]) {
     let native = matches!(target_backend(), Backend::Native);
-    let cp = compile_fixture_debug(vale_path, native);
+    let cp = compile_fixture_debug(vale_path, native, true);
+    let r = cp.run(&[]);
+    assert_eq!(
+        r.exit_code, expected,
+        "stdout={:?} stderr={:?}",
+        r.stdout, r.stderr
+    );
+    if native {
+        run_dbg_session(&cp, steps);
+    } else {
+        eprintln!(
+            "SKIP: debug gate for {:?} requires the Native backend (lldb/dSYM); \
+             ran exit-code check only under wasi.",
+            vale_path
+        );
+    }
+}
+
+pub fn assert_compile_and_run_dbg_without_borrow_check(vale_path: &Path, expected: i32, steps: &[Step]) {
+    let native = matches!(target_backend(), Backend::Native);
+    let cp = compile_fixture_debug(vale_path, native, false);
     let r = cp.run(&[]);
     assert_eq!(
         r.exit_code, expected,
@@ -543,6 +653,39 @@ pub fn assert_inline_compile_and_run_dbg(code: &str, expected: i32, steps: &[Ste
             opts.opt_level = BACKEND_OPT_LEVEL_O0;
         }
     });
+    let r = cp.run(&[]);
+    assert_eq!(
+        r.exit_code, expected,
+        "stdout={:?} stderr={:?}",
+        r.stdout, r.stderr
+    );
+    if native {
+        run_dbg_session(&cp, steps);
+    } else {
+        eprintln!(
+            "SKIP: inline debug gate requires the Native backend (lldb/dSYM); \
+             ran exit-code check only under wasi."
+        );
+    }
+}
+
+pub fn assert_inline_compile_and_run_dbg_without_borrow_check(code: &str, expected: i32, steps: &[Step]) {
+    let native = matches!(target_backend(), Backend::Native);
+    let src_dir = tempfile::tempdir().unwrap();
+    let src_file = src_dir.path().join("test.vale");
+    std::fs::write(&src_file, code).unwrap();
+    let cp = compile_inputs(
+        vec![src_dir.path().to_path_buf()],
+        &[],
+        |opts| {
+            if native {
+                opts.debug = true;
+                opts.opt_level = BACKEND_OPT_LEVEL_O0;
+            }
+        },
+        vec![src_dir],
+        false,
+    );
     let r = cp.run(&[]);
     assert_eq!(
         r.exit_code, expected,

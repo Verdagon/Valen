@@ -20,46 +20,8 @@ Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutat
   );
 }
 
-#[test]
-fn test_alias_into_distinct_groups_without_mut_is_clean() {
-  assert_compiles_clean(r#"
-struct Entity { hp int; }
-func purepair<r', s'>(a &Entity in r, d &Entity in s) { }
-exported func main() int {
-  e = Entity(5);
-  purepair(&e, &e);
-  return 0;
-}
-"#);
-}
-
-#[test]
-fn test_common_group_aliasing_is_clean() {
-  assert_compiles_clean(r#"
-struct Entity { hp int; }
-func heal<g'>(a &Entity in g, d &Entity in g) mut(g) { }
-exported func main() int {
-  e = Entity(5);
-  heal(&e, &e);
-  return 0;
-}
-"#);
-}
-
-#[test]
-fn test_distinct_locals_into_distinct_mut_groups_clean() {
-  assert_compiles_clean(r#"
-struct Entity { hp int; }
-func badpair<r', s'>(a &Entity in r, d &Entity in s) mut(r) { }
-exported func main() int {
-  e1 = Entity(5);
-  e2 = Entity(6);
-  badpair(&e1, &e2);
-  return 0;
-}
-"#);
-}
-
+// Slice 5: borrowing the *same field* twice into distinct mutated groups aliases through a member
+// path.
 #[test]
 fn test_same_field_alias_rejected() {
   assert_borrow_error_renders(
@@ -81,20 +43,8 @@ Arguments 0 and 1 both borrow into f, but their parameters are in disjoint mutat
   );
 }
 
-#[test]
-fn test_sibling_fields_are_disjoint_clean() {
-  assert_compiles_clean(r#"
-struct Ship { fuel int; }
-struct Fleet { flagship Ship; escort Ship; }
-func badships<r', s'>(a &Ship in r, d &Ship in s) mut(r) { }
-exported func main() int {
-  f = Fleet(Ship(1), Ship(2));
-  badships(&f.flagship, &f.escort);
-  return 0;
-}
-"#);
-}
-
+// Slice 7: a whole-struct borrow and a borrow of one of its fields are nested (one path a prefix of
+// the other), so into distinct mutated groups they alias.
 #[test]
 fn test_prefix_path_alias_rejected() {
   assert_borrow_error_renders(

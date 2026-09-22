@@ -46,6 +46,7 @@ where 's: 't, 's: 'i, 'p: 'ctx,
         use_optimized_solver: true,
         verbose_errors: true,
         debug_output: true,
+        borrow_checker_enabled: true,
     };
     let instantiator_options = InstantiatorCompilationOptions {
         debug_out: Arc::new(|x: &str| println!("{}", x)),
@@ -60,7 +61,49 @@ where 's: 't, 's: 'i, 'p: 'ctx,
         code_source,
         global_options,
         instantiator_options,
-        true, // borrow_checker_enabled
+        instantiating_bump,
+    )
+}
+
+pub fn test_without_borrow_check<'s, 'ctx, 't, 'i, 'p>(
+    compilation_bump: &'ctx bumpalo::Bump,
+    typing_interner: &'ctx TypingInterner<'s, 't>,
+    scout_arena: &'ctx ScoutArena<'s>,
+    keywords: &'ctx Keywords<'s>,
+    parser_keywords: &'ctx Keywords<'p>,
+    parse_arena: &'ctx ParseArena<'p>,
+    instantiating_bump: &'i bumpalo::Bump,
+    code: &str,
+) -> InstantiatedCompilation<'s, 'ctx, 't, 'i, 'p>
+where 's: 't, 's: 'i, 'p: 'ctx,
+{
+    let packages_to_build: Vec<&'p PackageCoordinate<'p>> =
+        vec![PackageCoordinate::test_tld(parse_arena, parser_keywords)];
+    let code_source: &'ctx CodeSource<'p> = compilation_bump.alloc(CodeSource::new(vec![
+        new_test_code_map(parse_arena, code),
+        Source::Fn(test_source_from_dir),
+    ]));
+    let global_options = GlobalOptions {
+        sanity_check: true,
+        use_overload_index: true,
+        use_optimized_solver: true,
+        verbose_errors: true,
+        debug_output: true,
+        borrow_checker_enabled: false,
+    };
+    let instantiator_options = InstantiatorCompilationOptions {
+        debug_out: Arc::new(|x: &str| println!("{}", x)),
+    };
+    InstantiatedCompilation::new(
+        typing_interner,
+        scout_arena,
+        keywords,
+        parser_keywords,
+        parse_arena,
+        packages_to_build,
+        code_source,
+        global_options,
+        instantiator_options,
         instantiating_bump,
     )
 }
@@ -90,6 +133,7 @@ where 's: 't, 's: 'i, 'p: 'ctx,
         use_optimized_solver: true,
         verbose_errors: true,
         debug_output: true,
+        borrow_checker_enabled: true,
     };
     let instantiator_options = InstantiatorCompilationOptions {
         debug_out: Arc::new(|x: &str| println!("{}", x)),
@@ -104,7 +148,50 @@ where 's: 't, 's: 'i, 'p: 'ctx,
         code_source,
         global_options,
         instantiator_options,
-        true, // borrow_checker_enabled
+        instantiating_bump,
+    )
+}
+
+pub fn test_with_array_builtins_without_borrow_check<'s, 'ctx, 't, 'i, 'p>(
+    compilation_bump: &'ctx bumpalo::Bump,
+    typing_interner: &'ctx TypingInterner<'s, 't>,
+    scout_arena: &'ctx ScoutArena<'s>,
+    keywords: &'ctx Keywords<'s>,
+    parser_keywords: &'ctx Keywords<'p>,
+    parse_arena: &'ctx ParseArena<'p>,
+    instantiating_bump: &'i bumpalo::Bump,
+    code: &str,
+) -> InstantiatedCompilation<'s, 'ctx, 't, 'i, 'p>
+where 's: 't, 's: 'i, 'p: 'ctx,
+{
+    let packages_to_build: Vec<&'p PackageCoordinate<'p>> =
+        vec![PackageCoordinate::test_tld(parse_arena, parser_keywords)];
+    let code_source: &'ctx CodeSource<'p> = compilation_bump.alloc(CodeSource::new(vec![
+        builtin_source_for_arrays(parse_arena, parser_keywords),
+        new_test_code_map(parse_arena, code),
+        Source::Fn(empty_v_builtins_stub),
+    ]));
+    let global_options = GlobalOptions {
+        sanity_check: true,
+        use_overload_index: true,
+        use_optimized_solver: true,
+        verbose_errors: true,
+        debug_output: true,
+        borrow_checker_enabled: false,
+    };
+    let instantiator_options = InstantiatorCompilationOptions {
+        debug_out: Arc::new(|x: &str| println!("{}", x)),
+    };
+    InstantiatedCompilation::new(
+        typing_interner,
+        scout_arena,
+        keywords,
+        parser_keywords,
+        parse_arena,
+        packages_to_build,
+        code_source,
+        global_options,
+        instantiator_options,
         instantiating_bump,
     )
 }
@@ -160,7 +247,7 @@ exported func main() int {
   return take(&a);
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -226,7 +313,7 @@ exported func main() {
   [_] = ^s;
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let take = monouts.lookup_function_by_str("take");
     let [param] = take.header.params else {
@@ -255,7 +342,7 @@ exported func main() str {
   return "hello";
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -289,7 +376,7 @@ exported func main() {
   [_] = ^s;
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let get_fuel = monouts.lookup_function_by_str("get_fuel");
     collect_only_inode!(
@@ -323,7 +410,7 @@ exported func main() {
   [_] = ^s;
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let get_fuel = monouts.lookup_function_by_str("get_fuel");
     collect_only_inode!(
@@ -388,7 +475,7 @@ exported func main() int {
   return if (true) { 42 } else { 73 };
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -429,7 +516,7 @@ exported func main() {
   }
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -514,7 +601,7 @@ exported func main() int {
   return doCivicDance(^x);
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let mut virtual_dispatches = Vec::new();
     for f in monouts.functions {
@@ -561,7 +648,7 @@ exported func main() int {
   return doCivicDance(^x);
 }
 "#;
-    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -611,7 +698,7 @@ exported func main() int {
   return __copy_prim(&a.3);
 }
 "#;
-    let mut compile = test_with_array_builtins(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_with_array_builtins_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(

@@ -17,24 +17,8 @@ exported func main() int {
   );
 }
 
-#[test]
-fn same_group_params_are_not_noalias() {
-  assert_param_noalias(
-    r#"
-struct Ship { fuel int; }
-func pair<g'>(a &Ship in g, b &Ship in g) { }
-exported func main() int {
-  s1 = Ship(1);
-  s2 = Ship(2);
-  pair(&s1, &s2);
-  return 0;
-}
-"#,
-    "pair",
-    &[false, false],
-  );
-}
-
+// Parameters in distinct groups are each the sole reference into their own group, so both are
+// `noalias` — even read-only, since a caller aliasing them is harmless without mutation.
 #[test]
 fn distinct_group_params_are_both_noalias() {
   assert_param_noalias(

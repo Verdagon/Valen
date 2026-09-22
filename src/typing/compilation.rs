@@ -31,7 +31,6 @@ pub struct TypingPassOptions {
   pub global_options: GlobalOptions,
   pub debug_out: Arc<dyn Fn(&str) + Send + Sync>,
   pub tree_shaking_enabled: bool,
-  pub borrow_checker_enabled: bool,
 }
 
 pub struct TypingPassCompilation<'s, 'ctx, 't, 'p>

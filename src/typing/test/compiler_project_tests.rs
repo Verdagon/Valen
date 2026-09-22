@@ -1,5 +1,6 @@
 use super::compiler_test_compilation::{
-  compiler_test_compilation, typing_pass_compilation_for_test,
+  compiler_test_compilation, compiler_test_compilation_without_borrow_check,
+  typing_pass_compilation_for_test,
 };
 use crate::builtins::builtins::get_code_map;
 use crate::code_source::{CodeSource, Source};
@@ -99,7 +100,7 @@ fn lambda_has_correct_name() {
     HashMap::from_iter([("test.vale".to_string(), code.to_string())]),
   )]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
+  let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -241,12 +242,12 @@ exported func main() {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
+    borrow_checker_enabled: false,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
     debug_out: Arc::new(|_x: &str| {}),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: true,
   };
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = typing_pass_compilation_for_test(
@@ -296,12 +297,12 @@ exported func main() bool {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
+    borrow_checker_enabled: false,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
     debug_out: Arc::new(|_x: &str| {}),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: true,
   };
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = typing_pass_compilation_for_test(
@@ -350,12 +351,12 @@ exported func main() int {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
+    borrow_checker_enabled: false,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
     debug_out: Arc::new(|_x: &str| {}),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: true,
   };
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = typing_pass_compilation_for_test(
@@ -404,12 +405,12 @@ exported func main() {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
+    borrow_checker_enabled: false,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
     debug_out: Arc::new(|_x: &str| {}),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: false,
   };
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = typing_pass_compilation_for_test(
@@ -456,12 +457,12 @@ exported func main() {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
+    borrow_checker_enabled: false,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
     debug_out: Arc::new(|_x: &str| {}),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: true,
   };
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = typing_pass_compilation_for_test(
@@ -510,12 +511,12 @@ exported func main() {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
+    borrow_checker_enabled: false,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
     debug_out: Arc::new(|_x: &str| {}),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: true,
   };
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = typing_pass_compilation_for_test(
@@ -557,12 +558,12 @@ fn typing_pass_on_roguelike() {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: true,
+    borrow_checker_enabled: true,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
     debug_out: Arc::new(|x: &str| println!("{}", x)),
     tree_shaking_enabled: true,
-    borrow_checker_enabled: true,
   };
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = typing_pass_compilation_for_test(

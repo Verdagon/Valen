@@ -246,6 +246,7 @@ where
       use_optimized_solver: true,
       verbose_errors: true,
       debug_output: true,
+      borrow_checker_enabled: true,
     };
 
     // Parse before building the oracle. The oracle's importable set is exactly the program's real
@@ -284,7 +285,6 @@ where
         global_options: global_options.clone(),
         debug_out: Arc::new(|x: &str| println!("{}", x)),
         tree_shaking_enabled: true,
-        borrow_checker_enabled: true,
       },
       Oracles::with_rust(&logging),
     );

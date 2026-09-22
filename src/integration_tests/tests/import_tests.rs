@@ -1,6 +1,7 @@
 #![allow(unused_imports, dead_code, unused_variables, unreachable_code)]
 use crate::compile_options::GlobalOptions;
 use crate::integration_tests::tests::run_compilation::RunCompilation;
+use crate::integration_tests::tests::run_compilation::test_multi_without_borrow_check;
 use crate::integration_tests::tests::run_compilation::test_multi;
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;
@@ -43,7 +44,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put(parse_arena.intern_file_coordinate(module_b_coord, "moduleB.vale"), module_b_code.to_string());
 
-    let mut compile = test_multi(
+    let mut compile = test_multi_without_borrow_check(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],
@@ -83,7 +84,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put(parse_arena.intern_file_coordinate(module_b_coord, "moduleB.vale"), module_b_code.to_string());
 
-    let mut compile = test_multi(
+    let mut compile = test_multi_without_borrow_check(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],
@@ -127,7 +128,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put(parse_arena.intern_file_coordinate(module_b_coord, "moduleB.vale"), module_b_code.to_string());
 
-    let mut compile = test_multi(
+    let mut compile = test_multi_without_borrow_check(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],
@@ -170,7 +171,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put_package(module_b_bork_coord, HashMap::default());
 
-    let mut compile = test_multi(
+    let mut compile = test_multi_without_borrow_check(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],

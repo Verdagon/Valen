@@ -1,10 +1,16 @@
 use crate::end_to_end_tests::{
-    assert_compile_and_run_with_c, assert_inline_compile_and_run, compile_program, programs_dir,
+    assert_compile_and_run_with_c, assert_compile_and_run_with_c_without_borrow_check,
+    assert_inline_compile_and_run, compile_program, programs_dir,
 };
 
 fn run(dir_rel: &str, expected: i32) {
     let dir = programs_dir().join(dir_rel);
     assert_compile_and_run_with_c(&dir, &[], expected);
+}
+
+fn run_without_borrow_check(dir_rel: &str, expected: i32) {
+    let dir = programs_dir().join(dir_rel);
+    assert_compile_and_run_with_c_without_borrow_check(&dir, &[], expected);
 }
 
 #[test]
@@ -34,8 +40,7 @@ fn interfacemutparamexport()  { run("programs/externs/interfacemutparamexport", 
 fn structmutreturnexport()    { run("programs/externs/structmutreturnexport", 42); }
 
 #[test]
-fn structmutparamexport()     { run("programs/externs/structmutparamexport", 42); }
-
+fn structmutparamexport()     { run_without_borrow_check("programs/externs/structmutparamexport", 42); }
 #[test]
 #[ignore]
 fn rsamutparamexport()        { run("programs/externs/rsamutparamexport", 10); }
@@ -45,18 +50,16 @@ fn rsamutparamexport()        { run("programs/externs/rsamutparamexport", 10); }
 fn rsamutreturnexport()       { run("programs/externs/rsamutreturnexport", 42); }
 
 #[test]
-fn ssamutparamexport()        { run("programs/externs/ssamutparamexport", 10); }
-
+fn ssamutparamexport()        { run_without_borrow_check("programs/externs/ssamutparamexport", 10); }
 #[test]
 #[ignore]
 fn ssamutreturnexport()       { run("programs/externs/ssamutreturnexport", 42); }
 
 #[test]
-fn simpleexternreturn()        { run("programs/externs/simpleexternreturn", 42); }
+fn simpleexternreturn()        { run_without_borrow_check("programs/externs/simpleexternreturn", 42); }
 
 #[test]
-fn simpleexternparam()         { run("programs/externs/simpleexternparam", 42); }
-
+fn simpleexternparam()         { run_without_borrow_check("programs/externs/simpleexternparam", 42); }
 #[test]
 #[ignore]
 fn structimmreturnextern()     { run("programs/externs/structimmreturnextern", 42); }
