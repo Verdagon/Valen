@@ -14,6 +14,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:6:12:
   consume(&h, ^h);
+           ^
 Argument 0 borrows into h, but argument 1 moves it, so the borrow would dangle.
 "#,
   );
@@ -34,6 +35,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:7:13:
   consume2(&h.ship, ^h);
+            ^^^^^^
 Argument 0 borrows into h, but argument 1 moves it, so the borrow would dangle.
 "#,
   );

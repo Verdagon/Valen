@@ -17,6 +17,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:8:12:
   badpair(&e, &e);
+           ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
@@ -51,6 +52,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:8:12:
   badpair(&e, &e);
+           ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );

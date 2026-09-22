@@ -114,11 +114,11 @@ import v.builtins.drop.*;
 #!DeriveStructDrop
 struct Entity { hp int; buffs []int; }
 func damage<r'>(self &Entity in r, amount int) mut(r) { }
-func observe<T, g'>(x &T in g) { }
+func print_int<g'>(i &int in g) { }
 func attack<r'>(a &Entity in r, d &Entity in r) mut(r) {
   buff = &d.buffs[0];
   d.damage(5);
-  observe(buff);
+  print_int(buff);
 }
 exported func main() int {
   e = Entity(5, Array<int>(3));
@@ -126,11 +126,13 @@ exported func main() int {
   return 0;
 }
 "#,
-    r#"At test:0.vale:11:11:
-  observe(buff);
+    r#"At test:0.vale:11:13:
+  print_int(buff);
+            ^^^^
 Used a borrow after invalidated.
 Invalidated at test:0.vale:10:4:
   d.damage(5);
+   ^^^^^^^^^^
 "#,
   );
 }
@@ -164,9 +166,11 @@ exported func peek<r'>(a &[]int in r) mut(r) {
 "#,
     r#"At test:0.vale:7:11:
   observe(e);
+          ^
 Used a borrow after invalidated.
 Invalidated at test:0.vale:6:3:
   churn(a);
+  ^^^^^
 "#,
   );
 }

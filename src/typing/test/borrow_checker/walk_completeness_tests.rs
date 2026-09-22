@@ -2,6 +2,7 @@ use super::util::assert_borrow_error_renders;
 
 const ALIASING_DIAGNOSTIC: &str = r#"At test:0.vale:6:14:
     badpair(&e, &e);
+             ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#;
 
@@ -52,6 +53,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:7:19:
   outer(badpairi(&e, &e));
+                  ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
@@ -71,6 +73,7 @@ fn test_violation_in_let_initializer_caught() {
     &value_call_program("  y = badpairi(&e, &e);\n  return y;"),
     r#"At test:0.vale:5:17:
   y = badpairi(&e, &e);
+                ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
@@ -82,6 +85,7 @@ fn test_violation_in_return_caught() {
     &value_call_program("  return badpairi(&e, &e);"),
     r#"At test:0.vale:5:20:
   return badpairi(&e, &e);
+                   ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
@@ -93,6 +97,7 @@ fn test_violation_in_set_source_caught() {
     &value_call_program("  y = 0;\n  set y = badpairi(&e, &e);\n  return y;"),
     r#"At test:0.vale:6:21:
   set y = badpairi(&e, &e);
+                    ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );

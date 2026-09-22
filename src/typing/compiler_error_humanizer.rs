@@ -14,6 +14,7 @@ use crate::scout_arena::ScoutArena;
 use crate::solver::solver::*;
 use crate::solver::solver_error_humanizer::humanize_failed_solve as solver_humanize_failed_solve;
 use crate::typing::ast::ast::*;
+use crate::typing::borrow_checker::humanize_borrow_error;
 use crate::typing::ast::citizens::*;
 use crate::typing::ast::expressions::*;
 use crate::typing::rule_runes::rune_usages;
@@ -48,6 +49,12 @@ pub fn humanize<'s, 't>(
   humanize_ref(scout_arena, typing_interner, verbose, code_map, lines_between, line_range_containing, line_containing, &err)
 }
 
+fn caret_under(line_begin_offset: i32, range: &RangeS) -> String {
+  let spaces = (range.begin.offset - line_begin_offset).max(0);
+  let arrows = (range.end.offset - range.begin.offset).max(1);
+  format!("{}{}", " ".repeat(spaces as usize), "^".repeat(arrows as usize))
+}
+
 fn humanize_ref<'s, 't>(
   scout_arena: &ScoutArena<'s>,
   typing_interner: &TypingInterner<'s, 't>,
@@ -65,6 +72,27 @@ fn humanize_ref<'s, 't>(
       .collect::<Vec<_>>()
       .join("");
   }
+  if let ICompileErrorT::BorrowCheckError { range, kind } = err {
+    let body = humanize_borrow_error(*range, kind);
+    let header = {
+      let pos = code_map(range.begin);
+      let line = line_containing(range.begin);
+      let caret = caret_under(line_range_containing(range.begin).begin.offset, range);
+      format!("At {}:\n{}\n{}\n", pos, line, caret)
+    };
+    let notes: String = err
+      .notes()
+      .iter()
+      .map(|(label, note_range)| {
+        let pos = code_map(note_range.begin);
+        let line = line_containing(note_range.begin);
+        let caret = caret_under(line_range_containing(note_range.begin).begin.offset, note_range);
+        format!("\n{} at {}:\n{}\n{}", label, pos, line, caret)
+      })
+      .collect::<Vec<_>>()
+      .join("");
+    return format!("{}{}{}\n", header, body, notes);
+  }
   let error_str_body = match err {
     ICompileErrorT::TypingPassDefiningError { range: _, inner } => {
       humanize_defining_error(scout_arena, typing_interner, verbose, code_map, lines_between, line_range_containing, line_containing, inner)
@@ -75,7 +103,7 @@ fn humanize_ref<'s, 't>(
     ICompileErrorT::RangedInternalErrorT { range: _, message } => {
       format!("Internal error: {}", message)
     }
-    ICompileErrorT::BorrowCheckError { range, kind } => crate::typing::borrow_checker::humanize_borrow_error(*range, kind),
+    ICompileErrorT::BorrowCheckError { .. } => unreachable!("rendered above, with carets"),
     ICompileErrorT::BorrowCheckErrors { .. } => unreachable!("rendered above, one inner error at a time"),
     ICompileErrorT::CouldntFindOverrideT { range, fff } => {
       format!("Couldn't find an override:\n{}",

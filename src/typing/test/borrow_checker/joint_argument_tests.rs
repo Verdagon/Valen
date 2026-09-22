@@ -14,6 +14,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:6:12:
   badpair(&e, &e);
+           ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
@@ -74,6 +75,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:7:13:
   badships(&f.flagship, &f.flagship);
+            ^^^^^^^^^^
 Arguments 0 and 1 both borrow into f, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
@@ -108,6 +110,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:7:11:
   badmix(&f, &f.flagship);
+          ^
 Arguments 0 and 1 both borrow into f, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
@@ -128,6 +131,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:7:9:
   bad3(&e, &other, &e);
+        ^
 Arguments 0 and 2 both borrow into e, but their parameters are in disjoint mutated groups r and u, which the callee may treat as non-aliasing.
 "#,
   );
@@ -147,6 +151,7 @@ exported func main() int {
 "#,
     r#"At test:0.vale:6:14:
   badpair_s(&e, &e);
+             ^
 Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutated groups r and s, which the callee may treat as non-aliasing.
 "#,
   );
