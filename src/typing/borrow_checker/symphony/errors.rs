@@ -14,15 +14,12 @@ pub fn humanize_borrow_error<'s, 't>(
     BorrowErrorKind::BorrowIntoMovedArgument { local, borrow_arg, move_arg } => {
       unimplemented!()
     }
-    BorrowErrorKind::UseAfterChurn { local: RefKey::Named(local) } => {
+    // The `At <pos>:` header already points the caret at the argument's own source location,
+    // so the message doesn't name a variable.
+    BorrowErrorKind::UseAfterChurn { .. } | BorrowErrorKind::UseAfterChurnTemporary { .. } => {
       format!(
-        "Used {} after invalidated.",
-        var_name(local),
+        "Used a borrow after invalidated."
       )
-    }
-    // A held temporary has no name to report; it reads as the sibling-argument case.
-    BorrowErrorKind::UseAfterChurn { local: RefKey::Held(_) } | BorrowErrorKind::UseAfterChurnTemporary => {
-      unimplemented!()
     }
     BorrowErrorKind::GrouplessReturnBorrow => {
       unimplemented!()

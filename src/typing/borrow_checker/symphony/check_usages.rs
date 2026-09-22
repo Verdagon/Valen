@@ -9,7 +9,7 @@ use crate::postparsing::rules::types::ITypeST;
 use crate::StrI;
 use crate::typing::ast::ast::{FunctionDefinitionT, LocT};
 use crate::typing::borrow_checker::borrow_error::BorrowErrorKind;
-use crate::typing::borrow_checker::check_usages_types::{GroupSubtree, LocalEntry, RefKey};
+use crate::typing::borrow_checker::check_usages_types::*;
 use crate::typing::borrow_checker::group_expr::{GroupChildStepG, GroupExprG, GroupPathG, GroupRootG};
 use crate::typing::borrow_checker::kind_g::*;
 use crate::typing::borrow_checker::templata_g::*;
@@ -27,8 +27,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   ) -> Result<(), ICompileErrorT<'s, 't>> {
     let mut group_tree =
         GroupSubtree {
-          locals: IndexMap::new(),
-          locals_in_ellipsis: IndexMap::new(),
+          last_mut_effect: None,
           name_to_child: IndexMap::new(),
         };
     let mut next_held_num = 0;
@@ -51,10 +50,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       ExpressionGE::LetNormal(LetNormalGE { range, variable, expr, result, .. }) => {
         self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
-        self.insert_new_variable(group_tree, RefKey::Named(variable.name), variable.tyype);
+        // self.insert_new_variable(group_tree, RefKey::Named(variable.name), variable.tyype);
       }
       ExpressionGE::LocalLookup(LocalLookupGE { range, local_variable, result, .. }) => {
-        self.check_variable_still_valid(group_tree, *range, RefKey::Named(local_variable.name), local_variable.tyype)?;
+        // self.check_variable_still_valid(group_tree, *range, RefKey::Named(local_variable.name), local_variable.tyype)?;
 
         // if is_use_after_churn(group_tree, RefKey::Named(local_variable.name)) {
         //   return Err(ICompileErrorT::BorrowCheckError {
@@ -101,28 +100,23 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         self.check_expr(coutputs, function_s, arena, group_tree, *source_te, next_held_num)?;
       }
       ExpressionGE::FunctionCall(FunctionCallGE { loct, range, callable, args, result, mut_effects, .. }) => {
-
-        let mut held_keys = Vec::new();
         for arg in args.iter() {
-          // Check the expr that produces the argument
+          // Careful, this may cause some mut effects, that could invalidate other arguments.
+          // We check the argument types again below, in case that happened.
           self.check_expr(coutputs, function_s, arena, group_tree, *arg, next_held_num)?;
-
-          // Insert it as a held variable, *before* checking the remaining args.
-          let held_key = RefKey::Held(*next_held_num);
-          *next_held_num += 1;
-          self.insert_new_variable(group_tree, held_key, arg.result());
-          held_keys.push(held_key);
         }
-
-        for (held_key, arg_gt) in held_keys.iter().zip(args.iter()) {
-          self.check_variable_still_valid(group_tree, *range.iter().last().unwrap(), *held_key, arg_gt.result())?;
+        // Check each argument again, just in case any of the arguments invalidated any of the
+        // other args.
+        for arg in args.iter() {
+          self.check_kind_still_valid(group_tree, arg.range(), arg.result())?;
         }
 
         // Conceptually, the call happens here
 
         // Process the calls' effects
+        let mel = MutEffectLoc { loct: *loct, range: range[0] };
         for mut_effect in mut_effects.iter() {
-          self.churn(group_tree, mut_effect.effecting_node_loc, mut_effect.steps);
+          self.note_mut_effect(group_tree, mel, mut_effect.steps);
         }
       }
       ExpressionGE::LetAndLend(_) => unimplemented!(),
@@ -160,7 +154,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::Destroy(DestroyGE { range, expr, struct_tt, .. }) => {
         self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
       }
-      ExpressionGE::CopyPrim(CopyPrimGE{ range, loct, inner, result }) => {
+      ExpressionGE::CopyPrim(CopyPrimGE { range, loct, inner, result }) => {
         self.check_expr(coutputs, function_s, arena, group_tree, *inner, next_held_num)?;
       }
       ExpressionGE::StaticSizedArrayLookup(_) => unimplemented!(),
@@ -175,122 +169,72 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     Ok(())
   }
 
-  fn churn<'g>(
+  fn note_mut_effect<'g>(
     &self,
     group_subtree: &mut GroupSubtree<'s, 't>,
-    effect_loc: LocT<'t>,
+    effect_loc: MutEffectLoc<'s, 't>,
     mut_effect_steps: &'g [GroupStep<'s, 't>],
   ) {
     match mut_effect_steps.split_first() {
       None => {
-        // Invalidate every local in descendant groups
-        self.invalidate_descendant_groups_of(group_subtree, effect_loc);
+        group_subtree.last_mut_effect = Some(effect_loc);
       }
       Some((first, rest)) => {
-        match group_subtree.name_to_child.get_mut(first) {
-          None => {} // If there's nothing there, then there's nothing we need to churn.
-          Some(child) => {
-            self.churn(child, effect_loc, rest);
-          }
-        }
+        let child =
+            group_subtree.name_to_child
+            .entry(*first)
+            .or_insert_with(|| GroupSubtree {
+                last_mut_effect: None,
+                name_to_child: IndexMap::new(),
+            });
+        self.note_mut_effect(child, effect_loc, rest);
       }
     }
   }
 
-  fn invalidate_descendant_groups_of<'g>(
+  // fn invalidate_descendant_groups_of<'g>(
+  //   &self,
+  //   group_subtree: &mut GroupSubtree<'s, 't>,
+  //   effect_range: RangeS<'s>
+  // ) {
+  //   // DON'T invalidate every local in this group. We don't invalidate references into this group,
+  //   // we invalidate references into descendant groups.
+  //
+  //   // Recurse
+  //   for (group_step, group_child_subtree) in &mut group_subtree.name_to_child {
+  //     match group_step {
+  //       // These aren't child groups, so keep looking for child groups in them...
+  //       GroupStep::Member { .. } => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
+  //       GroupStep::InlineElements => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
+  //       // These are actually child groups, so deep invalidate them.
+  //       GroupStep::ChildElements => self.deep_invalidate(group_child_subtree, effect_range),
+  //       GroupStep::Variant { .. } => self.deep_invalidate(group_child_subtree, effect_range),
+  //       // TODO: Not sure about these cases
+  //       GroupStep::Rune(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
+  //       GroupStep::ParamAnonymousGroup(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
+  //       GroupStep::Local(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
+  //     }
+  //   }
+  // }
+
+  // fn deep_invalidate<'g>(
+  //   &self,
+  //   group_subtree: &mut GroupSubtree<'s, 't>,
+  //   effect_range: RangeS<'s>
+  // ) {
+  //   // Invalidate every local in this group
+  //   for (local_key, local) in &mut group_subtree.locals {
+  //     local.invalidated_by = Some(effect_range);
+  //   }
+  //   // Invalidate every local in every descendant group
+  //   for (group_step, group_child_subtree) in &mut group_subtree.name_to_child {
+  //     self.deep_invalidate(group_child_subtree, effect_range);
+  //   }
+  // }
+
+  fn collect_kind_mentioned_group_templatas<'g>(
     &self,
-    group_subtree: &mut GroupSubtree<'s, 't>,
-    effect_loc: LocT<'t>
-  ) {
-    // DON'T invalidate every local in this group. We don't invalidate references into this group,
-    // we invalidate references into descendant groups.
-
-    // Recurse
-    for (group_step, group_child_subtree) in &mut group_subtree.name_to_child {
-      match group_step {
-        // These aren't child groups, so keep looking for child groups in them...
-        GroupStep::Member { .. } => self.invalidate_descendant_groups_of(group_child_subtree, effect_loc),
-        GroupStep::InlineElements => self.invalidate_descendant_groups_of(group_child_subtree, effect_loc),
-        // These are actually child groups, so deep invalidate them.
-        GroupStep::ChildElements => self.deep_invalidate(group_child_subtree, effect_loc),
-        GroupStep::Variant { .. } => self.deep_invalidate(group_child_subtree, effect_loc),
-        // TODO: Not sure about these cases
-        GroupStep::Rune(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_loc),
-        GroupStep::ParamAnonymousGroup(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_loc),
-        GroupStep::Local(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_loc),
-      }
-    }
-  }
-
-  fn deep_invalidate<'g>(
-    &self,
-    group_subtree: &mut GroupSubtree<'s, 't>,
-    effect_loc: LocT<'t>
-  ) {
-    // Invalidate every local in this group
-    for (local_key, local) in &mut group_subtree.locals {
-      local.invalidated_by = Some(effect_loc);
-    }
-    // Invalidate every local in every descendant group
-    for (group_step, group_child_subtree) in &mut group_subtree.name_to_child {
-      self.deep_invalidate(group_child_subtree, effect_loc);
-    }
-  }
-
-  fn check_variable_still_valid<'g>(
-    &self,
-    group_tree: &mut GroupSubtree<'s, 't>,
-    range: RangeS<'s>,
-    var_key: RefKey<'s, 't>,
-    type_gt: KindGT<'s, 't, 'g>
-  ) -> Result<(), ICompileErrorT<'s, 't>> {
-    let mut mentioned_groups = Vec::new();
-    self.collect_type_mentioned_groups(&mut mentioned_groups, type_gt);
-    for mentioned_group in mentioned_groups {
-      // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
-      // (Perhaps we should make it one)
-      let mentioned_group_subtree = self.lookup_or_create_group_subtree(group_tree, mentioned_group);
-      let local_entry =
-        if mentioned_group.ellipsis {
-          mentioned_group_subtree.locals_in_ellipsis.get(&var_key).expect("Missing subtree")
-        } else {
-          mentioned_group_subtree.locals.get(&var_key).expect("Missing subtree")
-        };
-      if let Some(loct) = local_entry.invalidated_by {
-        return Err(ICompileErrorT::BorrowCheckError {
-          range: range,
-          kind: BorrowErrorKind::UseAfterChurn { local: var_key }
-        });
-      }
-    }
-    Ok(())
-  }
-
-  fn insert_new_variable<'g>(&self, group_tree: &mut GroupSubtree<'s, 't>, new_var_key: RefKey<'s, 't>, type_gt: KindGT<'s, 't, 'g>) {
-    let mut mentioned_groups = Vec::new();
-    self.collect_type_mentioned_groups(&mut mentioned_groups, type_gt);
-    for mentioned_group in mentioned_groups {
-      // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
-      // (Perhaps we should make it one)
-      let mentioned_group_subtree = self.lookup_or_create_group_subtree(group_tree, mentioned_group);
-      if mentioned_group.ellipsis {
-        mentioned_group_subtree.locals_in_ellipsis.insert(new_var_key, LocalEntry {
-          invalidated_by: None
-        });
-      } else {
-        mentioned_group_subtree.locals.insert(new_var_key, LocalEntry {
-          invalidated_by: None
-        });
-      }
-    }
-    // - for each group that this value is pointing at:
-    //   - fetch its subtree
-    //   - insert an entry
-  }
-
-  fn collect_type_mentioned_groups<'g>(
-    &self,
-    group_exprs_g: &mut Vec<GroupPathG<'s, 't, 'g>>,
+    group_templatas: &mut Vec<GroupTemplataG<'s, 't, 'g>>,
     type_gt: KindGT<'s, 't, 'g>
   ) {
     match type_gt {
@@ -303,28 +247,25 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       KindGT::USize(_) => {}
       KindGT::Struct(StructGT { id, template_args }) => {
         for template_arg in template_args.iter() {
-          self.collect_templata_mentioned_groups(group_exprs_g, *template_arg);
+          self.collect_templata_mentioned_group_templatas(group_templatas, *template_arg);
         }
       }
       KindGT::Interface(InterfaceGT { id, template_args }) => {
         for template_arg in template_args.iter() {
-          self.collect_templata_mentioned_groups(group_exprs_g, *template_arg);
+          self.collect_templata_mentioned_group_templatas(group_templatas, *template_arg);
         }
       }
       KindGT::StaticSizedArray(StaticSizedArrayGT { name, element_type }) => {
-        self.collect_type_mentioned_groups(group_exprs_g, *element_type);
+        self.collect_kind_mentioned_group_templatas(group_templatas, *element_type);
       }
       KindGT::RuntimeSizedArray(RuntimeSizedArrayGT { name, element_type }) => {
-        self.collect_type_mentioned_groups(group_exprs_g, *element_type);
+        self.collect_kind_mentioned_group_templatas(group_templatas, *element_type);
       }
       KindGT::KindPlaceholder(_) => {}
       KindGT::OverloadSet(_) => {}
       KindGT::BorrowRef(BorrowRefGT { inner, group }) => {
-        self.collect_type_mentioned_groups(group_exprs_g, *inner);
-        for group in group.group.iter() {
-          // VCOORD: dedup?
-          group_exprs_g.push(*group);
-        }
+        self.collect_kind_mentioned_group_templatas(group_templatas, *inner);
+        self.collect_templata_mentioned_group_templatas(group_templatas, ITemplataG::Group(*group));
       }
       KindGT::OwnRef(_) => {}
       KindGT::ShareRef(_) => {}
@@ -332,14 +273,17 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     }
   }
 
-  fn collect_templata_mentioned_groups<'g>(
+  fn collect_templata_mentioned_group_templatas<'g>(
     &self,
-    group_exprs_g: &mut Vec<GroupPathG<'s, 't, 'g>>,
+    group_templatas: &mut Vec<GroupTemplataG<'s, 't, 'g>>,
     templata_gt: ITemplataG<'s, 't, 'g>
   ) {
     match templata_gt {
+      ITemplataG::Group(group) => {
+        group_templatas.push(group);
+      }
       ITemplataG::Kind(KindTemplataG { kind }) => {
-        self.collect_type_mentioned_groups(group_exprs_g, kind);
+        self.collect_kind_mentioned_group_templatas(group_templatas, kind);
       }
       ITemplataG::Placeholder(_) => {}
       ITemplataG::Integer(_) => {}
@@ -350,35 +294,12 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ITemplataG::CoordList(_) => {}
       ITemplataG::RuntimeSizedArrayTemplate(_) => {}
       ITemplataG::StaticSizedArrayTemplate(_) => {}
-      ITemplataG::Group(_) => {}
       ITemplataG::Function(_) => {}
       ITemplataG::StructDefinition(_) => {}
       ITemplataG::InterfaceDefinition(_) => {}
       ITemplataG::ImplDefinition(_) => {}
       ITemplataG::ExternFunction(_) => {}
     }
-  }
-
-  fn lookup_or_create_group_subtree<'g, 'x>(
-    &self,
-    tree: &'x mut GroupSubtree<'s, 't>,
-    path: GroupPathG<'s, 't, 'g>
-  ) -> &'x mut GroupSubtree<'s, 't> {
-    let key =
-      match path.root {
-        GroupRootG::Rune(rune) => GroupStep::Rune(rune),
-        GroupRootG::ParamAnonymousGroup(_) => unimplemented!(),
-        GroupRootG::Local(var_name) => GroupStep::Local(var_name),
-      };
-    let subroot =
-      tree.name_to_child
-          .entry(key)
-          .or_insert_with(|| GroupSubtree {
-            locals: IndexMap::new(),
-            locals_in_ellipsis: IndexMap::new(),
-            name_to_child: IndexMap::new(),
-          });
-    self.lookup_group_subtree_inner(subroot, path.steps)
   }
 
   fn lookup_group_subtree_inner<'g, 'x>(
@@ -390,21 +311,119 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       None => subtree,
       Some(first) => {
         let key =
-          match first {
-            GroupChildStepG::Member { member_name } => GroupStep::Member{member_name: *member_name},
-            GroupChildStepG::ChildElements { } => GroupStep::ChildElements{},
-            GroupChildStepG::InlineElements { .. } => GroupStep::InlineElements{},
-            GroupChildStepG::Variant { variant_name } => GroupStep::Variant{ variant_name: *variant_name }
-          };
+            match first {
+              GroupChildStepG::Member { member_name } => GroupStep::Member { member_name: *member_name },
+              GroupChildStepG::ChildElements {} => GroupStep::ChildElements {},
+              GroupChildStepG::InlineElements { .. } => GroupStep::InlineElements {},
+              GroupChildStepG::Variant { variant_name } => GroupStep::Variant { variant_name: *variant_name }
+            };
         let subroot =
             subtree.name_to_child
                 .entry(key)
                 .or_insert_with(|| GroupSubtree {
-                  locals: IndexMap::new(),
-                  locals_in_ellipsis: IndexMap::new(),
+                  last_mut_effect: None,
                   name_to_child: IndexMap::new(),
                 });
         self.lookup_group_subtree_inner(subroot, &remaining_path[1..])
+      }
+    }
+  }
+
+  fn check_kind_still_valid<'g>(
+    &self,
+    group_tree: &mut GroupSubtree<'s, 't>,
+    use_range: RangeS<'s>,
+    kind_g: KindGT<'s, 't, 'g>
+  ) -> Result<(), ICompileErrorT<'s, 't>> {
+    let mut mentioned_group_templatas = Vec::new();
+    self.collect_kind_mentioned_group_templatas(&mut mentioned_group_templatas, kind_g);
+    for mentioned_group_templata in mentioned_group_templatas {
+      // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
+      // (Perhaps we should make it one)
+      self.check_templata_still_valid(
+        group_tree, use_range, mentioned_group_templata)?;
+    }
+    Ok(())
+  }
+
+  fn check_templata_still_valid<'g>(
+    &self,
+    group_tree: &mut GroupSubtree<'s, 't>,
+    use_range: RangeS<'s>,
+    group_templata: GroupTemplataG<'s, 't, 'g>
+  ) -> Result<(), ICompileErrorT<'s, 't>> {
+    for mentioned_group in group_templata.group {
+      // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
+      // (Perhaps we should make it one)
+
+      let key =
+          match mentioned_group.root {
+            GroupRootG::Rune(rune) => GroupStep::Rune(rune),
+            GroupRootG::ParamAnonymousGroup(_) => unimplemented!(),
+            GroupRootG::Local(var_name) => GroupStep::Local(var_name),
+          };
+      let subroot =
+      group_tree.name_to_child
+          .entry(key)
+          .or_insert_with(|| GroupSubtree {
+            last_mut_effect: None,
+            name_to_child: IndexMap::new(),
+          });
+      self.check_target_group_invalidated_since(
+        subroot, mentioned_group.steps, use_range, group_templata.born_at)?;
+    }
+    Ok(())
+  }
+
+  // This function visits each group down to the target group
+  fn check_target_group_invalidated_since<'g>(
+    &self,
+    subtree: &mut GroupSubtree<'s, 't>,
+    remaining_path: &'g [GroupChildStepG<'s>],
+    use_range: RangeS<'s>,
+    target_group_invalidated_since: LocT<'t>,
+    // The bool is true iff the target group is an independent descendant of the current group.
+  ) -> Result<bool, ICompileErrorT<'s, 't>> {
+    match remaining_path.first() {
+      None => Ok(false),
+      Some(first) => {
+        let (child_is_independent, group_step) =
+            match first {
+              GroupChildStepG::Member { member_name } => (false, GroupStep::Member { member_name: *member_name }),
+              GroupChildStepG::ChildElements {} => (true, GroupStep::ChildElements {}),
+              GroupChildStepG::InlineElements { .. } => (false, GroupStep::InlineElements {}),
+              GroupChildStepG::Variant { variant_name } => (true, GroupStep::Variant { variant_name: *variant_name })
+            };
+        // TODO: we really need to get a better term than child group. "independent descendant group"?
+        let child_tree =
+        subtree.name_to_child
+                .entry(group_step)
+                .or_insert_with(|| GroupSubtree {
+                  last_mut_effect: None,
+                  name_to_child: IndexMap::new(),
+                });
+        // First, check if anyone has mutated anything closer to the target group.
+        let target_is_independent_of_child =
+            self.check_target_group_invalidated_since(
+              child_tree, &remaining_path[1..], use_range, target_group_invalidated_since)?;
+        let target_is_independent = child_is_independent || target_is_independent_of_child;
+
+        // If we get here, then there was no problem closer to the target group.
+        // Now let's check if our group was modified since then. If so, and the target group is a
+        // child group compared to us, throw an error pointing at the argument's own location.
+
+        if let Some(last_mut_effect_loc) = subtree.last_mut_effect {
+          if last_mut_effect_loc.loct.path > target_group_invalidated_since.path {
+            if target_is_independent {
+              return Err(ICompileErrorT::BorrowCheckError {
+                range: use_range,
+                kind: BorrowErrorKind::UseAfterChurn { local: RefKey::Held(0), churned_at: last_mut_effect_loc.range }
+              });
+            }
+          }
+        }
+
+        Ok(target_is_independent)
       }
     }
   }

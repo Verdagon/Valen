@@ -6,6 +6,7 @@ use crate::postparsing::names::{CodeNameS, IImpreciseNameS, IRuneS, IVarDeclarat
 use crate::postparsing::rules::RuneUsage;
 use crate::postparsing::rules::types::*;
 use crate::StrI;
+use crate::typing::ast::ast::LocT;
 use crate::typing::ast::ast::FunctionDefinitionT;
 use crate::typing::ast::citizens::{CitizenDefinitionT, StructDefinitionT};
 use crate::typing::ast::expressions::*;
@@ -142,7 +143,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         // let variable_g = self.groupify_var(bump_g, *variable, local_rune_to_templata, local_to_type_g);
         Ok(ExpressionGE::LetNormal(bump_g.alloc(LetNormalGE { range: *range, variable: variable_g, expr: expr_ge, result: result_gt, })))
       }
-      ExpressionTE::LocalLookup(LocalLookupTE { range, local_variable, result, .. }) => {
+      ExpressionTE::LocalLookup(LocalLookupTE { range, loct, local_variable, result, .. }) => {
         let local_gt = local_to_type_g.get(&local_variable.name).expect("Couldn't find local variable");
         let variable_g =
             bump_g.alloc(LocalVariableG {
@@ -154,23 +155,28 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             GroupTemplataG {
               group: group_expr,
               kind: *local_gt,
+              // Note that if the local is a reference itself, like `let x &Ship in g = ...`,
+              // this line is *not* specifying that `in g`.
+              // It's specifying that the result of loading x is actually a `&(&Ship in g) in x`.
+              born_at: *loct,
             };
         Ok(
           ExpressionGE::LocalLookup(
             bump_g.alloc(LocalLookupGE {
               range: *range,
+              loct: *loct,
               local_variable: variable_g,
               result: bump_g.alloc(BorrowRefGT { inner: *local_gt, group: group_templata_g })
             })))
       }
-      ExpressionTE::LetAndLend(LetAndLendTE { range, variable, expr, result, .. }) => {
+      ExpressionTE::LetAndLend(LetAndLendTE { range, loct, variable, expr, result, .. }) => {
         let expr_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *expr, local_rune_to_templata, local_to_type_g)?;
         let local_gt = expr_ge.result();
 
         let variable_g =
             bump_g.alloc(LocalVariableG {
               name: variable.name,
-              tyype: local_gt
+              tyype: local_gt,
             });
         local_to_type_g.insert(variable.name,expr_ge.result());
 
@@ -178,11 +184,16 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             GroupTemplataG {
               group: Self::new_local_group_expr(bump_g, variable.name),
               kind: local_gt,
+              // Note that if the local is a reference itself, like `let x &Ship in g = ...`,
+              // this line is *not* specifying that `in g`.
+              // It's specifying that the result of loading x is actually a `&(&Ship in g) in x`.
+              born_at: *loct,
             };
         Ok(
           ExpressionGE::LetAndLend(
             bump_g.alloc(LetAndLendGE {
               range: *range,
+              loct: *loct,
               variable: variable_g,
               expr: expr_ge,
               result: bump_g.alloc(BorrowRefGT { inner: local_gt, group: group_templata_g })
@@ -233,7 +244,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         Ok(ExpressionGE::Consecutor(bump_g.alloc(ConsecutorGE { range: *range, exprs: exprs_ge_slice, result: result_gt, })))
       }
       ExpressionTE::ConstantInt(ConstantIntTE { range, value, bits, .. }) => {
-        let value_gt = self.groupify_templata(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *value);
+        let value_gt = self.groupify_templata(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *value, LocT { path: &[] });
         let result_gt = KindGT::Int(IntGT { bits: *bits });
         Ok(ExpressionGE::ConstantInt(bump_g.alloc(ConstantIntGE { range: *range, value: value_gt, bits: *bits, result: result_gt, })))
       }
@@ -245,7 +256,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let result_gt = KindGT::Float(FloatGT { });
         Ok(ExpressionGE::ConstantFloat(bump_g.alloc(ConstantFloatGE { range: *range, value: *value, result: result_gt, })))
       }
-      ExpressionTE::ArgLookup(ArgLookupTE { range, param_index, result, .. }) => {
+      ExpressionTE::ArgLookup(ArgLookupTE { range, loct, param_index, result, .. }) => {
         let param_type_t = function_t.header.params[*param_index as usize].tyype;
         let param_type_s = function_s.params[*param_index as usize].tyype;
         let param_name = function_s.params[*param_index as usize].name;
@@ -253,8 +264,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           type_s: param_type_s,
           name: Some(param_name),
         };
-        let result_gt = self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, param_type_t, Some(&written_context));
-        Ok(ExpressionGE::ArgLookup(bump_g.alloc(ArgLookupGE { range: *range, param_index: *param_index, result: result_gt, })))
+        let result_gt = self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, param_type_t, Some(&written_context), *loct);
+        Ok(ExpressionGE::ArgLookup(bump_g.alloc(ArgLookupGE { range: *range, loct: *loct, param_index: *param_index, result: result_gt, })))
       }
       ExpressionTE::ArrayLength(ArrayLengthTE { range, array_expr, result, .. }) => {
         let array_expr_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *array_expr, local_rune_to_templata, local_to_type_g)?;
@@ -287,7 +298,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let callee_return_type_written_context =
             WrittenContext {
               type_s: callee_func_s.maybe_return_type.unwrap_or_else(|| panic!("Callee doesn't have return {:?} {:?}", callee_template_id, callee_func_s.name)),
-              name: None
+              name: None,
             };
         let result_gt =
             self.groupify_type(
@@ -296,13 +307,15 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
               &callee_rune_to_caller_templata,
               local_to_type_g,
               *result,
-              Some(&callee_return_type_written_context));
+              Some(&callee_return_type_written_context),
+              *loct);
         let mut stuff: Vec<&'g MutEffectPath> = Vec::new();
         for callee_effect_s in callee_func_s.effects {
           stuff.push(
             bump_g.alloc(
               MutEffectPath {
                 effecting_node_loc: *loct,
+                range: range[0],
                 steps: self.groupify_effect(bump_g, callee_effect_s, &callee_rune_to_caller_templata),
               }
             )
@@ -319,7 +332,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           mut_effects: mut_effects_slice
         })))
       }
-      ExpressionTE::Destroy(DestroyTE { range, expr: source_te, struct_tt, destination_reference_variables, result, .. }) => {
+      ExpressionTE::Destroy(DestroyTE { range, loct, expr: source_te, struct_tt, destination_reference_variables, result, .. }) => {
         let source_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *source_te, local_rune_to_templata, local_to_type_g)?;
         let source_struct_gt =
           match source_ge.result() {
@@ -328,7 +341,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           };
 
         let member_name_to_locally_phrased_member_type =
-            self.translate_struct_members(coutputs, bump_g, *source_struct_gt);
+            self.translate_struct_members(coutputs, bump_g, *source_struct_gt, *loct);
         assert!(member_name_to_locally_phrased_member_type.len() == destination_reference_variables.len());
         let mut dest_vars_g = Vec::new();
         for ((_, local_type_g), dest_var) in member_name_to_locally_phrased_member_type.iter().zip(destination_reference_variables.iter()) {
@@ -345,6 +358,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
         Ok(ExpressionGE::Destroy(bump_g.alloc(DestroyGE {
           range: *range,
+          loct: *loct,
           expr: source_ge,
           struct_tt: source_struct_gt,
           destination_reference_variables: dest_vars_g_slice,
@@ -427,7 +441,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         })))
       },
       ExpressionTE::StaticSizedArrayLookup(StaticSizedArrayLookupTE { .. }) => unimplemented!(),
-      ExpressionTE::RuntimeSizedArrayLookup(RuntimeSizedArrayLookupTE { range, array_expr, array_type, index_expr, result, .. }) => {
+      ExpressionTE::RuntimeSizedArrayLookup(RuntimeSizedArrayLookupTE { loct, range, array_expr, array_type, index_expr, result, .. }) => {
         let array_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *array_expr, local_rune_to_templata, local_to_type_g)?;
         let index_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *index_expr, local_rune_to_templata, local_to_type_g)?;
         let (array_group, array_gt) =
@@ -441,6 +455,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
         Ok(ExpressionGE::RuntimeSizedArrayLookup(bump_g.alloc(RuntimeSizedArrayLookupGE {
           range: *range,
+          loct: *loct,
           array_expr: array_ge,
           array_type: array_gt,
           index_expr: index_ge,
@@ -450,11 +465,12 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
               &bump_g,
               *array_group,
               GroupChildStepG::ChildElements { },
-              array_gt.element_type)
+              array_gt.element_type,
+              *loct)
           }),
         })))
       }
-      ExpressionTE::MemberLookup(MemberLookupTE { range, struct_expr: struct_expr_te, member_name, result, .. }) => {
+      ExpressionTE::MemberLookup(MemberLookupTE { range, loct, struct_expr: struct_expr_te, member_name, result, .. }) => {
         let source_struct_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *struct_expr_te, local_rune_to_templata, local_to_type_g)?;
         let (struct_group_templata, source_kind_gt) =
             match source_struct_ge.result() {
@@ -477,7 +493,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             };
 
         let member_name_to_locally_phrased_member_type =
-            self.translate_struct_members(coutputs, bump_g, *source_struct_gt);
+            self.translate_struct_members(coutputs, bump_g, *source_struct_gt, *loct);
         let member_gt =
             member_name_to_locally_phrased_member_type.get(member_name_str)
                 .expect("Couldn't find member");
@@ -489,10 +505,12 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 &bump_g,
                 *struct_group_templata,
                 GroupChildStepG::Member { member_name: *member_name_str },
-                *member_gt)
+                *member_gt,
+                *loct)
             });
         Ok(ExpressionGE::MemberLookup(bump_g.alloc(MemberLookupGE {
           range: *range,
+          loct: *loct,
           struct_expr: source_struct_ge,
           member_name: *member_name,
           result: result_gt,
@@ -505,7 +523,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       bump_g: &'g Bump,
       existing_path: GroupTemplataG<'s, 't, 'g>,
       new_step: GroupChildStepG<'s>,
-      new_type: KindGT<'s, 't, 'g>
+      new_type: KindGT<'s, 't, 'g>,
+      born_at: LocT<'t>,
   ) -> GroupTemplataG<'s, 't, 'g> {
     assert!(existing_path.group.len() == 1); // unimplemneted
     let existing_group_path = existing_path.group[0];
@@ -525,6 +544,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             }
           ]),
           kind: new_type,
+          born_at,
         };
     member_group_templata
   }
@@ -533,7 +553,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     &self,
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
-    source_struct_gt: StructGT<'s, 't, 'g>
+    source_struct_gt: StructGT<'s, 't, 'g>,
+    group_born_at_loct: LocT<'t>,
   ) -> IndexMap<StrI<'s>, KindGT<'s, 't, 'g>> {
     let struct_template_id = Compiler::get_template(self.typing_interner, *source_struct_gt.id);
     let citizen_def_s =
@@ -563,7 +584,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             name: None,
           };
       let type_g =
-          self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, &IndexMap::new(), member_t.tyype, Some(&written_context));
+          self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, &IndexMap::new(), member_t.tyype, Some(&written_context), group_born_at_loct);
       locally_phrased_member_types_gt.push((member_s.name, type_g));
     }
     IndexMap::from_iter(locally_phrased_member_types_gt)
@@ -578,10 +599,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     var: &'t LocalVariable<'s, 't>,
     // NOTE: This might be keyed on caller or callee runes.
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    group_born_at_loct: LocT<'t>,
   ) -> &'g LocalVariableG<'s, 't, 'g> {
     bump_g.alloc(LocalVariableG {
       name: var.name,
-      tyype: self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, var.tyype, None)
+      tyype: self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, var.tyype, None, group_born_at_loct)
     })
   }
 
@@ -594,10 +616,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
     type_t: KindT<'s, 't>,
     maybe_written: Option<&WrittenContext<'s>>,
+    group_born_at_loct: LocT<'t>,
   ) -> KindGT<'s, 't, 'g> {
     match type_t {
       KindT::BorrowRef(BorrowRefT { inner: inner_tt }) => {
-        let inner_gt = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, *inner_tt, None);
+        let inner_gt = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, *inner_tt, None, group_born_at_loct);
         let written = maybe_written.expect("Encountered a borrow ref with no written group");
         let type_s = written.type_s;
         let BorrowRefST { range: bst_range, inner: bst_inner, region: bst_group_s } =
@@ -612,10 +635,15 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             RegionS::Group(b) => *b,
           };
         let group_path_g =
-              self.groupify_group_expr(coutputs, bump_g, rune_to_templata, local_to_type_g, bst_specified_group_s);
+              self.groupify_group_expr(coutputs, bump_g, rune_to_templata, local_to_type_g, bst_specified_group_s, group_born_at_loct);
         let group_expr_g: GroupExprG<'s, 't, 'g> =
             bump_g.alloc_slice_copy(&[group_path_g]);
-        let group_templata_g = GroupTemplataG { kind: inner_gt, group: group_expr_g, };
+        let group_templata_g =
+            GroupTemplataG {
+              kind: inner_gt,
+              group: group_expr_g,
+              born_at: group_born_at_loct,
+            };
         KindGT::BorrowRef(bump_g.alloc(BorrowRefGT {
           inner: inner_gt,
           group: group_templata_g,
@@ -637,7 +665,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             bump_g.alloc_slice_copy(
                 template_args_t
                     .iter()
-                    .map(|x| self.groupify_templata(coutputs, bump_g, rune_to_templata, local_to_type_g, *x))
+                    .map(|x| self.groupify_templata(coutputs, bump_g, rune_to_templata, local_to_type_g, *x, group_born_at_loct))
                     .collect::<Vec<_>>()
                     .as_slice());
         KindGT::Struct(bump_g.alloc(StructGT { id, template_args: template_args_g }))
@@ -663,7 +691,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             INameT::RuntimeSizedArray(rsa_name) => rsa_name,
             _ => panic!("Expected RSA"),
           };
-        let element_gt = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, rsa_local_name.arr.element_type, None);
+        let element_gt = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, rsa_local_name.arr.element_type, None, group_born_at_loct);
         KindGT::RuntimeSizedArray(bump_g.alloc(RuntimeSizedArrayGT {
           name: *id_t,
           element_type: element_gt,
@@ -684,10 +712,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
     local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
     templata_t: ITemplataT<'s, 't>,
+    group_born_at_loct: LocT<'t>,
   ) -> ITemplataG<'s, 't, 'g> {
     match templata_t {
       ITemplataT::Kind(KindTemplataT { kind }) => {
-        let kind_g = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, kind, None);
+        let kind_g = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, kind, None, group_born_at_loct);
         ITemplataG::Kind(KindTemplataG { kind: kind_g })
       },
       ITemplataT::Placeholder(_) => unimplemented!(),
@@ -931,9 +960,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
      local_rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
      local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
      group_s: GroupS<'s>,
+     group_born_at_loct: LocT<'t>,
   ) -> GroupPathG<'s, 't, 'g> {
-    let (root, mut path, type_gt) =
-      self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, group_s);
+    let (root, path, type_gt) =
+      self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, group_s, group_born_at_loct);
     GroupPathG {
       root: root,
       steps: bump_g.alloc_slice_copy(path.as_slice()),
@@ -948,6 +978,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     local_rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
     local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
     group_s: GroupS<'s>, // TODO: flatten GroupS so we dont have to do this recursion
+    group_born_at_loct: LocT<'t>,
   ) ->
   // Returns:
   // - Root
@@ -961,7 +992,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let local_templata =
             local_rune_to_templata.get(group_expr_g_rune).expect("Missing templata for rune");
         match local_templata {
-          ITemplataG::Group(GroupTemplataG { group, kind: group_kind }) => {
+          ITemplataG::Group(GroupTemplataG { group, kind: group_kind, born_at }) => {
             assert!(group.len() == 1); // unimplemented
             let path = group[0];
             // Use these instead of group_expr_g_rune because, remember, it might be in someone
@@ -981,12 +1012,12 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       GroupS::Member { base, member_name } => {
         let (root, mut path, type_gt) =
-            self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *base);
+            self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *base, group_born_at_loct);
         let member_type_gt =
           match type_gt {
             KindGT::Struct(struct_gt) => {
               let name_to_member_type_gt =
-                self.translate_struct_members(coutputs, bump_g, *struct_gt);
+                self.translate_struct_members(coutputs, bump_g, *struct_gt, group_born_at_loct);
               *name_to_member_type_gt.get(&member_name).expect("No member in struct with that name")
             }
             _ => panic!("Unexpected type in group member expr"),
@@ -996,7 +1027,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       GroupS::Elements { base } => {
         let (root, mut path, type_gt) =
-            self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *base);
+            self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *base, group_born_at_loct);
         match type_gt {
           KindGT::StaticSizedArray(StaticSizedArrayGT { name, element_type }) => {
             path.push(GroupChildStepG::InlineElements { });
@@ -1023,7 +1054,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             .expect("Rune not found");
     match templata {
       ITemplataG::Kind(KindTemplataG { kind: kind_gt }) => *kind_gt,
-      ITemplataG::Group(GroupTemplataG { group: group_expr, kind }) => {
+      ITemplataG::Group(GroupTemplataG { group: group_expr, kind, born_at }) => {
         *kind
         // assert!(group_expr.len() == 1); // more is unimplemented
         // let group_path = group_expr.first().unwrap();
@@ -1045,7 +1076,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       bump_g: &'g Bump,
       group_rune_to_type_gt: &mut IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
       type_st: ITypeST<'s>,
-      templata_t: ITemplataT<'s, 't>
+      templata_t: ITemplataT<'s, 't>,
   ) -> ITemplataG<'s, 't, 'g>{
     match type_st {
       ITypeST::BorrowRef(BorrowRefST{ inner: inner_type_s, region: group_s, .. }) => {
@@ -1074,9 +1105,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                         }
                         None => {
                           let group_templata_g =
-                              GroupTemplataG {
-                                group: Self::new_rune_group_expr(bump_g, *rune),
-                                kind: inner_kind_gt,
+                               GroupTemplataG {
+                                 group: Self::new_rune_group_expr(bump_g, *rune),
+                                 kind: inner_kind_gt,
+                                 born_at: LocT { path: &[] },
                               };
                           group_rune_to_type_gt.insert(*rune, ITemplataG::Group(group_templata_g));
                           group_templata_g
@@ -1185,7 +1217,6 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           ITemplataT::Kind(KindTemplataT { kind: KindT::KindPlaceholder(KindPlaceholderT { id: placeholder_name_t }) }) => {
             match placeholder_name_t.local_name {
               INameT::KindPlaceholder(KindPlaceholderNameT { template: KindPlaceholderTemplateNameT { index, rune } }) => {
-                // Placeholders were seeded before
                 *group_rune_to_type_gt.get(rune).expect("Couldn't find rune")
               }
               _ => unimplemented!(),
