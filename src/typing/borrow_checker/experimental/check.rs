@@ -32,8 +32,16 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   {
     self.check_return_group(function_s)?;
     let (body_g, access_log) = self.groupify_function(coutputs, function_s, function_t, check_arena)?;
-    self.check_usages(coutputs, function_s, body_g, check_arena)?;
-    Ok(self.calculate_aliasing_info(function_s, function_t, &access_log, check_arena))
+    if let Err(mut errors) = self.check_usages(coutputs, function_s, body_g, check_arena) {
+      // One violation reports bare; several report together, in source order.
+      return Err(if errors.len() == 1 {
+        errors.pop().expect("one error")
+      } else {
+        ICompileErrorT::BorrowCheckErrors { errors }
+      });
+    }
+    let param_paths = self.param_group_paths(coutputs, function_s, function_t, check_arena);
+    Ok(self.calculate_aliasing_info(&param_paths, &access_log, check_arena))
   }
 
   /// A returned reference must declare the group it points into (signature-only derivation): reject a

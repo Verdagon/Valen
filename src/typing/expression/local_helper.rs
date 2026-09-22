@@ -59,6 +59,7 @@ where
     let let_expr_2 = self.typing_interner.alloc(LetAndLendTE::new(
       self.typing_interner,
       range[0],
+      loct,
       rlv,
       r,
     ));
@@ -79,6 +80,7 @@ where
     &self,
     coutputs: &mut CompilerOutputs<'s, 't>,
     nenv: &mut NodeEnvironmentBox<'s, 't>,
+    loct: LocT<'t>,
     range: &[RangeS<'s>],
     call_location: LocationInDenizen<'s>,
     context_region: RegionT,
@@ -86,12 +88,13 @@ where
   ) -> Result<Vec<ExpressionTE<'s, 't>>, ICompileErrorT<'s, 't>> {
     variables
       .iter()
-      .map(|variable| {
+      .enumerate()
+      .map(|(index, variable)| {
         let unlet = self.unlet_local_without_dropping(range[0], nenv, *variable);
         let unlet_ref = ExpressionTE::Unlet(self.typing_interner.alloc(unlet));
         let snapshot = nenv.snapshot(self.typing_interner);
         let snapshot_env = IInDenizenEnvironmentT::Node(snapshot);
-        self.drop(snapshot_env, coutputs, range, call_location, context_region, unlet_ref)
+        self.drop(snapshot_env, coutputs, range, call_location, loct.add(self.typing_interner, index as i32), context_region, unlet_ref)
       })
       .collect()
   }

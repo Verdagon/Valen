@@ -40,7 +40,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(v);
-Used v after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:3:
+  churn(&arr);
 "#,
   );
 }
@@ -134,7 +136,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:3:
+  churn(&arr);
 "#,
   );
 }
@@ -219,7 +223,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:3:
+  churn(&arr);
 "#,
   );
 }
@@ -285,7 +291,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:5:
+    churn(&arr);
 "#,
   );
 }
@@ -313,7 +321,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:14:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:5:
+    churn(&arr);
 "#,
   );
 }
@@ -339,7 +349,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:13:
     observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:5:
+    churn(&arr);
 "#,
   );
 }
@@ -409,7 +421,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:13:
     observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:11:5:
+    churn(&arr);
 "#,
   );
 }
@@ -435,7 +449,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:5:
+    churn(&arr);
 "#,
   );
 }
@@ -516,7 +532,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   pair(7, ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:3:
+  churn(&arr);
 "#,
   );
 }
@@ -540,8 +558,8 @@ exported func main() int {
 "#);
 }
 
-// Slice 20 (Phase D): one churn invalidates every element reference into the churned array; the
-// first subsequent use is reported.
+// Slice 20 (Phase D): one churn invalidates every element reference into the churned array; every
+// subsequent use is reported, in source order.
 #[test]
 fn test_multiple_element_refs_all_invalidated_by_one_churn() {
   assert_borrow_error_renders_with_arrays(
@@ -562,7 +580,14 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(first);
-Used first after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:3:
+  churn(&arr);
+At test:0.vale:12:11:
+  observe(second);
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:3:
+  churn(&arr);
 "#,
   );
 }
@@ -587,7 +612,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   observe(ring);
-Used ring after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:3:
+  damage(&arr);
 "#,
   );
 }
@@ -635,7 +662,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:9:8:
   use2(ref, churn_ret(&arr));
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:13:
+  use2(ref, churn_ret(&arr));
 "#,
   );
 }
@@ -664,7 +693,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:12:11:
   observe(t);
-Used t after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:11:3:
+  churn_tiles(&lvl);
 "#,
   );
 }
@@ -684,4 +715,136 @@ exported func main() int {
   return 0;
 }
 "#);
+}
+
+#[test]
+fn test_return_stale_element_reference_rejected() {
+  super::util::assert_borrow_error_renders(
+    r#"
+func churn<g'>(a &[]int in g) mut(g) { }
+exported func leak<g'>(a &[]int in g) &int in g[] mut(g) {
+  e = &a[0];
+  churn(a);
+  return e;
+}
+"#,
+    r#"At test:0.vale:6:3:
+  return e;
+Used a borrow after invalidated.
+Invalidated at test:0.vale:5:3:
+  churn(a);
+"#,
+  );
+}
+
+#[test]
+fn test_set_through_stale_element_reference_rejected() {
+  super::util::assert_borrow_error_renders(
+    r#"
+struct Ship { fuel int; }
+func churn<g'>(a &[]Ship in g) mut(g) { }
+exported func scorch<g'>(a &[]Ship in g) mut(g) {
+  s = &a[0];
+  churn(a);
+  set s.fuel = 1;
+}
+"#,
+    r#"At test:0.vale:7:7:
+  set s.fuel = 1;
+Used a borrow after invalidated.
+Invalidated at test:0.vale:6:3:
+  churn(a);
+"#,
+  );
+}
+
+#[test]
+fn test_read_through_stale_element_reference_rejected() {
+  super::util::assert_borrow_error_renders(
+    r#"
+func churn<g'>(a &[]int in g) mut(g) { }
+exported func peek<g'>(a &[]int in g) int mut(g) {
+  e = &a[0];
+  churn(a);
+  return __copy_prim(e);
+}
+"#,
+    r#"At test:0.vale:6:22:
+  return __copy_prim(e);
+Used a borrow after invalidated.
+Invalidated at test:0.vale:5:3:
+  churn(a);
+"#,
+  );
+}
+
+#[test]
+fn test_use_after_churn_names_the_churn() {
+  super::util::assert_borrow_error_renders(
+    r#"
+func churn<g'>(a &[]int in g) mut(g) { }
+func observe<T, h'>(x &T in h) { }
+exported func peek<g'>(a &[]int in g) mut(g) {
+  e = &a[0];
+  churn(a);
+  observe(e);
+}
+"#,
+    r#"At test:0.vale:7:11:
+  observe(e);
+Used a borrow after invalidated.
+Invalidated at test:0.vale:6:3:
+  churn(a);
+"#,
+  );
+}
+
+#[test]
+fn test_two_stale_references_both_reported() {
+  super::util::assert_borrow_error_renders(
+    r#"
+func churn<g'>(a &[]int in g) mut(g) { }
+func observe<T, h'>(x &T in h) { }
+exported func peek<g'>(a &[]int in g) mut(g) {
+  e = &a[0];
+  f = &a[1];
+  churn(a);
+  observe(e);
+  observe(f);
+}
+"#,
+    r#"At test:0.vale:8:11:
+  observe(e);
+Used a borrow after invalidated.
+Invalidated at test:0.vale:7:3:
+  churn(a);
+At test:0.vale:9:11:
+  observe(f);
+Used a borrow after invalidated.
+Invalidated at test:0.vale:7:3:
+  churn(a);
+"#,
+  );
+}
+
+#[test]
+fn test_copied_stale_element_reference_rejected() {
+  super::util::assert_borrow_error_renders(
+    r#"
+func churn<g'>(a &[]int in g) mut(g) { }
+func observe<T, h'>(x &T in h) { }
+exported func peek<g'>(a &[]int in g) mut(g) {
+  e = &a[0];
+  w = e;
+  churn(a);
+  observe(w);
+}
+"#,
+    r#"At test:0.vale:8:11:
+  observe(w);
+Used a borrow after invalidated.
+Invalidated at test:0.vale:7:3:
+  churn(a);
+"#,
+  );
 }

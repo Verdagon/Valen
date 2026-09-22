@@ -152,6 +152,7 @@ where
   's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub variable: &'t LocalVariable<'s, 't>,
   pub expr: ExpressionTE<'s, 't>,
   // Stored instead of computed because I dont want getters to allocate.
@@ -169,11 +170,12 @@ where
   pub fn new(
     interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     variable: &'t LocalVariable<'s, 't>,
     expr: ExpressionTE<'s, 't>,
   ) -> LetAndLendTE<'s, 't> {
     let result = interner.alloc(BorrowRefT { inner: expr.result()});
-    LetAndLendTE { range, variable, expr, result, _sealed: () }
+    LetAndLendTE { range, loct, variable, expr, result, _sealed: () }
   }
 
   // VCOORD: get rid of result(), just inline it into the enum's dispatcher
@@ -746,6 +748,7 @@ where
 #[derive(Debug)]
 pub struct LocalLookupTE<'s, 't> {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub local_variable: &'t LocalVariable<'s, 't>,
   // A local lookup is a borrow reference to the variable's value.
   pub result: &'t BorrowRefT<'s, 't>,
@@ -759,17 +762,19 @@ where
   pub fn new(
     interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     local_variable: &'t LocalVariable<'s, 't>,
   ) -> LocalLookupTE<'s, 't> {
     let result =
       interner.alloc(BorrowRefT { inner: local_variable.tyype});
-    LocalLookupTE { range, local_variable, result, _sealed: () }
+    LocalLookupTE { range, loct, local_variable, result, _sealed: () }
   }
 }
 /// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ArgLookupTE<'s, 't> {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub param_index: i32,
   pub result: KindT<'s, 't>,
   _sealed: (),
@@ -779,8 +784,8 @@ impl<'s, 't> ArgLookupTE<'s, 't>
 where
   's: 't,
 {
-  pub fn new(range: RangeS<'s>, param_index: i32, result: KindT<'s, 't>) -> ArgLookupTE<'s, 't> {
-    ArgLookupTE { range, param_index, result, _sealed: () }
+  pub fn new(range: RangeS<'s>, loct: LocT<'t>, param_index: i32, result: KindT<'s, 't>) -> ArgLookupTE<'s, 't> {
+    ArgLookupTE { range, loct, param_index, result, _sealed: () }
   }
 }
 /// Arena-allocated (see @TFITCX)
@@ -790,6 +795,7 @@ where
   's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub array_expr: ExpressionTE<'s, 't>,
   pub array_type: &'t StaticSizedArrayTT<'s, 't>,
   pub index_expr: ExpressionTE<'s, 't>,
@@ -805,13 +811,14 @@ where
   pub fn new(
     interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     array_expr: ExpressionTE<'s, 't>,
     array_type: &'t StaticSizedArrayTT<'s, 't>,
     index_expr: ExpressionTE<'s, 't>,
   ) -> StaticSizedArrayLookupTE<'s, 't> {
     let result =
       interner.alloc(BorrowRefT { inner: array_type.element_type()});
-    StaticSizedArrayLookupTE { range, array_expr, array_type, index_expr, result, _sealed: () }
+    StaticSizedArrayLookupTE { range, loct, array_expr, array_type, index_expr, result, _sealed: () }
   }
 }
 /// Arena-allocated (see @TFITCX)
@@ -821,6 +828,7 @@ where
   's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub array_expr: ExpressionTE<'s, 't>,
   pub array_type: &'t RuntimeSizedArrayTT<'s, 't>,
   pub index_expr: ExpressionTE<'s, 't>,
@@ -836,13 +844,14 @@ where
   pub fn new(
     interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     array_expr: ExpressionTE<'s, 't>,
     array_type: &'t RuntimeSizedArrayTT<'s, 't>,
     index_expr: ExpressionTE<'s, 't>,
   ) -> RuntimeSizedArrayLookupTE<'s, 't> {
     let result =
       interner.alloc(BorrowRefT { inner: array_type.element_type()});
-    RuntimeSizedArrayLookupTE { range, array_expr, array_type, index_expr, result, _sealed: () }
+    RuntimeSizedArrayLookupTE { range, loct, array_expr, array_type, index_expr, result, _sealed: () }
   }
 }
 /// Arena-allocated (see @TFITCX)
@@ -872,6 +881,7 @@ where
   's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub struct_expr: ExpressionTE<'s, 't>,
   pub member_name: IVarNameT<'s, 't>,
   // See RMLRMO why the result is a borrow reference to the member.
@@ -886,12 +896,13 @@ where
   pub fn new(
     interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     struct_expr: ExpressionTE<'s, 't>,
     member_name: IVarNameT<'s, 't>,
     member_kind: KindT<'s, 't>,
   ) -> MemberLookupTE<'s, 't> {
     let result = interner.alloc(BorrowRefT { inner: member_kind});
-    MemberLookupTE { range, struct_expr, member_name, result, _sealed: () }
+    MemberLookupTE { range, loct, struct_expr, member_name, result, _sealed: () }
   }
 }
 /// Arena-allocated (see @TFITCX)
@@ -1467,6 +1478,7 @@ where
   's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub expr: ExpressionTE<'s, 't>,
   pub struct_tt: &'t StructTT<'s, 't>,
   pub destination_reference_variables: &'t [&'t LocalVariable<'s, 't>],
@@ -1480,12 +1492,14 @@ where
 {
   pub fn new(
     range: RangeS<'s>,
+    loct: LocT<'t>,
     expr: ExpressionTE<'s, 't>,
     struct_tt: &'t StructTT<'s, 't>,
     destination_reference_variables: &'t [&'t LocalVariable<'s, 't>],
   ) -> DestroyTE<'s, 't> {
     DestroyTE {
       range,
+      loct,
       expr,
       struct_tt,
       destination_reference_variables,

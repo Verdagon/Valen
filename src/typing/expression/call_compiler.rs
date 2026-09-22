@@ -211,7 +211,7 @@ where
             let mut bound_args = args_exprs_2;
             bound_args[vi] = upcast.inner_expr;
             ExpressionTE::BoundFunctionCall(self.typing_interner.alloc(BoundFunctionCallTE::new(
-              LocT::from_lid(self.typing_interner, call_location),
+              loct,
               range[0],
               upcast.impl_name,
               stamp_result.prototype,
@@ -221,7 +221,7 @@ where
             )))
           }
           _ => ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
-            LocT::from_lid(self.typing_interner, call_location),
+            loct,
             self.typing_interner.alloc_slice_copy(range),
             stamp_result.prototype,
             self.typing_interner.alloc_slice_from_vec(args_exprs_2),
@@ -305,7 +305,7 @@ where
       .get_instantiation_bounds(self.typing_interner, deref_prototype.id)
       .is_some());
     let deref_expr = ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
-      LocT::from_lid(self.typing_interner, call_location),
+      loct.add(self.typing_interner, 0),
       self.typing_interner.alloc_slice_copy(range),
       deref_prototype,
       self.typing_interner.alloc_slice_from_vec(vec![recv_expr]),
@@ -317,7 +317,7 @@ where
     match self.evaluate_call(
       coutputs,
       nenv,
-      loct,
+      loct.add(self.typing_interner, 1),
       range,
       call_location,
       context_region,
@@ -363,7 +363,7 @@ where
             nenv,
             range,
             call_location,
-            loct,
+            loct.add(self.typing_interner, 0),
             context_region,
             given_callable_unborrowed_expr_2,
           )?;
@@ -449,7 +449,7 @@ where
     Ok(
       (
         ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
-          LocT::from_lid(self.typing_interner, call_location),
+          loct,
           self.typing_interner.alloc_slice_copy(range),
           resolved.prototype,
           self.typing_interner.alloc_slice_from_vec(actual_args_exprs_2),

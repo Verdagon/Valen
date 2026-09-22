@@ -306,7 +306,7 @@ where
       .iter()
       .enumerate()
       .map(|(index, p)| {
-        ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(range[0], index as i32, p.tyype)))
+        ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(range[0], loct.add(self.typing_interner, index as i32), index as i32, p.tyype)))
       })
       .collect();
 

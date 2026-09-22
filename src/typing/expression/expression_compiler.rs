@@ -120,7 +120,7 @@ where
         }
         // "undecayed": We want to decay any &&Ship to &Ship, that happens later.
         let lookup_te_undecayed = ExpressionTE::LocalLookup(
-          self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, ranges[0], rlv)),
+          self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, ranges[0], loct, rlv)),
         );
         // Now, decay any &&Ship to &Ship.
         let lookup_te_decayed = match lookup_te_undecayed.result() {
@@ -146,7 +146,7 @@ where
           _ => panic!("closure self param not found while reading capture {:?}", rcv.name),
         };
         let self_lookup = ExpressionTE::LocalLookup(
-          self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, ranges[0], self_local)),
+          self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, ranges[0], loct.add(self.typing_interner, 0), self_local)),
         );
         let capture_imprecise = match rcv.name {
           IVarNameT::Local(local) => local.imprecise_name,
@@ -162,6 +162,7 @@ where
           MemberLookupTE::new(
             self.typing_interner,
             ranges[0],
+            loct.add(self.typing_interner, 1),
             self_lookup,
             IVarNameT::Member(struct_member.name),
             rcv.kind,
@@ -235,7 +236,7 @@ where
   ) -> Option<ExpressionTE<'s, 't>> {
     match nenv.get_variable(name_imprecise, self.typing_interner) {
       Some(IVariableT::Local(rlv)) => Some(ExpressionTE::LocalLookup(
-        self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, load_range, rlv)),
+        self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, load_range, loct, rlv)),
       )),
       Some(IVariableT::Capture(acv)) => {
         // VCOORD: dedup the below, we do the same thing for read
@@ -247,7 +248,7 @@ where
           _ => panic!("closure self param not found while mutating capture {:?}", acv.name),
         };
         let self_lookup = ExpressionTE::LocalLookup(
-          self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, load_range, self_local)),
+          self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, load_range, loct.add(self.typing_interner, 0), self_local)),
         );
         // VCOORD: centralize this mapping between varname <-> structname somewhere, we repeat
         // this in a lot of places
@@ -262,7 +263,7 @@ where
             panic!("closure capture {:?} not found as a member of its closure struct", acv.name)
           });
         let member_lookup = ExpressionTE::MemberLookup(self.typing_interner.alloc(
-          MemberLookupTE::new(self.typing_interner, load_range, self_lookup, IVarNameT::Member(struct_member.name), acv.kind),
+          MemberLookupTE::new(self.typing_interner, load_range, loct.add(self.typing_interner, 1), self_lookup, IVarNameT::Member(struct_member.name), acv.kind),
         ));
         let member_lookup_decayed = match member_lookup.result() {
           KindT::BorrowRef(BorrowRefT { inner: KindT::BorrowRef(_) }) => ExpressionTE::Deref(
@@ -416,7 +417,7 @@ where
               nenv,
               &parent_ranges,
               outer_call_location,
-              loct,
+              loct.add(self.typing_interner, 1),
               region,
               uncasted_inner_expr_2_with_pending_drops,
               pending_temp_drops_from_inner.take_vars()
@@ -486,6 +487,7 @@ where
         let destruct_exprs_refs = self.unlet_and_drop_all(
           coutputs,
           nenv,
+          loct.add(self.typing_interner, 2),
           &range_list,
           outer_call_location,
           region,
@@ -613,6 +615,7 @@ where
                 coutputs,
                 &range_with_parent,
                 outer_call_location,
+                loct.add(self.typing_interner, (2 * consecutor_se.exprs.len() + index) as i32),
                 region,
                 undropped_expr_te,
               )?
@@ -639,7 +642,7 @@ where
               nenv,
               &parent_ranges,
               outer_call_location,
-              loct,
+              loct.add(self.typing_interner, (2 * consecutor_se.exprs.len() - 1) as i32),
               region,
               last_expr_te_with_pending,
               last_expr_pending_temp_drops.take_vars()
@@ -1090,6 +1093,7 @@ where
               MemberLookupTE::new(
                 self.typing_interner,
                 dot.range,
+                loct,
                 container_expr_2,
                 IVarNameT::Member(struct_member.name),
                 member_type,
@@ -1107,7 +1111,7 @@ where
                   region,
                 )));
               ExpressionTE::StaticSizedArrayLookup(self.typing_interner.alloc(
-                self.lookup_in_static_sized_array(dot.range, container_expr_2, index_expr_2, *ssa),
+                self.lookup_in_static_sized_array(dot.range, loct, container_expr_2, index_expr_2, *ssa),
               ))
             } else {
               let range_with_parent: Vec<RangeS<'s>> =
@@ -1138,6 +1142,7 @@ where
                 match self.lookup_in_unknown_sized_array(
                   &range_with_parent,
                   dot.range,
+                  loct,
                   container_expr_2,
                   index_expr_2,
                   rsa,
@@ -1216,7 +1221,7 @@ where
               nenv,
               &parent_ranges,
               outer_call_location,
-              loct,
+              loct.add(self.typing_interner, 6),
               region,
               uncoerced_condition_expr_with_pending_drops,
               pending_temp_drops_from_condition.take_vars()
@@ -1367,7 +1372,7 @@ where
           once(if_se.range).chain(parent_ranges.iter().copied()).collect();
         let then_expr_2 = self.convert(
           nenv,
-          loct,
+          loct.add(self.typing_interner, 4),
           coutputs,
           &range_with_parent,
           outer_call_location,
@@ -1377,7 +1382,7 @@ where
         )?;
         let else_expr_2 = self.convert(
           nenv,
-          loct,
+          loct.add(self.typing_interner, 5),
           coutputs,
           &range_with_parent,
           outer_call_location,
@@ -1388,7 +1393,7 @@ where
 
         let if_expr_2 = ExpressionTE::If(self.typing_interner.alloc(IfTE::new(
           if_se.range,
-          LocT::from_lid(self.typing_interner, if_se.loc),
+          loct.add(self.typing_interner, 0),
           condition_expr,
           then_expr_2,
           else_expr_2,
@@ -1550,7 +1555,7 @@ where
 
         let loop_expr_2 = ExpressionTE::While(self.typing_interner.alloc(WhileTE::new(
           w.range,
-          LocT::from_lid(self.typing_interner, w.loc),
+          loct.add(self.typing_interner, 0),
           uncoerced_body_block_2,
         )));
         Ok((loop_expr_2, body_returns_from_exprs, PendingTempDrops::none()))
@@ -1609,7 +1614,7 @@ where
             &[self_rune_irune],
             &[],
             &[])?;
-        let make_list_drops = self.unlet_and_drop_all(coutputs, nenv, range_with_parent_t, outer_call_location, region, &make_list_pending.take_vars())?;
+        let make_list_drops = self.unlet_and_drop_all(coutputs, nenv, loct.add(self.typing_interner, 7), range_with_parent_t, outer_call_location, region, &make_list_pending.take_vars())?;
 
         let list_local = self.make_temporary_local(
             nenv, loct.add(self.typing_interner, 3), make_list_te.result());
@@ -1645,7 +1650,7 @@ where
                 IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner)), coutputs, m.range, region,
                 self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS { name: self.keywords.add })));
             let local_lookup_te = ExpressionTE::LocalLookup(self.typing_interner.alloc(
-                LocalLookupTE::new(self.typing_interner, m.range, list_local)));
+                LocalLookupTE::new(self.typing_interner, m.range, loct.add(self.typing_interner, 9), list_local)));
             let unlet_iter = ExpressionTE::Unlet(self.typing_interner.alloc(self.unlet_local_without_dropping(m.range, &mut loop_block_fate, iteration_result_local)));
             let (add_call, add_pending) = self.evaluate_prefix_call(
                 coutputs,
@@ -1659,7 +1664,7 @@ where
                 &[],
                 &[],
                 &[local_lookup_te, unlet_iter])?;
-            let add_drops = self.unlet_and_drop_all(coutputs, &mut loop_block_fate, range_with_parent_t, outer_call_location, region, &add_pending.take_vars())?;
+            let add_drops = self.unlet_and_drop_all(coutputs, &mut loop_block_fate, loct.add(self.typing_interner, 8), range_with_parent_t, outer_call_location, region, &add_pending.take_vars())?;
             let mut body_exprs: Vec<ExpressionTE<'s, 't>> = vec![let_iteration_result_te, add_call];
             body_exprs.extend(add_drops);
             let body_te = BlockTE::new(m.body.range, ExpressionTE::Consecutor(self.typing_interner.alloc(
@@ -1681,7 +1686,7 @@ where
             }
 
             let while_te = ExpressionTE::While(self.typing_interner.alloc(WhileTE::new(
-                m.range, LocT::from_lid(self.typing_interner, m.loc), body_te)));
+                m.range, loct.add(self.typing_interner, 0), body_te)));
             (while_te, body_returns_from_exprs)
         };
 
@@ -1748,7 +1753,7 @@ where
         }
         let converted_source_expr_2 = match self.convert(
           nenv,
-          loct,
+          loct.add(self.typing_interner, 2),
           coutputs,
           &range_with_parent,
           outer_call_location,
@@ -1822,7 +1827,7 @@ where
         assert!(is_convertible);
         let converted_source_expr_2 = match self.convert(
           nenv,
-          loct,
+          loct.add(self.typing_interner, 2),
           coutputs,
           &range_with_parent,
           outer_call_location,
@@ -1974,6 +1979,7 @@ where
           nenv.snapshot(self.typing_interner),
           &range_with_parent,
           outer_call_location,
+          loct.add(self.typing_interner, 2),
           region,
           nrsa.rules,
           nrsa.maybe_element_type_st.map(|r| r.rune),
@@ -2081,6 +2087,7 @@ where
               .collect();
             ExpressionTE::Destroy(self.typing_interner.alloc(DestroyTE::new(
               destruct_se.range,
+              loct,
               inner_expr_2,
               struct_tt,
               self.typing_interner.alloc_slice_from_vec(destination_locals),
@@ -2154,6 +2161,7 @@ where
             let lookup = match self.lookup_in_unknown_sized_array(
               &range_with_parent,
               index_se.range,
+              loct,
               container_expr_2,
               index_expr_2,
               rsa,
@@ -2170,6 +2178,7 @@ where
           KindT::StaticSizedArray(at) => {
             let lookup = self.lookup_in_static_sized_array(
               index_se.range,
+              loct,
               container_expr_2,
               index_expr_2,
               *at,
@@ -2790,6 +2799,7 @@ where
           let destroy_expressions = self.unlet_and_drop_all(
             coutputs,
             nenv,
+            loct.add(self.typing_interner, 0),
             range,
             call_location,
             region,
@@ -2823,6 +2833,7 @@ where
           let destroy_expressions = self.unlet_and_drop_all(
             coutputs,
             nenv,
+            loct.add(self.typing_interner, 2),
             range,
             call_location,
             region,

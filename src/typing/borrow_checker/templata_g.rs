@@ -1,6 +1,6 @@
 use crate::postparsing::itemplatatype::{ITemplataType, TemplateTemplataType};
 use crate::StrI;
-use crate::typing::ast::ast::{FunctionHeaderT, PrototypeT};
+use crate::typing::ast::ast::{FunctionHeaderT, LocT, PrototypeT};
 use crate::typing::borrow_checker::group_expr::GroupExprG;
 use crate::typing::borrow_checker::kind_g::KindGT;
 use crate::typing::names::names::IdT;
@@ -55,6 +55,7 @@ pub struct KindTemplataG<'s, 't, 'g> {
 pub struct GroupTemplataG<'s, 't, 'g> {
   pub group: GroupExprG<'s, 't, 'g>,
   pub kind: KindGT<'s, 't, 'g>, // this could be redundant since the type is on the group
+  pub born_at: LocT<'t>,
 }
 
 /// Value-type (see @TFITCX)

@@ -82,6 +82,7 @@ where
     coutputs: &mut CompilerOutputs<'s, 't>,
     call_range: &[RangeS<'s>],
     call_location: LocationInDenizen<'s>,
+    loct: LocT<'t>,
     context_region: RegionT,
     undestructed_expr_2: ExpressionTE<'s, 't>,
   ) -> Result<ExpressionTE<'s, 't>, ICompileErrorT<'s, 't>> {
@@ -131,7 +132,7 @@ where
           .is_some());
         let result_tt = destructor_prototype.return_type;
         ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
-          LocT::from_lid(self.typing_interner, call_location),
+          loct,
           self.typing_interner.alloc_slice_copy(call_range),
           destructor_prototype,
           self.typing_interner.alloc_slice_from_vec(vec![undestructed_expr_2]),

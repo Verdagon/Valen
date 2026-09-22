@@ -133,7 +133,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(buff);
-Used buff after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:4:
+  d.damage(5);
 "#,
   );
 }
@@ -167,7 +169,9 @@ exported func peek<r'>(a &[]int in r) mut(r) {
 "#,
     r#"At test:0.vale:7:11:
   observe(e);
-Used e after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:6:3:
+  churn(a);
 "#,
   );
 }

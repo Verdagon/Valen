@@ -310,6 +310,11 @@ pub enum ICompileErrorT<'s, 't> {
     range: RangeS<'s>,
     kind: BorrowErrorKind<'s, 't>, // VCOORD: rename
   },
+  /// Several borrow-check violations in one function, in source order. A function with a single
+  /// violation reports it bare, as a `BorrowCheckError`.
+  BorrowCheckErrors {
+    errors: Vec<ICompileErrorT<'s, 't>>,
+  },
   SharedImplingMismatch {
     range: &'t [RangeS<'s>],
     struct_shared: SharednessT,
@@ -332,6 +337,17 @@ pub enum ICompileErrorT<'s, 't> {
 }
 
 impl<'s, 't> ICompileErrorT<'s, 't> {
+  // VCOORD: see if we can get rid of the 'static usage
+  pub fn notes(&self) -> Vec<(&'static str, RangeS<'s>)> {
+    match self {
+      Self::BorrowCheckError { kind: BorrowErrorKind::UseAfterChurn { churned_at, .. }, .. }
+      | Self::BorrowCheckError { kind: BorrowErrorKind::UseAfterChurnTemporary { churned_at }, .. } => {
+        vec![("Invalidated", *churned_at)]
+      }
+      _ => vec![],
+    }
+  }
+
   pub fn range(&self) -> &[RangeS<'s>] {
     match self {
       Self::CouldntNarrowDownCandidates { range, .. } => *range,
@@ -390,6 +406,7 @@ impl<'s, 't> ICompileErrorT<'s, 't> {
       Self::NonCitizenCantImpl { range, .. } => *range,
       Self::RangedInternalErrorT { range, .. } => *range,
       Self::BorrowCheckError { range, .. } => from_ref(range),
+      Self::BorrowCheckErrors { errors } => errors.first().map_or(&[], |e| e.range()),
       Self::SharedImplingMismatch { range, .. } => *range,
       Self::TookWeakRefOfNonWeakableError { range, .. } => *range,
       Self::NoImplicitCloneDefinedT { range, .. } => *range,

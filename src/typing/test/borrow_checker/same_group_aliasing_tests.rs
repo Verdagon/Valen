@@ -50,7 +50,9 @@ exported func main() int {
 "#),
     r#"At test:0.vale:17:11:
   observe(e);
-Used e after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:16:3:
+  grow(t);
 "#,
   );
 }
@@ -94,7 +96,9 @@ exported func main() int {
 "#),
     r#"At test:0.vale:17:11:
   observe(e);
-Used e after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:16:3:
+  grow(a);
 "#,
   );
 }

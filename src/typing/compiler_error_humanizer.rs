@@ -45,7 +45,27 @@ pub fn humanize<'s, 't>(
   line_containing: &dyn Fn(CodeLocationS<'s>) -> String,
   err: ICompileErrorT<'s, 't>,
 ) -> String {
-  let error_str_body = match &err {
+  humanize_ref(scout_arena, typing_interner, verbose, code_map, lines_between, line_range_containing, line_containing, &err)
+}
+
+fn humanize_ref<'s, 't>(
+  scout_arena: &ScoutArena<'s>,
+  typing_interner: &TypingInterner<'s, 't>,
+  verbose: bool,
+  code_map: &dyn Fn(CodeLocationS<'s>) -> String,
+  lines_between: &dyn Fn(CodeLocationS<'s>, CodeLocationS<'s>) -> Vec<RangeS<'s>>,
+  line_range_containing: &dyn Fn(CodeLocationS<'s>) -> RangeS<'s>,
+  line_containing: &dyn Fn(CodeLocationS<'s>) -> String,
+  err: &ICompileErrorT<'s, 't>,
+) -> String {
+  if let ICompileErrorT::BorrowCheckErrors { errors } = err {
+    return errors
+      .iter()
+      .map(|e| humanize_ref(scout_arena, typing_interner, verbose, code_map, lines_between, line_range_containing, line_containing, e))
+      .collect::<Vec<_>>()
+      .join("");
+  }
+  let error_str_body = match err {
     ICompileErrorT::TypingPassDefiningError { range: _, inner } => {
       humanize_defining_error(scout_arena, typing_interner, verbose, code_map, lines_between, line_range_containing, line_containing, inner)
     }
@@ -56,6 +76,7 @@ pub fn humanize<'s, 't>(
       format!("Internal error: {}", message)
     }
     ICompileErrorT::BorrowCheckError { range, kind } => crate::typing::borrow_checker::humanize_borrow_error(*range, kind),
+    ICompileErrorT::BorrowCheckErrors { .. } => unreachable!("rendered above, one inner error at a time"),
     ICompileErrorT::CouldntFindOverrideT { range, fff } => {
       format!("Couldn't find an override:\n{}",
         humanize_find_function_failure(scout_arena, typing_interner, verbose, code_map, lines_between, line_range_containing, line_containing, range.to_vec(), fff))
@@ -334,7 +355,17 @@ that wasn't exported from package {}",
     })
     .collect::<Vec<_>>()
     .join("");
-  format!("{}{}\n", prefix, error_str_body)
+  let notes: String = err
+    .notes()
+    .iter()
+    .map(|(label, range)| {
+      let pos_str = code_map(range.begin);
+      let line_contents = line_containing(range.begin);
+      format!("\n{} at {}:\n{}", label, pos_str, line_contents)
+    })
+    .collect::<Vec<_>>()
+    .join("");
+  format!("{}{}{}\n", prefix, error_str_body, notes)
 }
 
 pub fn humanize_defining_error<'s, 't>(

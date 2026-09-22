@@ -27,6 +27,7 @@ use crate::typing::borrow_checker::templata_g::ITemplataG;
 #[derive(Debug)]
 pub struct MutEffectPath<'s, 't, 'g> {
   pub effecting_node_loc: LocT<'t>, // Which expr had this mut effect (e.g. loc of `level.tiles.clear()`)
+  pub range: RangeS<'s>, // That expr's source range, so a use-after-churn can name the churn.
   pub steps: &'g [GroupStep<'s, 't>], // What group the effect mutated (e.g. ["level", "tiles"])
 }
 
@@ -114,6 +115,7 @@ where
     's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub variable: &'g LocalVariableG<'s, 't, 'g>,
   pub expr: ExpressionGE<'s, 't, 'g>,
   // Stored instead of computed because I dont want getters to allocate.
@@ -370,6 +372,7 @@ pub struct ConstantFloatGE<'s, 't, 'g> {
 #[derive(Debug)]
 pub struct LocalLookupGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub local_variable: &'g LocalVariableG<'s, 't, 'g>,
   // A local lookup is a borrow reference to the variable's value.
   pub result: &'g BorrowRefGT<'s, 't, 'g>,
@@ -379,6 +382,7 @@ pub struct LocalLookupGE<'s, 't, 'g> {
 #[derive(Debug)]
 pub struct ArgLookupGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub param_index: i32,
   pub result: KindGT<'s, 't, 'g>,
 }
@@ -390,6 +394,7 @@ where
     's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub array_expr: ExpressionGE<'s, 't, 'g>,
   pub array_type: &'g StaticSizedArrayGT<'s, 't, 'g>,
   pub index_expr: ExpressionGE<'s, 't, 'g>,
@@ -404,6 +409,7 @@ where
     's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub array_expr: ExpressionGE<'s, 't, 'g>,
   pub array_type: &'g RuntimeSizedArrayGT<'s, 't, 'g>,
   pub index_expr: ExpressionGE<'s, 't, 'g>,
@@ -429,6 +435,7 @@ where
     's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub struct_expr: ExpressionGE<'s, 't, 'g>,
   pub member_name: IVarNameT<'s, 't>,
   // See RMLRMO why the result is a borrow reference to the member.
@@ -690,6 +697,7 @@ where
     's: 't,
 {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub expr: ExpressionGE<'s, 't, 'g>,
   pub struct_tt: &'g StructGT<'s, 't, 'g>,
   pub destination_reference_variables: &'g [&'g LocalVariableG<'s, 't, 'g>],
@@ -752,6 +760,60 @@ where
       ExpressionGE::RuntimeSizedArrayLookup(e) => KindGT::BorrowRef(e.result),
       ExpressionGE::MemberLookup(e) => KindGT::BorrowRef(e.result),
       ExpressionGE::Deref(e) => e.result,
+    }
+  }
+
+  pub fn range(&self) -> RangeS<'s> {
+    match self {
+      ExpressionGE::LetAndLend(e) => e.range,
+      ExpressionGE::LockWeak(e) => e.range,
+      ExpressionGE::BorrowToWeak(e) => e.range,
+      ExpressionGE::LetNormal(e) => e.range,
+      ExpressionGE::Unlet(e) => e.range,
+      ExpressionGE::Discard(e) => e.range,
+      ExpressionGE::If(e) => e.range,
+      ExpressionGE::While(e) => e.range,
+      ExpressionGE::Mutate(e) => e.range,
+      ExpressionGE::Restackify(e) => e.range,
+      ExpressionGE::Return(e) => e.range,
+      ExpressionGE::Break(e) => e.range,
+      ExpressionGE::Block(e) => e.range,
+      ExpressionGE::Consecutor(e) => e.range,
+      ExpressionGE::StaticArrayFromValues(e) => e.range,
+      ExpressionGE::ArraySize(e) => e.range,
+      ExpressionGE::IsSameInstance(e) => e.range,
+      ExpressionGE::AsSubtype(e) => e.range,
+      ExpressionGE::VoidLiteral(e) => e.range,
+      ExpressionGE::ConstantInt(e) => e.range,
+      ExpressionGE::ConstantBool(e) => e.range,
+      ExpressionGE::ConstantStr(e) => e.range,
+      ExpressionGE::ConstantFloat(e) => e.range,
+      ExpressionGE::ArgLookup(e) => e.range,
+      ExpressionGE::ArrayLength(e) => e.range,
+      ExpressionGE::InterfaceFunctionCall(e) => e.range,
+      ExpressionGE::ExternFunctionCall(e) => e.range,
+      ExpressionGE::FunctionCall(e) => *e.range.iter().last().unwrap(),
+      ExpressionGE::BoundFunctionCall(e) => e.range,
+      ExpressionGE::Reinterpret(e) => e.range,
+      ExpressionGE::Construct(e) => e.range,
+      ExpressionGE::NewRuntimeSizedArray(e) => e.range,
+      ExpressionGE::StaticArrayFromCallable(e) => e.range,
+      ExpressionGE::DestroyStaticSizedArrayIntoFunction(e) => e.range,
+      ExpressionGE::DestroyStaticSizedArrayIntoLocals(e) => e.range,
+      ExpressionGE::DestroyRuntimeSizedArray(e) => e.range,
+      ExpressionGE::RuntimeSizedArrayCapacity(e) => e.range,
+      ExpressionGE::PushRuntimeSizedArray(e) => e.range,
+      ExpressionGE::PopRuntimeSizedArray(e) => e.range,
+      ExpressionGE::InterfaceToInterfaceUpcast(e) => e.range,
+      ExpressionGE::UpcastInterface(e) => e.range,
+      ExpressionGE::UpcastGeneric(e) => e.range,
+      ExpressionGE::Destroy(e) => e.range,
+      ExpressionGE::CopyPrim(e) => e.range,
+      ExpressionGE::LocalLookup(e) => e.range,
+      ExpressionGE::StaticSizedArrayLookup(e) => e.range,
+      ExpressionGE::RuntimeSizedArrayLookup(e) => e.range,
+      ExpressionGE::MemberLookup(e) => e.range,
+      ExpressionGE::Deref(e) => e.range,
     }
   }
 }

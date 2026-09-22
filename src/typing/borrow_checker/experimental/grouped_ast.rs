@@ -8,8 +8,12 @@
 use bumpalo::Bump;
 
 use crate::interner::StrI;
-use crate::typing::borrow_checker::ast_g::{ExpressionGE, GroupStep};
+use crate::postparsing::ast::ParameterS;
+use crate::postparsing::names::IRuneS;
+use crate::postparsing::rules::types::{GroupS, ITypeST, RegionS};
+use crate::typing::borrow_checker::ast_g::{ExpressionGE, GroupStep, MutEffectPath};
 use crate::typing::borrow_checker::group_expr::{GroupChildStepG, GroupExprG, GroupPathG, GroupRootG};
+use crate::typing::borrow_checker::kind_g::KindGT;
 use crate::typing::names::names::IVarNameT;
 use crate::utils::range::RangeS;
 
@@ -115,30 +119,197 @@ pub fn sole_path<'s, 't, 'g>(group: GroupExprG<'s, 't, 'g>) -> &'g GroupPathG<'s
   }
 }
 
-/// A group of exactly one path: `root` with no steps.
-pub fn single_path<'s, 't, 'g>(arena: &'g Bump, root: GroupRootG<'s, 't>) -> GroupExprG<'s, 't, 'g> {
-  arena.alloc_slice_copy(&[GroupPathG { root, steps: &[], ellipsis: false }])
-}
-
-/// `group` with `step` appended to every path: the child group one step below each.
-pub fn with_step<'s, 't, 'g>(
-  arena: &'g Bump,
-  group: GroupExprG<'s, 't, 'g>,
-  step: GroupChildStepG<'s>,
-) -> GroupExprG<'s, 't, 'g> {
-  let paths: Vec<GroupPathG<'s, 't, 'g>> = group
-    .iter()
-    .map(|p| {
-      let mut steps = p.steps.to_vec();
-      steps.push(step);
-      GroupPathG { root: p.root, steps: arena.alloc_slice_copy(&steps), ellipsis: p.ellipsis }
-    })
-    .collect();
-  arena.alloc_slice_copy(&paths)
-}
-
 /// Whether two flattened group paths overlap: one is a prefix of the other (nested), including equal.
 pub(crate) fn paths_alias<'s, 't>(a: &[GroupStep<'s, 't>], b: &[GroupStep<'s, 't>]) -> bool {
   let n = a.len().min(b.len());
   a[..n] == b[..n]
+}
+
+/// Convert a scout-side `GroupS` to a `GroupExprG`: one path per union member, each walked root to leaf,
+/// allocated in `arena`. A group rune carries its own scout identity, so a root needs no frame.
+/// `Elements` maps to `ChildElements` (the destructible collection child group — the only kind a written
+/// group produces).
+pub(crate) fn group_expr_from_group_s<'s, 't, 'g>(
+  group: &'s GroupS<'s>,
+  arena: &'g Bump,
+) -> GroupExprG<'s, 't, 'g> {
+  match group {
+    GroupS::Union { members } => {
+      let paths: Vec<GroupPathG<'s, 't, 'g>> =
+        members.iter().flat_map(|m| group_expr_from_group_s(m, arena).iter().copied()).collect();
+      arena.alloc_slice_copy(&paths)
+    }
+    other => {
+      let (root, steps, ellipsis) = group_path_from_group_s(other);
+      arena.alloc_slice_copy(&[GroupPathG { root, steps: arena.alloc_slice_copy(&steps), ellipsis }])
+    }
+  }
+}
+
+/// One non-union written group as its root, its root-to-leaf steps, and whether it ends in `...`.
+fn group_path_from_group_s<'s, 't>(
+  group: &'s GroupS<'s>,
+) -> (GroupRootG<'s, 't>, Vec<GroupChildStepG<'s>>, bool) {
+  match group {
+    GroupS::Rune(ru) => (GroupRootG::Rune(ru.rune), vec![], false),
+    GroupS::Local(_) => panic!(
+      "vfail: a group written as a local name (`in x`) is not yet supported"
+    ),
+    GroupS::Member { base, member_name } => {
+      let (root, mut steps, ellipsis) = group_path_from_group_s(base);
+      steps.push(GroupChildStepG::Member { member_name: *member_name });
+      (root, steps, ellipsis)
+    }
+    GroupS::Elements { base } => {
+      let (root, mut steps, ellipsis) = group_path_from_group_s(base);
+      steps.push(GroupChildStepG::ChildElements {});
+      (root, steps, ellipsis)
+    }
+    GroupS::Ellipsis { base } => {
+      let (root, steps, _) = group_path_from_group_s(base);
+      (root, steps, true)
+    }
+    GroupS::Union { .. } => panic!("vfail: a union nested inside a group path"),
+  }
+}
+
+/// Every churn inside a grouped subtree, for a loop's aggregated `mut_effects`: a reference is spoiled
+/// on the loop's first iteration by a churn from any later one. The loop shares the calls' paths.
+pub(crate) fn collect_subtree_churns<'s, 't, 'g>(
+  node: ExpressionGE<'s, 't, 'g>,
+  out: &mut Vec<&'g MutEffectPath<'s, 't, 'g>>,
+) {
+  let effects: &'g [&'g MutEffectPath<'s, 't, 'g>] = match node {
+    ExpressionGE::FunctionCall(c) => c.mut_effects,
+    ExpressionGE::InterfaceFunctionCall(c) => c.mut_effects,
+    ExpressionGE::ExternFunctionCall(c) => c.mut_effects,
+    ExpressionGE::BoundFunctionCall(c) => c.mut_effects,
+    _ => &[],
+  };
+  out.extend(effects.iter().copied());
+  for child in node.children() {
+    collect_subtree_churns(child, out);
+  }
+}
+
+/// Whether a grouped node's result is `Never` (it returns, breaks, or contains something that does).
+pub(crate) fn diverges<'s, 't, 'g>(node: ExpressionGE<'s, 't, 'g>) -> bool {
+  matches!(node.result(), KindGT::Never(_))
+}
+
+/// The innermost local a grouped place expression is rooted in.
+// VLOOOOK: Option return — needs VOPT approval or removal
+pub(crate) fn place_root_local<'s, 't, 'g>(expr: ExpressionGE<'s, 't, 'g>) -> Option<IVarNameT<'s, 't>> {
+  match expr {
+    ExpressionGE::LocalLookup(l) => Some(l.local_variable.name),
+    ExpressionGE::RuntimeSizedArrayLookup(a) => place_root_local(a.array_expr),
+    ExpressionGE::StaticSizedArrayLookup(a) => place_root_local(a.array_expr),
+    ExpressionGE::MemberLookup(m) => place_root_local(m.struct_expr),
+    ExpressionGE::Deref(d) => place_root_local(d.inner),
+    _ => None,
+  }
+}
+
+/// The local an argument moves (`^local` lowers to an `Unlet`), if any.
+pub(crate) fn moved_local<'s, 't, 'g>(expr: ExpressionGE<'s, 't, 'g>) -> Option<IVarNameT<'s, 't>> {
+  match expr {
+    ExpressionGE::Unlet(u) => Some(u.variable.name),
+    _ => None,
+  }
+}
+
+/// The source range of a grouped place expression, for a diagnostic at the use site.
+pub(crate) fn expr_range<'s, 't, 'g>(expr: ExpressionGE<'s, 't, 'g>) -> Option<RangeS<'s>> {
+  match expr {
+    ExpressionGE::LocalLookup(l) => Some(l.range),
+    ExpressionGE::RuntimeSizedArrayLookup(a) => Some(a.range),
+    ExpressionGE::StaticSizedArrayLookup(a) => Some(a.range),
+    ExpressionGE::MemberLookup(m) => Some(m.range),
+    ExpressionGE::Deref(d) => Some(d.range),
+    _ => None,
+  }
+}
+
+/// Any grouped node's source range. A call carries several; the first is the call itself.
+pub(crate) fn node_range<'s, 't, 'g>(expr: ExpressionGE<'s, 't, 'g>) -> RangeS<'s> {
+  match expr {
+    ExpressionGE::LetAndLend(e) => e.range,
+    ExpressionGE::LockWeak(e) => e.range,
+    ExpressionGE::BorrowToWeak(e) => e.range,
+    ExpressionGE::LetNormal(e) => e.range,
+    ExpressionGE::Unlet(e) => e.range,
+    ExpressionGE::Discard(e) => e.range,
+    ExpressionGE::If(e) => e.range,
+    ExpressionGE::While(e) => e.range,
+    ExpressionGE::Mutate(e) => e.range,
+    ExpressionGE::Restackify(e) => e.range,
+    ExpressionGE::Return(e) => e.range,
+    ExpressionGE::Break(e) => e.range,
+    ExpressionGE::Block(e) => e.range,
+    ExpressionGE::Consecutor(e) => e.range,
+    ExpressionGE::StaticArrayFromValues(e) => e.range,
+    ExpressionGE::ArraySize(e) => e.range,
+    ExpressionGE::IsSameInstance(e) => e.range,
+    ExpressionGE::AsSubtype(e) => e.range,
+    ExpressionGE::VoidLiteral(e) => e.range,
+    ExpressionGE::ConstantInt(e) => e.range,
+    ExpressionGE::ConstantBool(e) => e.range,
+    ExpressionGE::ConstantStr(e) => e.range,
+    ExpressionGE::ConstantFloat(e) => e.range,
+    ExpressionGE::ArgLookup(e) => e.range,
+    ExpressionGE::LocalLookup(e) => e.range,
+    ExpressionGE::ArrayLength(e) => e.range,
+    ExpressionGE::InterfaceFunctionCall(e) => e.range,
+    ExpressionGE::ExternFunctionCall(e) => e.range,
+    ExpressionGE::FunctionCall(e) => e.range.first().copied().expect("vfail: a call with no range"),
+    ExpressionGE::BoundFunctionCall(e) => e.range,
+    ExpressionGE::Reinterpret(e) => e.range,
+    ExpressionGE::Construct(e) => e.range,
+    ExpressionGE::NewRuntimeSizedArray(e) => e.range,
+    ExpressionGE::StaticArrayFromCallable(e) => e.range,
+    ExpressionGE::DestroyStaticSizedArrayIntoFunction(e) => e.range,
+    ExpressionGE::DestroyStaticSizedArrayIntoLocals(e) => e.range,
+    ExpressionGE::DestroyRuntimeSizedArray(e) => e.range,
+    ExpressionGE::RuntimeSizedArrayCapacity(e) => e.range,
+    ExpressionGE::PushRuntimeSizedArray(e) => e.range,
+    ExpressionGE::PopRuntimeSizedArray(e) => e.range,
+    ExpressionGE::InterfaceToInterfaceUpcast(e) => e.range,
+    ExpressionGE::UpcastInterface(e) => e.range,
+    ExpressionGE::UpcastGeneric(e) => e.range,
+    ExpressionGE::Destroy(e) => e.range,
+    ExpressionGE::CopyPrim(e) => e.range,
+    ExpressionGE::StaticSizedArrayLookup(e) => e.range,
+    ExpressionGE::RuntimeSizedArrayLookup(e) => e.range,
+    ExpressionGE::MemberLookup(e) => e.range,
+    ExpressionGE::Deref(e) => e.range,
+  }
+}
+
+/// The group rune a borrow parameter declares (`&T in g`), if any.
+pub(crate) fn param_group_rune<'s>(param: &ParameterS<'s>) -> Option<IRuneS<'s>> {
+  if let ITypeST::BorrowRef(st) = param.tyype {
+    if let RegionS::Group(GroupS::Rune(ru)) = st.region {
+      return Some(ru.rune);
+    }
+  }
+  None
+}
+
+/// The root rune of an effect's group.
+pub(crate) fn effect_root_rune<'s>(gs: &GroupS<'s>) -> Option<IRuneS<'s>> {
+  match gs {
+    GroupS::Rune(ru) => Some(ru.rune),
+    GroupS::Member { base, .. } => effect_root_rune(base),
+    GroupS::Elements { base } => effect_root_rune(base),
+    GroupS::Ellipsis { base } => effect_root_rune(base),
+    _ => None,
+  }
+}
+
+/// The human name of a group rune (only code runes have one).
+pub(crate) fn rune_name<'s>(rune: IRuneS<'s>) -> Option<StrI<'s>> {
+  match rune {
+    IRuneS::CodeRune(cn) => Some(cn.name),
+    _ => None,
+  }
 }

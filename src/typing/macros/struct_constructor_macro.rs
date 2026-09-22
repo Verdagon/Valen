@@ -291,7 +291,7 @@ where
       .iter()
       .enumerate()
       .map(|(index, p)| {
-        ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(struct_range, index as i32, p.tyype)))
+        ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(struct_range, loct.add(self.typing_interner, index as i32), index as i32, p.tyype)))
       })
       .collect();
     let args_slice = self.typing_interner.alloc_slice_from_vec(args);

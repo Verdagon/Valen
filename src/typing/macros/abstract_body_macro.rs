@@ -153,7 +153,7 @@ where
       .enumerate()
       .map(|(index, param_type)| {
         ExpressionTE::ArgLookup(
-          self.typing_interner.alloc(ArgLookupTE::new(synth_range, index as i32, *param_type)),
+          self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, index as i32), index as i32, *param_type)),
         )
       })
       .collect();

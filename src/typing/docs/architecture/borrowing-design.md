@@ -2,14 +2,6 @@
 
 ## Design (human-only)
 
-TODO to prepare:
-
- * rename RegionS to GroupS
- * rename BorrowRefST.region to group
- * rename RegionGenericParameterType -> GroupGenericParameterType
- * rename RegionGenericParameterTypeS -> GroupGenericParameterTypeS
- * rename Consecutor to Sequence
-
 Out of scope:
 
  * `rc` groups.
@@ -716,10 +708,57 @@ once the child is done borrow checking, we will then know its effects, and we ca
 
 ## Design Proposals
 
-**A use is checked at the load of the local, by the reference's key.** `check_usages` looks a reference
-up by its `RefKey` across the whole `GroupSubtree`, never by re-walking its group; the group is
-consulted only when the reference is registered. A named reference is checked at every `LocalLookup` of
-its local, which covers call arguments, derefs, member lookups, `return` and `set` sources with one rule.
+**Experimental's `check_usages` is a backward liveness walk.** It walks the grouped body in reverse evaluation order
+carrying the reference values that still have a use later in the program, keyed by `RefKey`, each with
+its use's range and every group path its type mentions (outer borrow, nested borrows, citizen group
+args). A node that consumes references registers every reference-valued child before walking any
+child. A churn (a call's `mut_effects`, or the loop's applied to what is still pending at the body's
+start) that reaches a pending value is a use-after-churn, reported at that use. A node that produces a
+reference (a lookup, a call, a lend) retires its entry; a node that forwards a value (a local read, an
+`Unlet`, a `&&T→&T` decay, a block, an `if`'s arms, a `let`, a cast) re-keys it to its source. `if`
+walks each arm from the post-`if` set and unions; `while` walks its body from the post-loop set;
+`break` resumes from the innermost post-loop set; `return` from nothing. A churn of `P` reaches a
+mention `Q` iff `P` is a proper prefix of `Q` and the rest crosses `ChildElements`; an ellipsis mention
+dies iff `P` and `Q` are prefixes of each other. Every consumer of a reference is a use: a call
+argument, a `return`, a `set` through it, a value read through it, a constructor argument.
+
+**S14. Symphony's `check_usages` is a forward use-site check: state on the group, birth on the
+reference.** It carries only a `GroupSubtree` of *churned* groups (`last_mut_effect: Option<{ loct,
+range }>` per group node, keyed by `GroupStep`). A churn records itself by walking its group path and
+*creating* the node (`entry`/`or_insert`), stamping `last_mut_effect`; nothing else is registered. At
+every use — each consuming node's reference-valued children — the check reads the value's group paths
+and their `born_at`, and for each path walks the root down the target path: a use is stale when some
+node on the way has `last_mut_effect.loct > born_at` **and** the target is an independent descendant of
+that node (a `ChildElements`/`Variant` edge lies anywhere between them). The current node's churn is
+tested whether or not the deeper node exists, since the tree holds only churned ancestors. Call
+arguments are walked in two passes — all args first (so a sibling's churns are stamped), then each
+checked — which covers the held-register case with no per-reference bookkeeping.
+
+**S15. A reference carries its birth on its type: `GroupTemplataG.born_at: LocT`.** Groupify stamps the
+`LocT` of the node that produced the value, so a copy or temporary inherits the original birth through
+its type. A lookup or lend is born at that node; a parameter or rune-map entry at function entry
+(`LocT { path: &[] }`); a call's return at the call; a nested/citizen member at the containing value's
+birth. A held/returned reference is born at the call site, which is sound because any earlier churn
+that matters either spoils a stale argument (caught at the call) or is re-formed by the callee.
+
+**S16. All expression nodes number in one `LocT` scheme** — the typing pass's threaded child-index path
+(root `[]`, a node's children at `loct.add(index)` in evaluation order), so lexicographic path order is
+evaluation order and `born_at` compares against a churn `loct`. Call and branch nodes number the same
+way as lookups (no separate postparser-LID numbering). Declaration-name lifes keep their LID path,
+which never collides because a LID path contains no `0`.
+
+**S17. Symphony's use-after-churn diagnostic points at the argument's source location, name-free.** The
+error's range is the argument expression's own range and the message is `Used a borrow after
+invalidated.` (with the churn's range as the `Invalidated at` note), rather than naming the source
+variable — the caret already lands on it, and this avoids tracking which variable an expression read.
+
+**A use-after-churn names its churn, and every violation is reported.** A `MutEffectPath` carries the
+churning call's source range, and a `UseAfterChurn` or `UseAfterChurnTemporary` carries it as
+`churned_at`; the diagnostic renders `Invalidated at <pos>:` and the call's source line under the
+message. `check_usages` collects every violation, sorts them by source offset, and reports one per
+use, naming the first churn in program order that reaches it. A function with one violation returns
+it as a `BorrowCheckError`; with several, as `BorrowCheckErrors { errors }`, one `ICompileErrorT`
+whose rendering is each inner error in full, in order.
 
 **`GroupExprG` is a set of paths.** A reference's group is `&'g [GroupPath]`, and a `GroupPath` is a
 `root` (`Rune`, `ParamAnonymousGroup`, or `Local`), `steps` (`Member`, `ChildElements`,
@@ -734,10 +773,15 @@ reads a callee's return groups off it and treats `None` on a non-lambda as a com
 **One rune-to-templata map per frame resolves kinds and groups alike.** A frame's map holds an
 `ITemplataG` for every generic parameter in scope: a group parameter's entry is
 `Group(GroupExprG)`, next to a kind parameter's `Kind(KindGT)`. A function's own definition registers
-its group parameters as themselves, `g → Group(Rune(g))`. A call site's map for the callee binds each
-callee rune from the grouped arguments, so `churn<g'>(a &[]int in g)` called with `&arr` holds
-`g → Group(Local(arr))`. Every rune a written type or `mut(g)` mentions is looked up in the frame
-being groupified into, and a miss is a compiler bug.
+its group parameters as themselves, `g → Group(Rune(g))`: `build_rune_map` adds a placeholder per kind
+parameter, then `register_group_runes` walks each written parameter type against its typed kind and
+registers a `GroupTemplataG` for each rune a borrow names plainly (`&T in g`), nested runes first. A
+call site's map for the callee binds each callee rune from the grouped arguments (`match_types`, runes
+nested in citizen template args included), so `churn<g'>(a &[]int in g)` called with `&arr` holds
+`g → Group(Local(arr))`; a borrow-typed template argument of an instantiation leaves its rune unbound,
+and the parameter's anonymous group takes over. A placeholder the map binds is substituted; one it does
+not bind is itself. Every rune a written type or `mut(g)` mentions is looked up in the frame being
+groupified into, and a miss is a compiler bug.
 
 **S1. Aliasing info is region-free.** LLVM should still treat a reference as effectively restrict wherever
 it is the sole one reaching its group across a call — but the checker never computes those spans. It
@@ -753,11 +797,11 @@ as the parent, so numbering them apart would tell LLVM that an access to the who
 to an element never overlap, and it would reorder them into wrong code. A heap array's elements keep
 their own number, and the array's type decides which.
 
-**S3. A group rune's entry carries the type of its referent.** `Group(GroupTemplataG { group, kind })`: in a
-definition, `kind` is the referent type of the parameter written `&T in g`; at a call, it is the bound
-argument's referent. A written `g.items` or `g[]` resolves its step against that type. A rune two
-parameters share names one group with two referents, so `kind` is the binding parameter's type, not a
-property of the group.
+**S3. A group rune's entry carries the type of its referent.** `Group(GroupTemplataG { group, kind,
+born_at })`: in a definition, `kind` is the referent type of the parameter written `&T in g`; at a
+call, it is the bound argument's referent (`born_at` is the value's birth, per S15). A written
+`g.items` or `g[]` resolves its step against that type. A rune two parameters share names one group
+with two referents, so `kind` is the binding parameter's type, not a property of the group.
 
 **S4. Override effect-matching is a borrow-check.** Override resolution invokes the borrow checker to
 compare an override's declared `mut(...)` against the abstract method it implements, and a mismatch is
@@ -781,46 +825,112 @@ checker off.
 group is churned by the body, equivalent to naming the group and listing it in `mut(...)`. It is accepted on
 function headers, lambda parameters, and `where func` bound prototypes (S6).
 
-S8. talk about AccessEventG
+**S8. The access log.** `groupify_function` returns, beside the body, an ordered `Vec<AccessEventG>`:
+`Read { base_ref, group, loct }` at each `CopyPrim` and at each `Deref` whose result is a value, `Store`
+at each `Mutate`, and `Call { touched, loct }` at each function call with the flat group of every borrow
+argument. `base_ref_and_group` composes an access's group from the root reference's group plus the
+access chain's `Member` and `ChildElements` steps, truncated after the last elements step, or to the
+root's group when there is none. `calculate_aliasing_info` reads the log and the parameter paths
+(`param_group_paths`), never the tree.
+
+**S9. `groupify_type` walks a typed kind against its written type.** `WrittenContext { type_s, name }`
+carries the written type and the parameter it belongs to. A borrow's group is its written `in g`
+resolved through the frame's rune map; an unannotated or `held` borrow of a parameter is
+`ParamAnonymousGroup(param)`. A citizen's template args pair with a written `Call`'s args
+(`citizen_args_in`); a static array's element with `StaticArray<N, T>`'s second arg; a runtime array's
+with `[]T`'s element; an own or weak reference's inner with its written inner; a claim's payload with
+the same written type. A borrow written as a rune bound to a borrow takes the bound type.
+
+**S10. A lookup's group is its base's path plus one step.** `RuntimeSizedArrayLookup` appends
+`ChildElements`, `MemberLookup` appends `Member`, and `StaticSizedArrayLookup` appends nothing, since an
+inline element shares its array's group; each path keeps its `...`. A written `g[]` resolves the same
+way against the bound referent: `ChildElements` for a heap array, `InlineElements` for an inline one.
+
+**S11. A local read is a borrow of the local in the local's own group.** Groupify tracks each local's
+grouped type from its initializer; `LocalLookup(x)` yields `&<that type> in [Local(x)]`, so a reference
+local reads as `&&T` and `Deref` decays it. A member read through a borrow-typed temporary with no
+`Deref` (a destructure of a borrow) peels to the borrow that points at the struct.
+
+**S12. The phase signatures.** `check_function` first rejects a groupless written return borrow
+(`check_return_group`); `groupify_function` returns the body and the access log; `check_usages` takes
+the function's scout signature for its declared `mut(...)`; `calculate_aliasing_info` takes the
+parameter paths and the log.
+
+**S13. The grouped AST is `ExpressionGE`, one arena struct per node.** `KindGT` and `ITemplataG` are
+`Copy`, with compound payloads as `&'g` references into the check arena; `StructGT` and `InterfaceGT`
+hold `&'g [ITemplataG]` template args.
 
 ## Details
 
-### Phase entry points (from Three Phases)
+### Phase entry points (from Three Phases, S12)
 
-`check_function` runs the three phases in order, threading phase 1's grouped AST into phases 2 and 3. All
-inputs stay immutable; the only outputs are an error or the aliasing info, so the entry point stays pure.
+`check_function` runs `check_return_group`, then the three phases in order, threading phase 1's grouped
+AST into phase 2 and its access log into phase 3. All inputs stay immutable; the only outputs are an
+error or the aliasing info, so the entry point stays pure.
 
-Phase 1 (`groupify_function`) builds the grouped AST: it fills each borrow's group and attaches each
-call's `mut_effects`, aggregating them onto the enclosing `while` node, so phase 2 needs no loop
-fixpoint.
+Phase 1 (`groupify_function`) builds the grouped AST: it fills each borrow's group, attaches each
+call's `mut_effects`, aggregating them onto the enclosing `while` node, and records the access log.
 
-Phase 2 (`check_usages`) walks the grouped AST once, threads the `GroupSubtree` tree, and rejects a use
-of a reference a churn invalidated.
+Phase 2 (`check_usages`) walks the grouped AST once, backward, and rejects a use of a reference a churn
+invalidated.
 
-Phase 3 (`calculate_aliasing_info`) walks the same grouped AST and produces the `FunctionAliasingInfoT`
-telling the backend which memory each load, store, and call touches.
+Phase 3 (`calculate_aliasing_info`) reads the access log and the parameter paths and produces the
+`FunctionAliasingInfoT` telling the backend which memory each load, store, and call touches.
 
-### The grouped AST meets the GroupSubtree state (from check_usages)
+### The Symphony use-site check (from S14–S17)
 
-The grouped AST and the invalidation state touch at three points and nowhere else:
+Symphony walks the grouped body forward, carrying one `GroupSubtree` of churned groups. `note_mut_effect`
+walks a churn's group path, creating each node with `entry`/`or_insert`, and stamps `last_mut_effect`
+on the churned group. `check_kind_still_valid(use_range, kind)` collects the value's `GroupTemplataG`s;
+for each group path, `check_target_group_invalidated_since` descends the root then the path steps,
+returning whether the target is an independent descendant seen so far (`child_is_independent ||
+<deeper>`), and at each node — whether or not the deeper node exists — reports when `last_mut_effect.loct
+> born_at` and the target is independent. The error's range is `use_range` (the argument's own range);
+`churned_at` is the churn's range (`range[0]`, innermost).
 
- * Bind: register a reference as live under each group its `GroupExprG` names — a `let`-bound local,
-   or a held register (a temporary holding a reference mid-expression, like `bar(x)` in
-   `foo(bar(x), baz(y))`, treated as an unnamed local).
- * Churn: walk to the churned group's node, cross its child-group edges, and stamp `invalidated_by =
-   <the call's Loc>` on every registered reference beneath.
- * Use: query the tree at the reference's group(s) — for a local at its use, for a held register when
-   the call consumes it; if any group it points into is invalidated, it is a use-after-churn.
+Known gap: this catches a *plain* reference (killed by a churn on an ancestor across a child edge) but
+not the ellipsis case. An ellipsis reference `g...` is also killed by a churn at, above, or **below**
+its group; the walk-up alone can't see a churn below, so ellipsis needs a subtree check (or a second
+"last churn anywhere in my subtree" stamp) — deferred.
 
-A churn reaches group→its registered references; a use reaches a reference→every group it points
-into, so a `Union` reference is checked against all of them.
+### The backward walk's state (from Experimental's `check_usages` proposal)
+
+The walk carries three things and nothing else:
+
+ * `pending`: `RefKey → { use_range, mentions }`, the values with a later use. `register` adds a
+   consumed child, keyed as the local it reads (through any decay) at the local's range, or as a held
+   temporary at the call or node; merging into an existing key keeps the earlier use and unions the
+   mentions. `retire` drops a key at the node that produces the value. `rekey` moves an entry to the
+   child that supplies the value.
+ * `break_targets`: a stack of post-loop pending sets, pushed on entering a `while`, read at a `break`.
+ * `errors`: every violation found; `check_usages` returns them sorted by source offset, one per use.
+
+A `let` forwards its local's pending entry into the initializer; nothing is registered at a binding.
+`Destroy` and the static-array destructure drop their destination locals' entries. The producer gate
+and the joint-argument facts run at each call, before its arguments are registered.
 
 ### Diagnostics (from check_usages)
 
 A use-after-churn of a *named* reference renders as `BorrowErrorKind::UseAfterChurn`, pointing at the
-use site. A use-after-churn of a *held register* — an unnamed mid-expression temporary — renders as a
-distinct `BorrowErrorKind::UseAfterChurnTemporary`, pointing at the argument that holds the stale
-reference; the per-argument source range comes from `FunctionCallTE.range`.
+use: the local's own range, or the statement's for a `return`, whose value passes through a result
+temporary whose `Unlet` carries the statement's range. A use-after-churn of a *held* temporary — an
+unnamed call result — renders as `BorrowErrorKind::UseAfterChurnTemporary`, pointing at the call (the
+first entry of `FunctionCallTE.range`). Both carry `churned_at`, the churning call's range, which
+`ICompileErrorT::notes()` exposes and the humanizer renders under the message:
+
+```
+At test:0.vale:7:11:
+  observe(e);
+Used e after invalidated.
+Invalidated at test:0.vale:6:3:
+  churn(a);
+```
+
+For a loop's back edge the note names the churning call inside the body, since `While.mut_effects`
+shares the calls' `MutEffectPath`s. A use reached by two churns (one per `if` arm, or the body's churn
+once directly and once through the `break` path's copy of the post-loop set) is reported once, with
+the churn first in program order. Several violations in one function come back as
+`BorrowCheckErrors`, rendered as each inner error's full text in sequence.
 
 ### Aliasing output (from calculate_aliasing_info)
 
@@ -866,10 +976,11 @@ churn(arr);          // churn declares mut(g) on its parameter's group
 ```
 
 `groupify_function` gives the `churn` call's `mut_effects` a `MutEffectPath { effecting_node_loc:
-<the churn call>, steps: [Local("arr")] }` — the leading `Local("arr")` names the root. `check_usages`
-walks to the `GroupSubtree` at `arr`, invalidates every `LocalEntry` under its child groups (`elem`) with
-`invalidated_by = effecting_node_loc`, and rejects a later use of `elem` as use-after-churn. A reference to `arr` itself,
-or to an inline member, is in `arr`'s own `locals` and survives.
+<the churn call>, steps: [Local("arr")] }` — the leading `Local("arr")` names the root — and `elem`'s
+type the group `[Local("arr"), ChildElements]`. Walking backward, `check_usages` registers `elem` at its
+later use, meets the churn of `[Local("arr")]`, finds that path a proper prefix of `elem`'s that crosses
+`ChildElements`, and rejects the use. A reference to `arr` itself is in `[Local("arr")]`, not below it,
+and survives; so does a reference to an inline member.
 
 ### Use-after-churn through a returned reference (rung 3)
 
@@ -880,10 +991,9 @@ print(v);             // stale — use-after-churn
 ```
 
 `groupify_function` reads `get`'s declared return group (a reference into `self`'s group's elements),
-substitutes `self`'s group rune with the `map` argument, and gives `v`'s `BorrowRefGT` the group
-`Elements(Local("map"))`. `check_usages` registers `v` under `map`'s elements at the binding; the
-`remove` call churns `map`, invalidating the references under its child groups (`v`); and `print(v)`
-is rejected as use-after-churn.
+binds `self`'s group rune to the `map` argument, and gives `v`'s `BorrowRefGT` the group
+`[Local("map"), ChildElements]`. Walking backward, `check_usages` registers `v` at `print(v)`, meets the
+`remove` call's churn of `[Local("map")]`, and rejects the use.
 
 ### Held register: use-after-churn through an unnamed call result
 
@@ -894,21 +1004,24 @@ use2(get(&arr), churn(&arr));   // get(&arr) returns a reference into arr, held 
 ```
 
 Unlike the returned-reference case above, `get(&arr)`'s result is never bound to a named local — it
-lives in a register while the sibling argument `churn(&arr)` evaluates. `groupify_function` registers
-that held register as an unnamed local pointing into `arr`'s elements; `check_usages` invalidates it
-when `churn(&arr)` churns `arr`; and the final `use2` call that consumes the register is rejected as
-use-after-churn. A test using a *named* local would not exercise this — the register must be an
-unnamed temporary.
+lives in a register while the sibling argument `churn(&arr)` evaluates. At the `use2` call,
+`check_usages` registers both arguments before walking either, keying `get(&arr)`'s result as a held
+temporary at the call; walking `churn(&arr)` then meets its churn of `[Local("arr")]`, which reaches the
+held entry's `[Local("arr"), ChildElements]`, and rejects the call as `UseAfterChurnTemporary`. A test
+using a *named* local would not exercise this — the register must be an unnamed temporary.
 
 ## Background
 
 ### Self-evident from the code
 
- * A local's identity is the interned `IVarNameT` (`names.rs`), which the checker uses as the `RefKey::Named` key for a live reference in the `GroupSubtree`; its per-function uniqueness comes from the embedded `LocalNameT.life` (a unique `path: &[i32]` per declaration), so it is safe under shadowing.
- * `FunctionCallTE`, `WhileTE`, and `IfTE` (`expressions.rs`) each carry a `loct: LocT<'t>` field, so the walk reads a `Loc` off the node.
+ * A local's identity is the interned `IVarNameT` (`names.rs`), which the checker uses as the `RefKey::Named` key for a pending reference in the walk; its per-function uniqueness comes from the embedded `LocalNameT.life` (a unique `path: &[i32]` per declaration), so it is safe under shadowing.
+ * The value-access and call nodes (`FunctionCallTE`, `BoundFunctionCallTE`, `WhileTE`, `IfTE`, `MutateTE`, `DerefTE`, `CopyPrimTE`) plus the six lookup nodes (`LocalLookupTE`, `ArgLookupTE`, `MemberLookupTE`, `StaticSizedArrayLookupTE`, `RuntimeSizedArrayLookupTE`, `LetAndLendTE`) and `DestroyTE` (`expressions.rs`) each carry a `loct: LocT<'t>` field on one unified threaded numbering (S16); `ExpressionGE::range()`/`result()` (`ast_g.rs`) dispatch the mirror's range and result.
  * `IVarNameT` (`names.rs`) is interned and `Copy`/`Eq`/`Hash`, so it is a hashable local key needing no pointer.
- * `LocT<'t> { path: &[i32] }` (`ast.rs`) is the `Loc`; the same type fills `MutEffectPath.effecting_node_loc` and `LocalEntry.invalidated_by`.
- * `LocalVariable` (`function_environment_t.rs`) uses arena-pointer identity (@IEOIBZ), which the current `liveness.rs` keys on and the new checker drops in favor of `IVarNameT`.
+ * `LocT<'t> { path: &[i32] }` (`ast.rs`) is the `Loc`; the same type fills `MutEffectPath.effecting_node_loc` and the access log's `loct`.
+ * `return X` lowers to `Consecutor([LetNormal(tmp, X), <drops>, Return(Unlet(tmp))])` (`expression_compiler.rs`), and a reference-local read is `Deref(LocalLookup(x))`; `Deref` is produced only as `&&T→&T` decay, so a value load is always a `CopyPrim`.
+ * `while (c) { body }` lowers to `While(Consecutor([If(c, Void, Block(Break)), body]))` (`loop_post_parser.rs`), so a `break` is the only exit besides `return`.
+ * `mentions_of` (`experimental/check_usages.rs`) collects every `GroupPathG` a `KindGT` carries: the outer borrow, nested borrows, and the `Group` template args of citizens.
+ * `base_ref_and_group` (`experimental/groupify.rs`) walks a grouped access chain through `Deref`/`CopyPrim`/`MemberLookup`/array lookups to its root `LocalLookup`/`ArgLookup` and reads that reference's group.
  * The pipeline already keys locals by name, not pointer: testvm's `VariableAddressV { call_id, name: IVarNameI }` (`values.rs`) does, and its comment records that the typing pass makes the name unique per function (@VCOORD) while the per-mention-reallocated struct pointer is not a stable key.
  * `StructMemberT.name` (`citizens.rs`) is now a `&'t MemberNameT` (`names.rs`, carrying `imprecise_name` + `life`), while the body node the walk actually reads, `MemberLookupTE.member_name` (`expressions.rs`), is still an `IVarNameT` (a `MemberNameT` wrapped as `IVarNameT::Member`). The two are populated independently (e.g. a closure capture at `expression_compiler.rs`), so a member step read off the body node must project the `MemberNameT` out.
 
@@ -922,6 +1035,10 @@ unnamed temporary.
 ### Undocumented
 
 ## Open Questions
+
+ * Should an unannotated borrow nested in a parameter's type (`&Opt<&Ship>`) take the parameter's anonymous group, as `groupify_type` does today, or be the deferred error the Design calls for?
+ * Which deferred cases should become `UnderivableBorrowGroup` errors rather than panics (the sites are listed under "where it cuts corners" in the handoff)?
+ * `groupify_type` substitutes a bound placeholder by rune name; should the rune map key on the placeholder's `IdT` (owning template plus rune) so a caller's `T` never resolves through a callee's `T`?
 
 ## Required Reading
 

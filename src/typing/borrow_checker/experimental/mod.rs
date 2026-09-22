@@ -1,5 +1,4 @@
 pub mod aliasing_info;
-pub mod borrow_types;
 pub mod check;
 pub mod check_usages;
 pub mod errors;

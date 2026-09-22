@@ -106,7 +106,7 @@ where
     let synth_range = RangeS::internal(self.scout_arena, -70110);
     let as_subtype_expr = ExpressionTE::AsSubtype(self.typing_interner.alloc(AsSubtypeTE::new(
       synth_range,
-      ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, incoming_coord))),
+      ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, incoming_coord))),
       success_coord,
       result_coord,
       self.typing_interner.alloc(ok_constructor),

@@ -49,14 +49,10 @@ pub fn humanize_borrow_error<'s, 't>(
         move_arg,
       )
     }
-    BorrowErrorKind::UseAfterChurn { local: RefKey::Named(local) } => {
-      format!("Used {} after invalidated.", var_name(local))
-    }
-    // A held temporary has no name to report; it reads as the sibling-argument case.
-    BorrowErrorKind::UseAfterChurn { local: RefKey::Held(_) } | BorrowErrorKind::UseAfterChurnTemporary => {
-      "This reference into an array element is held while a sibling argument churns its group, \
-       which may have moved or deleted the element, so it can't be passed here."
-        .to_string()
+    // The `At <pos>:` header already points the caret at the use's own source location, so the
+    // message doesn't name a variable (matches Symphony's wording).
+    BorrowErrorKind::UseAfterChurn { .. } | BorrowErrorKind::UseAfterChurnTemporary { .. } => {
+      "Used a borrow after invalidated.".to_string()
     }
     BorrowErrorKind::GrouplessReturnBorrow => {
       "This function returns a borrow reference with no group. Annotate the group it points into, \

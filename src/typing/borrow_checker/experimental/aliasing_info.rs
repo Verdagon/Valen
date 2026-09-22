@@ -9,49 +9,30 @@
 use bumpalo::Bump;
 
 use crate::interner::StrI;
-use crate::postparsing::ast::FunctionS;
-use crate::postparsing::rules::types::{ITypeST, RegionS};
-use crate::typing::ast::ast::{FunctionDefinitionT, LocT};
+use crate::typing::ast::ast::LocT;
 use crate::typing::ast::borrowing_ast::{FunctionAliasingInfoT, GroupIdStepT, GroupIdT};
 use indexmap::IndexMap;
 use crate::typing::borrow_checker::access_event::AccessEventG;
 use crate::typing::borrow_checker::ast_g::GroupStep;
-use crate::typing::borrow_checker::experimental::grouped_ast::{flatten, paths_alias, sole_path};
-use crate::typing::borrow_checker::experimental::groupify::rune_name;
-use crate::typing::borrow_checker::kind_g::KindGT;
+use crate::typing::borrow_checker::experimental::grouped_ast::{paths_alias, rune_name};
 use crate::typing::compiler::Compiler;
 use crate::typing::names::names::IVarNameT;
 
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   /// Report which parameters are `noalias` and the region-free group ground truth, arena-allocated in
   /// `check_arena`, to feed the backend for optimization. The per-parameter verdict is signature-only: a
-  /// borrow parameter qualifies when its group path is not aliased by any other parameter's, exactly as
-  /// `groupify` derives it. The group facts come from the `access_log` walked out of `groupify_function`.
+  /// borrow parameter qualifies when its group path is not aliased by any other parameter's; `paths` is
+  /// each parameter's flattened group path as `param_group_paths` derives it (`None` for a non-borrow or
+  /// `held` parameter). The group facts come from the `access_log` walked out of `groupify_function`.
   pub(crate) fn calculate_aliasing_info<'g>(
     &self,
-    function_s: &'s FunctionS<'s>,
-    function_t: &'t FunctionDefinitionT<'s, 't>,
+    paths: &[Option<Vec<GroupStep<'s, 't>>>],
     access_log: &[AccessEventG<'s, 't>],
     check_arena: &'g Bump,
   ) -> &'g FunctionAliasingInfoT<'s, 'g>
   where
     's: 'g,
   {
-    let params_t = &function_t.header.params;
-    let paths: Vec<Option<Vec<GroupStep<'s, 't>>>> = (0..params_t.len())
-      .map(|i| {
-        let ps = function_s.params.get(i)?;
-        match &ps.tyype {
-          ITypeST::BorrowRef(st) if !matches!(st.region, RegionS::Held) => {
-            match self.make_kind_g(params_t[i].tyype, &ps.tyype, Some(&params_t[i].name), check_arena) {
-              KindGT::BorrowRef(b) => Some(flatten(sole_path(b.group.group))),
-              _ => None,
-            }
-          }
-          _ => None,
-        }
-      })
-      .collect();
     let param_noalias: Vec<bool> = (0..paths.len())
       .map(|i| match &paths[i] {
         None => false,
@@ -61,7 +42,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       })
       .collect();
     let (group_paths, instruction_loc_to_accessed_groups) =
-      compute_group_facts(access_log, &paths, check_arena);
+      compute_group_facts(access_log, paths, check_arena);
     check_arena.alloc(FunctionAliasingInfoT {
       param_index_to_noalias: check_arena.alloc_slice_copy(&param_noalias),
       group_paths,

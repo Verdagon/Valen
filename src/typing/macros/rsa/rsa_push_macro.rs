@@ -41,10 +41,10 @@ where
         self.typing_interner.alloc(PushRuntimeSizedArrayTE::new(
           synth_range,
           ExpressionTE::ArgLookup(
-            self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, param_coords[0].tyype)),
+            self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, param_coords[0].tyype)),
           ),
           ExpressionTE::ArgLookup(
-            self.typing_interner.alloc(ArgLookupTE::new(synth_range, 1, param_coords[1].tyype)),
+            self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 1), 1, param_coords[1].tyype)),
           ),
         )),
       ))),

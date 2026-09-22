@@ -384,7 +384,7 @@ where
     let body_expr: ExpressionTE<'s, 't> = match struct_def.sharedness {
       SharednessT::Shared => ExpressionTE::Discard(self.typing_interner.alloc(DiscardTE::new(
         synth_range,
-        ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, struct_type))),
+        ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, struct_type))),
       ))),
       SharednessT::Single if is_extern => {
         // VCOORD: implement this per todo/opaque-extern-drop.md
@@ -410,9 +410,10 @@ where
         let member_local_variables_slice =
           self.typing_interner.alloc_slice_from_vec(member_local_variables.clone());
         let arg_lookup =
-          ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, struct_type)));
+          ExpressionTE::ArgLookup(self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, struct_type)));
         let destroy = ExpressionTE::Destroy(self.typing_interner.alloc(DestroyTE::new(
           synth_range,
+          loct,
           arg_lookup,
           struct_tt,
           member_local_variables_slice,
@@ -423,13 +424,15 @@ where
         let drop_call_range_slice = self.typing_interner.alloc_slice_from_vec(drop_call_range);
         let drop_exprs: Vec<ExpressionTE<'s, 't>> = member_local_variables
           .iter()
-          .map(|v| {
+          .enumerate()
+          .map(|(index, v)| {
             let unlet = ExpressionTE::Unlet(self.typing_interner.alloc(UnletTE::new(synth_range, *v)));
             self.drop(
               body_env,
               coutputs,
               drop_call_range_slice,
               call_location,
+              loct.add(self.typing_interner, (1 + index) as i32),
               RegionT::Default,
               unlet,
             )

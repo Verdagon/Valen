@@ -41,7 +41,7 @@ where
     let body = ExpressionTE::Block(self.typing_interner.alloc(BlockTE::new(synth_range, ExpressionTE::Return(
       self.typing_interner.alloc(ReturnTE::new(synth_range, ExpressionTE::PopRuntimeSizedArray({
         let array_expr = ExpressionTE::ArgLookup(
-          self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, param_coords[0].tyype)),
+          self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, param_coords[0].tyype)),
         );
         let element_type = match peel_all_references(array_expr.result()) {
           KindT::RuntimeSizedArray(rsa) => rsa.element_type(),

@@ -49,7 +49,7 @@ where
     let synth_range = RangeS::internal(self.scout_arena, -70090);
     let discard_te =
       ExpressionTE::Discard(self.typing_interner.alloc(DiscardTE::new(synth_range, ExpressionTE::ArgLookup(
-        self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, param_coords[0].tyype)),
+        self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, param_coords[0].tyype)),
       ))));
     let return_te =
       ExpressionTE::Return(self.typing_interner.alloc(ReturnTE::new(synth_range, ExpressionTE::ConstantInt(

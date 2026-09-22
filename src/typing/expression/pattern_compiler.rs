@@ -248,6 +248,7 @@ where
           ExpressionTE::LocalLookup(self.typing_interner.alloc(LocalLookupTE::new(
             self.typing_interner,
             pattern.range,
+            loct.add(self.typing_interner, 3),
             local_t,
           )));
         (Some(local_t), captured_local_alias_te)
@@ -294,6 +295,7 @@ where
                   coutputs,
                   &ranges,
                   call_location,
+                  loct.add(self.typing_interner, 4),
                   region,
                   expr_to_destructure_or_drop_or_pass_te,
                 )
@@ -563,7 +565,7 @@ where
       ExpressionTE::LetNormal(self.typing_interner.alloc(LetNormalTE::new(range[0], local_t, container_te)));
     // A local lookup is already a borrow reference to the local's value.
     let container_aliasing_expr_te: ExpressionTE<'s, 't> = ExpressionTE::LocalLookup(
-      self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, range[0], local_t)),
+      self.typing_interner.alloc(LocalLookupTE::new(self.typing_interner, range[0], loct.add(self.typing_interner, 2), local_t)),
     );
     let iterate_expr = self.iterate_destructure_non_owning_and_maybe_continue(
       coutputs,
@@ -640,6 +642,7 @@ where
             coutputs,
             env,
             head_maybe_destructure_member_pattern.range,
+            loct.add(self.typing_interner, 2),
             region,
             container_aliasing_expr_te,
             *struct_tt,
@@ -647,6 +650,7 @@ where
           ),
           KindT::StaticSizedArray(static_sized_array_t) => self.load_from_static_sized_array(
             head_maybe_destructure_member_pattern.range,
+            loct.add(self.typing_interner, 2),
             *static_sized_array_t,
             container_aliasing_expr_te,
             member_index,
@@ -771,6 +775,7 @@ where
     let member_locals_ref = self.typing_interner.alloc_slice_copy(&member_locals);
     let destroy_te = ExpressionTE::Destroy(self.typing_interner.alloc(DestroyTE::new(
       parent_ranges[0],
+      loct,
       input_struct_expr,
       struct_tt_ref,
       member_locals_ref,
@@ -933,6 +938,7 @@ where
     coutputs: &mut CompilerOutputs<'s, 't>,
     env: IInDenizenEnvironmentT<'s, 't>,
     load_range: RangeS<'s>,
+    loct: LocT<'t>,
     region: RegionT,
     container_alias: ExpressionTE<'s, 't>,
     struct_tt: StructTT<'s, 't>,
@@ -956,6 +962,7 @@ where
     ExpressionTE::MemberLookup(self.typing_interner.alloc(MemberLookupTE::new(
       self.typing_interner,
       load_range,
+      loct,
       container_alias,
       IVarNameT::Member(member.name),
       member_type,
@@ -965,6 +972,7 @@ where
   pub fn load_from_static_sized_array(
     &self,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     static_sized_array_t: StaticSizedArrayTT<'s, 't>,
     container_alias: ExpressionTE<'s, 't>,
     index: i32,
@@ -976,7 +984,7 @@ where
       RegionT::Default,
     )));
     let lookup =
-      self.lookup_in_static_sized_array(range, container_alias, index_expr, static_sized_array_t);
+      self.lookup_in_static_sized_array(range, loct, container_alias, index_expr, static_sized_array_t);
     ExpressionTE::StaticSizedArrayLookup(self.typing_interner.alloc(lookup))
   }
 }

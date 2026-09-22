@@ -172,6 +172,7 @@ where
     calling_env: &'t NodeEnvironmentT<'s, 't>,
     parent_ranges: &[RangeS<'s>],
     call_location: LocationInDenizen<'s>,
+    loct: LocT<'t>,
     region: RegionT,
     rules_s: &[IRulexSR<'s>],
     maybe_element_type_rune: Option<IRuneS<'s>>,
@@ -347,7 +348,7 @@ where
       args_te.push(c);
     }
     let call_te = ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
-      LocT::from_lid(self.typing_interner, call_location),
+      loct,
       self.typing_interner.alloc_slice_copy(parent_ranges),
       prototype,
       self.typing_interner.alloc_slice_from_vec(args_te),
@@ -806,6 +807,7 @@ where
   pub fn lookup_in_static_sized_array(
     &self,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     container_expr_2: ExpressionTE<'s, 't>,
     index_expr_2: ExpressionTE<'s, 't>,
     at: StaticSizedArrayTT<'s, 't>,
@@ -813,6 +815,7 @@ where
     StaticSizedArrayLookupTE::new(
       self.typing_interner,
       range,
+      loct,
       container_expr_2,
       self.typing_interner.alloc(at),
       index_expr_2,
@@ -823,6 +826,7 @@ where
     &self,
     parent_ranges: &[RangeS<'s>],
     range: RangeS<'s>,
+    loct: LocT<'t>,
     container_expr_2: ExpressionTE<'s, 't>,
     index_expr_2: ExpressionTE<'s, 't>,
     rsa: &'t RuntimeSizedArrayTT<'s, 't>,
@@ -838,6 +842,7 @@ where
     Ok(RuntimeSizedArrayLookupTE::new(
       self.typing_interner,
       range,
+      loct,
       container_expr_2,
       rsa,
       index_expr_2,

@@ -28,7 +28,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:9:8:
   use2(get(&arr), churn_ret(&arr));
-This reference into an array element is held while a sibling argument churns its group, which may have moved or deleted the element, so it can't be passed here.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:19:
+  use2(get(&arr), churn_ret(&arr));
 "#,
   );
 }

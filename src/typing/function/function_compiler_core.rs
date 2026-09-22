@@ -459,13 +459,14 @@ where
           }),
         );
 
+        let root_loct = LocT { path: &[] };
         let arg_lookups: Vec<ExpressionTE<'s, 't>> = header
           .params
           .iter()
           .enumerate()
           .map(|(index, param)| {
             ExpressionTE::ArgLookup(
-              self.typing_interner.alloc(ArgLookupTE::new(range, index as i32, param.tyype)),
+              self.typing_interner.alloc(ArgLookupTE::new(range, root_loct.add(self.typing_interner, index as i32), index as i32, param.tyype)),
             )
           })
           .collect();

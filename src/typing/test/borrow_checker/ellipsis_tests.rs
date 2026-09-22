@@ -24,7 +24,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:3:
+  churn(&arr);
 "#,
   );
 }
@@ -70,7 +72,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:3:
+  churn_elems(&arr);
 "#,
   );
 }
@@ -94,7 +98,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:10:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:3:
+  churn_ellipsis(&arr);
 "#,
   );
 }
@@ -138,7 +144,9 @@ exported func main() int {
 "#,
     r#"At test:0.vale:11:11:
   observe(ref);
-Used ref after invalidated.
+Used a borrow after invalidated.
+Invalidated at test:0.vale:10:3:
+  churn(&arr);
 "#,
   );
 }

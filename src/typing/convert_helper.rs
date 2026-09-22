@@ -43,10 +43,12 @@ target:
     }
 
     let mut previous_ref_exprs = Vec::new();
-    for (source_expr, target_pointer_type) in source_exprs.iter().zip(target_pointer_types.iter()) {
+    for (index, (source_expr, target_pointer_type)) in
+      source_exprs.iter().zip(target_pointer_types.iter()).enumerate()
+    {
       let ref_expr = self.convert(
         nenv,
-        loct,
+        loct.add(self.typing_interner, index as i32),
         coutputs,
         range,
         call_location,
@@ -140,6 +142,7 @@ target:
           }
           _ => self.convert_via_implicit_clone(
             nenv,
+            loct,
             coutputs,
             range,
             call_location,
@@ -276,6 +279,7 @@ target:
   fn convert_via_implicit_clone(
     &self,
     nenv: &mut NodeEnvironmentBox<'s, 't>,
+    loct: LocT<'t>,
     coutputs: &mut CompilerOutputs<'s, 't>,
     range: &[RangeS<'s>],
     call_location: LocationInDenizen<'s>,
@@ -319,7 +323,7 @@ target:
           .is_some());
         let args_te = self.typing_interner.alloc_slice_from_vec(vec![source_expr]);
         Ok(ExpressionTE::FunctionCall(self.typing_interner.alloc(FunctionCallTE::new(
-          LocT::from_lid(self.typing_interner, call_location),
+          loct,
           self.typing_interner.alloc_slice_copy(range),
           stamp.prototype,
           args_te,

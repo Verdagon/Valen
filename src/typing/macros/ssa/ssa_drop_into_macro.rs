@@ -43,10 +43,10 @@ where
     // This is a compiler-generated builtin body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70080);
     let arr_arg = ExpressionTE::ArgLookup(
-      self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, param_coords[0].tyype)),
+      self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, param_coords[0].tyype)),
     );
     let callable_arg = ExpressionTE::ArgLookup(
-      self.typing_interner.alloc(ArgLookupTE::new(synth_range, 1, param_coords[1].tyype)),
+      self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 1), 1, param_coords[1].tyype)),
     );
     let destroy_te = self.evaluate_destroy_static_sized_array_into_callable(
       coutputs,

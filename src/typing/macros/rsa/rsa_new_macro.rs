@@ -75,7 +75,7 @@ where
           self.typing_interner.alloc(array_tt),
           RegionT::Default,
           ExpressionTE::ArgLookup(
-            self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, param_coords[0].tyype)),
+            self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, param_coords[0].tyype)),
           ),
         )),
       ))),

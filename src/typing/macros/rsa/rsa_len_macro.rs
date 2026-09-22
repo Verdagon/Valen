@@ -39,7 +39,7 @@ where
     let body = ExpressionTE::Block(self.typing_interner.alloc(BlockTE::new(synth_range, ExpressionTE::Return(
       self.typing_interner.alloc(ReturnTE::new(synth_range, ExpressionTE::ArrayLength(
         self.typing_interner.alloc(ArrayLengthTE::new(synth_range, ExpressionTE::ArgLookup(
-          self.typing_interner.alloc(ArgLookupTE::new(synth_range, 0, param_coords[0].tyype)),
+          self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, param_coords[0].tyype)),
         ))),
       ))),
     ))));
