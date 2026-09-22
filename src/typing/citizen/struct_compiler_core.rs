@@ -88,7 +88,6 @@ where
     let is_extern =
       struct_a.attributes.iter().any(|attr| matches!(attr, ICitizenAttributeS::Extern(_)));
     if is_extern && sharedness == SharednessT::Shared {
-      // VCOORD: error message here instead of a panic
       panic!(
                 "extern struct {:?} is declared `share`; post-cut design forbids share-flavored extern structs (they must be Own+Inline). Remove the `share` keyword.",
                 struct_a.name,
@@ -240,14 +239,7 @@ where
     let mut internal_methods: Vec<(PrototypeT<'s, 't>, usize)> = Vec::new();
     for (_name, entry) in outer_env.templatas().name_to_entry.iter() {
       if let IEnvEntryT::Function(FunctionEnvEntry { template_id: id }) = entry {
-        // Lazily compile a rust enum's methods — they are inherent, not virtual interface methods, so
-        // they must not enter the vtable, and force-compiling one here would reference this interface
-        // before it's registered. The same skip the struct-compile loop uses.
-        // A rust *trait*'s abstract methods are also is_rust_backed, but they ARE virtual interface
-        // methods — the interface's contract that override resolution checks against — so they must be
-        // compiled into the vtable eagerly like a native interface's. They are distinguishable: a
-        // trait's abstract method is eagerly registered with an `AbstractBody`, while an enum's
-        // inherent method is lazy (absent from the postparsed cache here) and never abstract.
+        // Lazily compile a rust enum's methods
         // VRI: Soon, we should lazily compile vale's internal methods too,
         // getting rid of this whole loop.
         // VRI: this is basically saying, dont skip interface methods for rust traits, because
@@ -362,7 +354,7 @@ where
     members: &[&'t StructMemberT<'s, 't>],
   ) -> Result<(StructTT<'s, 't>, SharednessT, FunctionTemplataT<'s, 't>), ICompileErrorT<'s, 't>>
   {
-    // VCOORD: make a life builder for stuff like this, this is fragile.
+    // VCOORD: make a life builder for stuff like this, this feels fragile
     let closure_life =
         LocT::from_lid(self.typing_interner, call_location)
         .add(self.typing_interner, 0);

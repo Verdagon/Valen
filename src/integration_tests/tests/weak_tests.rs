@@ -14,7 +14,7 @@ use crate::testvm::von::VonInt;
 pub struct WeakTests;
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn make_and_lock_weak_ref_then_destroy_own_with_struct() {
     unimplemented!();
     /*
@@ -75,7 +75,7 @@ fn make_and_lock_weak_ref_then_destroy_own_with_struct() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn destroy_own_then_locking_gives_none_with_struct() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -101,7 +101,7 @@ fn destroy_own_then_locking_gives_none_with_struct() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn drop_while_locked_with_struct() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -128,7 +128,7 @@ fn drop_while_locked_with_struct() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn make_and_lock_weak_ref_from_borrow_local_then_destroy_own_with_struct() {
     unimplemented!();
     /*
@@ -168,7 +168,7 @@ fn make_and_lock_weak_ref_from_borrow_local_then_destroy_own_with_struct() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn make_and_lock_weak_ref_from_borrow_then_destroy_own_with_struct() {
     unimplemented!();
     /*
@@ -208,7 +208,7 @@ fn make_and_lock_weak_ref_from_borrow_then_destroy_own_with_struct() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn make_weak_ref_from_temporary() {
     unimplemented!();
     /*
@@ -251,7 +251,7 @@ exported func main() int { return getHp(&&Muta(7)); }
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn make_and_lock_weak_ref_then_destroy_own_with_interface() {
     unimplemented!();
     /*
@@ -312,7 +312,7 @@ fn make_and_lock_weak_ref_then_destroy_own_with_interface() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn destroy_own_then_locking_gives_none_with_interface() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -338,7 +338,7 @@ fn destroy_own_then_locking_gives_none_with_interface() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn drop_while_locked_with_interface() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -365,7 +365,7 @@ fn drop_while_locked_with_interface() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn make_and_lock_weak_ref_from_borrow_local_then_destroy_own_with_interface() {
     unimplemented!();
     /*
@@ -405,7 +405,7 @@ fn make_and_lock_weak_ref_from_borrow_local_then_destroy_own_with_interface() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn make_and_lock_weak_ref_from_borrow_then_destroy_own_with_interface() {
     unimplemented!();
     /*
@@ -445,7 +445,7 @@ fn make_and_lock_weak_ref_from_borrow_then_destroy_own_with_interface() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn call_weak_self_method_after_drop() {
     unimplemented!();
     /*
@@ -487,7 +487,7 @@ fn call_weak_self_method_after_drop() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn call_weak_self_method_while_alive() {
     unimplemented!();
     /*
@@ -529,7 +529,7 @@ fn call_weak_self_method_while_alive() {
 }
 
 #[test]
-#[ignore = "blocked on the disabled weak builtin module (VCOORD: re-enable weaks)"]
+#[ignore]
 fn weak_yonder_member() {
     unimplemented!();
     /*

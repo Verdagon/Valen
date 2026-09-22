@@ -10,7 +10,6 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ptr::eq;
 
-/// Lookup key for file coordinates; uses String for filepath to allow lookup with arbitrary &str.
 #[derive(Clone)]
 struct FileCoordLookupKey<'p> {
   package_coord: &'p PackageCoordinate<'p>,
@@ -31,9 +30,6 @@ impl<'p> Hash for FileCoordLookupKey<'p> {
   }
 }
 
-/// Arena + interning maps for the parsing pass.
-/// Holds the `'p` Bump arena and deduplication maps for strings,
-/// package coordinates, and file coordinates.
 pub struct ParseArena<'p> {
   bump: &'p Bump,
   inner: RefCell<ParseArenaInner<'p>>,
@@ -50,7 +46,6 @@ impl<'p> ParseArena<'p> {
     ParseArena {
       bump,
       inner: RefCell::new(ParseArenaInner {
-        // Pre-size for keywords (~130 entries) + headroom
         string_to_interned: HashMap::with_capacity_and_hasher(256, Default::default()),
         package_coord_to_ref: HashMap::default(),
         file_coord_to_ref: HashMap::default(),
@@ -58,22 +53,18 @@ impl<'p> ParseArena<'p> {
     }
   }
 
-  /// Allocate a value into the arena, returning a stable reference.
   pub fn alloc<T>(&self, val: T) -> &'p mut T {
     self.bump.alloc(val)
   }
 
-  /// Allocate a slice copy into the arena.
   pub fn alloc_slice_copy<T: Copy>(&self, src: &[T]) -> &'p [T] {
     self.bump.alloc_slice_copy(src)
   }
 
-  /// Allocate a slice from a Vec into the arena.
   pub fn alloc_slice_from_vec<T>(&self, vec: Vec<T>) -> &'p [T] {
     self.bump.alloc_slice_fill_iter(vec.into_iter())
   }
 
-  /// Intern a string, returning a canonical StrI<'p>.
   pub fn intern_str(&self, s: &str) -> StrI<'p> {
     let mut inner = self.inner.borrow_mut();
     if let Some(&existing) = inner.string_to_interned.get(s) {
@@ -84,7 +75,6 @@ impl<'p> ParseArena<'p> {
     StrI(arena_str)
   }
 
-  /// Intern a PackageCoordinate, returning a canonical &'p reference.
   pub fn intern_package_coordinate(
     &self,
     module: StrI<'p>,
@@ -102,7 +92,6 @@ impl<'p> ParseArena<'p> {
     new_ref
   }
 
-  /// Intern a FileCoordinate, returning a canonical &'p reference.
   pub fn intern_file_coordinate(
     &self,
     package_coord: &'p PackageCoordinate<'p>,

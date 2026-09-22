@@ -62,7 +62,7 @@ pub enum IBoundArgumentsSource<'s, 't> {
   },
 }
 
-// V: ideas for where to put this?
+// V: put this somewhere else
 pub fn is_ref(kind: KindT) -> bool {
   match kind {
     KindT::BorrowRef(b) => true,
@@ -73,8 +73,6 @@ pub fn is_ref(kind: KindT) -> bool {
   }
 }
 
-// Strips one reference layer, yielding what the reference points at (which may itself be a
-// reference). Returns None for a bare kind, since there is nothing to dereference.
 pub fn peel_one_reference<'x, 's, 't>(kind: &'x KindT<'s, 't>) -> Option<KindT<'s, 't>> {
   match kind {
     KindT::BorrowRef(b) => Some(b.inner),
@@ -85,8 +83,6 @@ pub fn peel_one_reference<'x, 's, 't>(kind: &'x KindT<'s, 't>) -> Option<KindT<'
   }
 }
 
-// Strips every reference layer, yielding the underlying citizen or primitive regardless of
-// how it is referenced. Total: a bare kind is returned unchanged.
 pub fn peel_all_references<'s, 't>(kind: KindT<'s, 't>) -> KindT<'s, 't> {
   let mut current = kind;
   while let Some(inner) = peel_one_reference(&current) {
@@ -95,11 +91,6 @@ pub fn peel_all_references<'s, 't>(kind: KindT<'s, 't>) -> KindT<'s, 't> {
   current
 }
 
-// Strips exactly `n` reference layers, or None if the kind has fewer than `n`. Peeling an argument
-// by the parameter's own written wrap depth (rather than all the way) keeps any references the value
-// itself carries, so a `&Ship` argument at a bare-rune parameter binds its rune to `&Ship` rather
-// than over-peeling to `Ship`. None is the shape mismatch where the argument is shallower than the
-// parameter's written wraps, e.g. a bare value at a `&T` parameter.
 // VCOORD: get rid of this, this is temporary
 pub fn peel_n_references<'s, 't>(kind: KindT<'s, 't>, n: usize) -> Option<KindT<'s, 't>> {
   let mut current = kind;
@@ -109,13 +100,6 @@ pub fn peel_n_references<'s, 't>(kind: KindT<'s, 't>, n: usize) -> Option<KindT<
   Some(current)
 }
 
-// Rebuilds `full_type_with_refs`'s chain of reference layers around `new_value_type`, so the result
-// refers to the new value type exactly the way the original referred to its own. Borrow regions
-// carry over layer for layer. A bare `full_type_with_refs` has no layers to rebuild, so the new value
-// type is returned as-is.
-//
-// Used where a type's shape is fixed but the citizen inside it changes: an override's parameter
-// against the abstract one it implements, or an upcast's result against the expression it wraps.
 pub fn replace_value_type_in_ref<'s, 't>(
   interner: &TypingInterner<'s, 't>,
   full_type_maybe_with_refs: KindT<'s, 't>,
@@ -175,8 +159,6 @@ where
     }
   }
 
-  // See SFWPRL. Per @DRSINI, this is the only place that eagerly adds default rules.
-  // Safe because prediction has no actual arguments being inferred that could conflict.
   pub fn assemble_predict_rules(
     &self,
     generic_parameters: &'s [&'s GenericParameterS<'s>],
@@ -198,9 +180,6 @@ where
     result
   }
 
-  // Per @DRSINI, default rules are no longer added eagerly here. They're added
-  // incrementally by solveForResolving and evaluateGenericFunctionFromCallForPrototype
-  // only for runes that remain unsolved after argument inference.
   pub fn assemble_call_site_rules(&self, rules: &'s [IRulexSR<'s>]) -> Vec<IRulexSR<'s>> {
     rules.iter().copied().filter(|r| include_rule_in_call_site_solve(r)).collect()
   }
@@ -497,7 +476,7 @@ where
         if p.id.init_id(interner) == needle_template_name {
           expect_kind_templata(new_substituting_templatas[index as usize]).kind
         } else {
-          // VCOORD: investigate what this case is for... suspicious fallback-looking thing
+          // VCOORD: investigate what this case is for, fallback
           kind
         }
       }
@@ -532,9 +511,6 @@ where
       KindT::OverloadSet(_) => {
         unreachable!("an OverloadSet cannot appear as a substantive kind here")
       }
-      // Substitution reaches through a reference without disturbing it, so each wrap is
-      // rebuilt around the substituted inner. A borrow keeps its own region: substituting
-      // `T` in `&T` changes what is pointed at, never which group points at it.
       KindT::BorrowRef(b) => KindT::BorrowRef(interner.alloc(BorrowRefT {
         inner: Self::substitute_templatas_in_kind(
           coutputs,
@@ -587,22 +563,6 @@ where
           w.inner,
         ),
       })),
-      // // VCOORD: revisit
-      // // Composition of substituted ownership. `Borrow + share-kind` is distinct
-      // // from `Share T` — Borrow-over-Share preserves the Borrow flavor (`&Share T`),
-      // // Share-over-anything stays Share, Own-over-Share stays Share (no way to Own
-      // // a shared kind).
-      // let result_ownership = match (ownership, c.coord.ownership) {
-      //     (OwnershipT::Share, _) => OwnershipT::Share,
-      //     (OwnershipT::Own, OwnershipT::Share) => OwnershipT::Share,
-      //     (OwnershipT::Borrow, OwnershipT::Share) => OwnershipT::Borrow,
-      //     (OwnershipT::Own, OwnershipT::Own) => OwnershipT::Own,
-      //     (OwnershipT::Own, OwnershipT::Borrow) => OwnershipT::Borrow,
-      //     (OwnershipT::Borrow, OwnershipT::Own) => OwnershipT::Borrow,
-      //     (OwnershipT::Borrow, OwnershipT::Borrow) => OwnershipT::Borrow,
-      //     _ => unreachable!("remaining Weak-on-substituting-side ownership pairs are degenerate"),
-      // };
-      // KindT::new(result_ownership, result_region, c.coord.kind)
     }
   }
 
@@ -1135,9 +1095,6 @@ where
       *interner.intern_id(IdValT { package_coord, init_steps, local_name: substituted_func_name });
     match tentative_id.local_name {
       INameT::FunctionBound(n) => {
-        // Always import a seen function bound into our own environment, see MFBFDP. We're
-        // substituting an already-built prototype and have no postparsed FunctionS in hand, so we
-        // register none (None).
         Compiler::import_function_bound(
           coutputs,
           sanity_check,
@@ -1163,13 +1120,6 @@ where
     }
   }
 
-  /// Import an already-substituted function bound into `calling_denizen_id`: re-anchor its name
-  /// under the caller, register empty instantiation bounds (a bound has no bounds of its own), and —
-  /// when `maybe_func_bound` is present — register the bound's postparsed `FunctionS` under the
-  /// re-anchored id so the callee lookup for it is a total hit. See MFBFDP. This is the anchor+register
-  /// half of what a placeholder substitution used to do for a bound prototype, factored out so a
-  /// caller that already has the bound in its own terms can import it without a substitution pass.
-  /// The MFBFDP substitution path has no postparsed `FunctionS` in hand and passes `None`.
   pub fn import_function_bound(
     coutputs: &mut CompilerOutputs<'s, 't>,
     sanity_check: bool,
@@ -1217,36 +1167,12 @@ where
     }
     let key = Compiler::get_function_template(interner, bound_id);
     if coutputs.peek_postparsed_function(key).is_some() {
-      // VLAZY: investigate this
-      //
-      // Why does a key sometimes come back already-registered here?
-      //
-      // NOT because the bound is citizen-anchored (an earlier belief). A function bound's prototype is
-      // re-anchored away from the citizen it was copied from (the MFBFDP arm / `import_function_bound`
-      // rebuild the id as `original_calling_denizen_id.add_step(FunctionBound)`). The reachable path
-      // passes F's *template* id as that anchor; F's OWN where-clause bounds are anchored at F's *full*
-      // denizen id (`assemble_prototype`). `get_function_template` copies `init_steps` verbatim, so:
-      //     own bound key       = F_full_id      + FunctionBoundTemplate(name)
-      //     reachable bound key = F_template_id  + FunctionBoundTemplate(name)
-      // They differ in F's own name step (full vs template), so an own bound and a reachable bound never
-      // collide with each other.
-      //
-      // A hit here therefore means the SAME key is registered twice, from one of:
-      //   (a) the same F processed more than once — re-registers an identical (key, FunctionS); harmless.
-      //   (b) F reaching the same-signature bound from two DIFFERENT sources (two citizen runes, possibly
-      //       two citizens that each require e.g. `drop(T)`). Both re-anchor to the same
-      //       `F_template + FunctionBound(drop, [T])`, so they land on the same key, yet the per-source
-      //       `FunctionS` is each citizen's own bound object — a genuine identity collapse the coarse key
-      //       (name only, args stripped by `get_function_template`) can't keep apart. Signature-equivalent
-      //       for a callee lookup (a bound carries only params/effects), so the early-return is safe here,
-      //       but the real fix is a distinct, this-function-anchored id per bound.
+      // VLAZY: investigate this, astinus-style
       return;
     }
     coutputs.register_postparsed_function(key, func_bound);
   }
 }
-
-// deleted: delegate trait removed per god-struct refactor (Compiler now holds all methods directly)
 
 pub struct IPlaceholderSubstituter<'s, 'ctx, 't> {
   pub sanity_check: bool,
@@ -1325,7 +1251,6 @@ where
     }
   }
 
-  /// Evaluate a templata from an ITypeST.
   pub fn evaluate_templex(
     &self,
     coutputs: &mut CompilerOutputs<'s, 't>,
@@ -1403,7 +1328,7 @@ where
     }
   }
 
-  // VCOORD: i want to rename this to import_reachable_bounds but that function already exists?
+  // VCOORD: maybe rename to import_reachable_bounds
   pub fn get_reachable_bounds(
     &self,
     sanity_check: bool,
@@ -1530,8 +1455,6 @@ where
     range: RangeS<'s>,
     parts: &[IImpreciseNameS<'s>],
   ) -> Result<IRuneTypeSolverLookupResult<'s>, IRuneTypingLookupFailedError<'s>> {
-    // The last segment names the item; only diagnostics and the lambda-struct arm need it
-    // separately from the path.
     let name_s = *parts.last().expect("vwat: an empty lookup path");
     match name_s {
       // VCOORD: remove this entire branch and see if it just works, it might
@@ -1588,12 +1511,6 @@ where
     source_type: KindT<'s, 't>,
     target_type: KindT<'s, 't>,
   ) -> bool {
-    // Both borrow refs: convertibility is decided entirely by the referents (convert() row 4 /
-    // the &Dog -> &Animal upcast at convert_helper.rs:86). Regions are ignored for now — every
-    // borrow is RegionT::Default. Recursing also handles nested upcasts (&&Dog -> &&Animal).
-    // VCOORD: when genuine double-borrows land (generics only, decision 3), this must refuse a
-    // depth mismatch — `&&X -> &X` should be the row-d error, but recursing here would peel it to
-    // the legal `&X -> X` read-out and wrongly accept it. // VCOORD: rewrite this comment
     if let (KindT::BorrowRef(s), KindT::BorrowRef(t)) = (source_type, target_type) {
       return self.is_type_convertible(
         coutputs,
@@ -1622,10 +1539,7 @@ where
           p if p.is_primitive() => return true,
           // VCOORD: replace this with an "is implicitly cloneable" check
           KindT::Str(_) => return true,
-          // A bare `share` citizen reads out of a borrow via an RC bump, like str.
           _ if self.kind_is_implicitly_cloneable(coutputs, sb.inner) => return true,
-          // A non-cloneable read-out (e.g. a plain struct) isn't convertible; the caller
-          // reports the honest "write .clone()" error rather than crashing here.
           _ => return false,
         }
       }
@@ -1656,7 +1570,6 @@ where
         return true;
       }
     }
-    // /VCOORD
 
     match (&source_type, &target_type) {
       (KindT::Never(_), _) => return true,
@@ -1702,83 +1615,14 @@ where
         }
       }
 
-      // if source_region != target_region {
-      //     return false;
-      // }
       _ => {
         panic!("vfail: Dont know if we can convert from {:?} to {:?}", source_type, target_type);
       }
     }
 
-    // match (source_ownership, target_ownership) {
-    //     (a, b) if a == b => {}
-    //     // VCOORD: revisit
-    //     // (Own, Borrow) and (Borrow, Own) permitted uniformly; convert() decides
-    //     // target-side:
-    //     //   (Own, Borrow) → materialize a hidden local + LetAndLend + deferred drop.
-    //     //   (Borrow, Own) → probe `implicit_clone(&kind) kind`. If it resolves → emit
-    //     //     the auto-clone call; if missing → emit NoImplicitCloneDefinedT.
-    //     // "Does implicit_clone exist for this kind" is what actually matters — no
-    //     // is_primitive check. Ambiguity between an exact-Own overload and an
-    //     // auto-coerce-permitting overload is resolved by narrow_down_callable_overloads'
-    //     // "prefer exact match" tiebreaker.
-    //     (OwnershipT::Own, OwnershipT::Borrow) => {}
-    //     (OwnershipT::Own, OwnershipT::Weak) => return false,
-    //     (OwnershipT::Own, OwnershipT::Share) => return false,
-    //     (OwnershipT::Borrow, OwnershipT::Own) => {}
-    //     (OwnershipT::Borrow, OwnershipT::Weak) => return false,
-    //     // VCOORD: revisit
-    //     // `Borrow + share-kind` → Share is the auto-alias coercion; convert() emits
-    //     // AliasTE. Ambiguity with an exact-Share candidate is handled by
-    //     // narrow_down_callable_overloads' "prefer exact match" tiebreaker.
-    //     (OwnershipT::Borrow, OwnershipT::Share) => {}
-    //     (OwnershipT::Weak, OwnershipT::Own) => return false,
-    //     (OwnershipT::Weak, OwnershipT::Borrow) => return false,
-    //     (OwnershipT::Weak, OwnershipT::Share) => return false,
-    //     (OwnershipT::Share, OwnershipT::Borrow) => return false,
-    //     (OwnershipT::Share, OwnershipT::Weak) => return false,
-    //     (OwnershipT::Share, OwnershipT::Own) => return false,
-    //     _ => unreachable!(),
-    // }
-
     true
   }
 
-  // Picks an ownership tag from a kind's sharedness — the flat-ownership pattern onion
-  // typing dissolves. Its sole caller (evaluate_closure) fed only a tautological assert:
-  // make_closure_struct_construct_expression derives the same shape from the same
-  // lookup_mutability on the same struct. Under onion, a closure struct's
-  // bare-vs-ShareRef shape is settled at construction, so nothing recomputes it.
-  // pub fn pointify_kind(
-  //     &self,
-  //     coutputs: &mut CompilerOutputs<'s, 't>,
-  //     kind: KindT<'s, 't>,
-  //     region: RegionT,
-  //     ownership_if_mutable: OwnershipT,
-  // ) -> KindT<'s, 't> {
-  //     let ownership = match self.get_sharedness(coutputs, kind) {
-  //         SharednessT::Single => ownership_if_mutable,
-  //         SharednessT::Shared => OwnershipT::Share,
-  //     };
-  //     match kind {
-  //         KindT::RuntimeSizedArray(_) => {
-  //             panic!("Unimplemented: pointify_kind RuntimeSizedArray");
-  //             // CoordT(ownership, region, a)
-  //         }
-  //         KindT::StaticSizedArray(_) => {
-  //             panic!("Unimplemented: pointify_kind StaticSizedArray");
-  //             // CoordT(ownership, region, a)
-  //         }
-  //         KindT::Struct(_) => KindT::new(ownership, region, kind),
-  //         KindT::Interface(_) => KindT::new(ownership, region, kind),
-  //         KindT::Void(_) => KindT::new(ownership, region, kind),
-  //         KindT::Int(_) => KindT::new(ownership, region, kind),
-  //         KindT::Float(_) => KindT::new(ownership, region, kind),
-  //         KindT::Bool(_) => KindT::new(ownership, region, kind),
-  //         KindT::Str(_) => KindT::new(ownership, region, kind),
-  //         _ => unreachable!("pointify_kind is exhaustive over RSA/SSA/Struct/Interface/Void/Int/Float/Bool/Str — Never/OverloadSet/KindPlaceholder not accepted"),
-  //     }
-  // }
 
   pub fn lookup_templata_by_rune(
     &self,
@@ -1877,9 +1721,6 @@ where
       ITemplataT::InterfaceDefinition(it) => *self.resolve_interface_template(coutputs, it),
       ITemplataT::Kind(kt) => {
         *match ISubKindTT::try_from(kt.kind) {
-          // VCOORD: doublecheck. ISubKindTT::try_from accepts a KindPlaceholder, so a
-          // generic T passed as expected_citizen_templata reaches get_citizen_template,
-          // which panics on a placeholder id.
           Ok(sub) => self.get_citizen_template(&sub.id()),
           Err(_) => return false,
         }
@@ -1942,10 +1783,6 @@ where
     if register_with_compiler_outputs {
       coutputs.declare_type(kind_placeholder_template_id);
 
-      // Per @BDPFWDZ: the placeholder env stays empty. Bound declarations
-      // (IsaTemplataT, FunctionBoundNameT) live in the introducing function's near-env, not
-      // here. Lookups walk from the calling env to find them.
-      // val placeholderEnv = GeneralEnvironmentT.childOf(interner, env, kindPlaceholderTemplateId, kindPlaceholderTemplateId)
       let placeholder_env = child_of(
         self.typing_interner,
         self.scout_arena,
@@ -1990,9 +1827,6 @@ pub fn translate_sharedness(sharedness_p: SharednessP) -> SharednessT {
   }
 }
 
-// The interface-template id for an interface id: drops the generic args (and the placeholder
-// owners they carry) down to the bare template name. A free fn rather than a Compiler method so
-// passes without a Compiler — e.g. the instantiator — can derive the same id.
 pub fn get_interface_template<'s, 't>(
   interner: &TypingInterner<'s, 't>,
   id: IdT<'s, 't>,

@@ -21,7 +21,6 @@ use std::marker::PhantomData;
 use std::ptr::eq;
 use std::ptr::hash;
 
-/// Arena-allocated (see @TFITCX)
 pub struct ImplT<'s, 't> {
   pub templata: ImplDefinitionTemplataT<'s, 't>,
   pub instantiated_id: IdT<'s, 't>,
@@ -34,7 +33,6 @@ pub struct ImplT<'s, 't> {
   pub rune_index_to_independence: &'t [bool],
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct KindExportT<'s, 't> {
   pub range: RangeS<'s>,
@@ -44,7 +42,6 @@ pub struct KindExportT<'s, 't> {
 }
 
 impl<'s, 't> KindExportT<'s, 't> {}
-/// Arena-allocated (see @TFITCX)
 pub struct FunctionExportT<'s, 't> {
   pub range: RangeS<'s>,
   pub prototype: PrototypeT<'s, 't>,
@@ -53,7 +50,6 @@ pub struct FunctionExportT<'s, 't> {
 }
 
 impl<'s, 't> FunctionExportT<'s, 't> {}
-/// Arena-allocated (see @TFITCX)
 pub struct KindExternT<'s, 't> {
   pub tyype: KindT<'s, 't>,
   pub package_coordinate: PackageCoordinate<'s>,
@@ -61,7 +57,6 @@ pub struct KindExternT<'s, 't> {
 }
 
 impl<'s, 't> KindExternT<'s, 't> {}
-/// Arena-allocated (see @TFITCX)
 pub struct FunctionExternT<'s, 't> {
   pub range: RangeS<'s>,
   pub extern_placeholdered_id: IdT<'s, 't>,
@@ -71,14 +66,12 @@ pub struct FunctionExternT<'s, 't> {
 }
 
 impl<'s, 't> FunctionExternT<'s, 't> {}
-/// Arena-allocated (see @TFITCX)
 pub struct InterfaceEdgeBlueprintT<'s, 't> {
   pub interface_template: IdT<'s, 't>,
   pub super_family_root_headers: &'t [(PrototypeT<'s, 't>, i32)],
 }
 
 impl<'s, 't> InterfaceEdgeBlueprintT<'s, 't> {}
-/// Arena-allocated (see @TFITCX)
 pub struct OverrideT<'s, 't> {
   pub dispatcher_call_id: IdT<'s, 't>,
   pub impl_placeholder_to_dispatcher_placeholder: &'t [(IdT<'s, 't>, ITemplataT<'s, 't>)],
@@ -90,7 +83,6 @@ pub struct OverrideT<'s, 't> {
   pub dispatcher_instantiation_bound_params: &'t InstantiationBoundArgumentsT<'s, 't>,
 }
 
-/// Arena-allocated (see @TFITCX)
 pub struct EdgeT<'s, 't> {
   pub edge_id: IdT<'s, 't>,
   pub sub_citizen: ICitizenTT<'s, 't>,
@@ -100,7 +92,6 @@ pub struct EdgeT<'s, 't> {
 }
 
 impl<'s, 't> EdgeT<'s, 't> {}
-/// Arena-allocated (see @TFITCX)
 pub struct FunctionDefinitionT<'s, 't> {
   pub header: &'t FunctionHeaderT<'s, 't>,
   pub instantiation_bound_params: &'t InstantiationBoundArgumentsT<'s, 't>,
@@ -132,7 +123,7 @@ fn get_function_last_name_unapply<'s, 't>(
   // Some(f.header.id.localName)
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct LocT<'t> {
   pub path: &'t [i32],
@@ -149,10 +140,6 @@ impl<'t> LocT<'t> {
     LocT { path: interner.alloc_slice_from_vec(new_path) }
   }
 
-  /// The single seam that turns a postparse LID into a typing LIFE: it copies the LID's path
-  /// from the scout arena into the typing arena. A declaration's LIFE *is* its LID (no `0`
-  /// appended), which stays collision-free with typing-conjured LIFEs because those always
-  /// contain a `0` and LIDs never do.
   pub fn from_lid<'s>(
     interner: &TypingInterner<'s, 't>,
     lid: LocationInDenizen<'s>,
@@ -165,11 +152,10 @@ impl<'t> LocT<'t> {
     // path.mkString(".")
   }
 }
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct AbstractT;
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Clone, Debug)]
 pub struct ParameterT<'s, 't> {
   pub name: IVarNameT<'s, 't>,
@@ -184,7 +170,7 @@ impl<'s, 't> ParameterT<'s, 't> {
     // name == that.name && virtuality == that.virtuality && tyype == that.tyype
   }
 }
-/// Temporary state (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ICalleeCandidate<'s, 't> {
   Function(FunctionCalleeCandidate<'s, 't>),
@@ -192,21 +178,21 @@ pub enum ICalleeCandidate<'s, 't> {
   PrototypeTemplata(PrototypeTemplataCalleeCandidate<'s, 't>),
 }
 
-/// Temporary state (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FunctionCalleeCandidate<'s, 't> {
   pub ft: FunctionTemplataT<'s, 't>,
 }
 
 impl<'s, 't> FunctionCalleeCandidate<'s, 't> {}
-/// Temporary state (see @TFITCX)
+
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub struct HeaderCalleeCandidate<'s, 't> {
   pub header: FunctionHeaderT<'s, 't>,
 }
 
 impl<'s, 't> HeaderCalleeCandidate<'s, 't> {}
-/// Temporary state (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PrototypeTemplataCalleeCandidate<'s, 't> {
   pub prototype_t: PrototypeT<'s, 't>,
@@ -214,7 +200,7 @@ pub struct PrototypeTemplataCalleeCandidate<'s, 't> {
 
 impl<'s, 't> PrototypeTemplataCalleeCandidate<'s, 't> {}
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SignatureT<'s, 't> {
   pub id: IdT<'s, 't>,
@@ -227,7 +213,6 @@ impl<'s, 't> SignatureT<'s, 't> {
   }
 }
 
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct SignatureValT<'s, 't, 'tmp>
 where
@@ -237,7 +222,6 @@ where
   pub id: IdValT<'s, 't, 'tmp>,
 }
 
-/// Interning transient (see @TFITCX)
 pub struct SignatureValQuery<'a, 's, 't, 'tmp>(pub &'a SignatureValT<'s, 't, 'tmp>)
 where
   's: 't,
@@ -263,7 +247,7 @@ where
     IdValQuery(&self.0.id).equivalent(&key.id)
   }
 }
-/// Value-type (see @TFITCX)
+
 pub struct FunctionBannerT<'s, 't> {
   pub origin_function_templata: Option<FunctionTemplataT<'s, 't>>,
   pub name: IdT<'s, 't>,
@@ -281,7 +265,6 @@ impl<'s, 't> FunctionBannerT<'s, 't> {
     // "FunctionBanner2#(" + name + ")"
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Clone, PartialEq, Debug)]
 pub enum IFunctionAttributeT<'s> {
   Extern(ExternT<'s>),
@@ -290,19 +273,16 @@ pub enum IFunctionAttributeT<'s> {
   UserFunction,
 }
 
-/// Arena-allocated (see @TFITCX)
 pub enum ICitizenAttributeT<'s> {
   Extern(ExternT<'s>),
   Sealed,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Clone, PartialEq, Debug)]
 pub struct ExternT<'s> {
   pub package_coord: PackageCoordinate<'s>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct FunctionHeaderT<'s, 't> {
   pub id: IdT<'s, 't>,
@@ -312,7 +292,6 @@ pub struct FunctionHeaderT<'s, 't> {
   pub maybe_origin_function_templata: Option<FunctionTemplataT<'s, 't>>,
 }
 
-// Identity equality per @IEOIBZ — `FunctionHeaderT` is arena-allocated.
 impl<'s, 't> PartialEq for FunctionHeaderT<'s, 't> {
   fn eq(&self, other: &Self) -> bool {
     eq(self, other)
@@ -406,7 +385,7 @@ impl<'s, 't> FunctionHeaderT<'s, 't> {
     // attributes.collectFirst({ case PureT => }).nonEmpty
   }
 }
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PrototypeT<'s, 't>
 where
@@ -433,7 +412,6 @@ where
   }
 }
 
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct PrototypeValT<'s, 't, 'tmp>
 where
@@ -444,7 +422,6 @@ where
   pub return_type: KindT<'s, 't>,
 }
 
-/// Interning transient (see @TFITCX)
 pub struct PrototypeValQuery<'a, 's, 't, 'tmp>(pub &'a PrototypeValT<'s, 't, 'tmp>)
 where
   's: 't,

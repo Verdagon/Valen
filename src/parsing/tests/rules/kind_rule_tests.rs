@@ -1,4 +1,3 @@
-// Run with: cargo test --manifest-path Cargo.toml --lib parsing::tests::rules::kind_rule_tests
 use crate::cast;
 use crate::interner::StrI;
 use crate::keywords::Keywords;
@@ -82,7 +81,7 @@ fn templated_struct_one_arg() {
       args: [ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("int")), .. })],
       ..
     })) => {}
-    other => panic!("expected `Moo<int>` → Call(Moo, [int]), got {:?}", other),
+    other => panic!("expected `Moo<int>` to become Call(Moo, [int])"),
   }
 }
 

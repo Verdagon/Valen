@@ -79,8 +79,6 @@ where 's: 't,
                     range: method.range,
                     name: self.scout_arena.intern_str(&index.to_string()),
                     lid: LocationInDenizen { path: &[] },
-                    // Rune-only member: no user-written source type, so the `tyype` just names the
-                    // member rune and the full/value runes coincide with no ref wraps (@PFVSZ).
                     type_rune: *rune,
                     tyype: ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: *rune })),
                     value_type_rune: *rune,
@@ -193,7 +191,6 @@ where 's: 't,
             impl_tyype,
             struct_kind_rune_s,
             struct_imprecise_name,
-            // No source templex here — the sub-citizen / super-interface types just name their kind runes.
             ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: struct_kind_rune_s })),
             interface_kind_rune_s,
             interface_imprecise_name,
@@ -226,8 +223,6 @@ where 's: 't,
             IRulexSR::Lookup(x) => IRulexSR::Lookup(LookupSR {
                 range: x.range,
                 rune: RuneUsage { range: x.rune.range, rune: func(x.rune.rune) },
-                // The path is carried through unchanged: `map_runes` renames runes, and a path
-                // names items rather than runes, so there is nothing in it to rename.
                 parts: x.parts,
             }),
             // IRulexSR::MaybeCoercingLookup(_) => {
@@ -264,30 +259,13 @@ where 's: 't,
                 // PrototypeComponentsSR(range, RuneUsage(a, func(resultRune)), RuneUsage(b, func(paramsRune)), RuneUsage(c, func(returnRune)))
             // }
             IRulexSR::Resolve(x) => {
-                // `params_types`/`return_type` ARE load-bearing: satisfying a func bound collects the
-                // runes they mention and searches each mentioned rune's concluded-value environment
-                // (@ENECCLZ — collect_bound_search_kinds and the solver's FuncBoundStep). We carry them
-                // through un-remapped rather than rewriting their inner runes, which is sound only while
-                // the remap leaves every rune they mention unchanged. That holds today: a Resolve reaches
-                // here only from an abstract method's `where func` clause, whose param/return types can
-                // name only the interface's own generics — which `inherit` keeps bare — because an
-                // abstract method cannot declare method-local generics (InterfaceS::new asserts a
-                // method's generic_params equal the interface's). Guard it: if a rewritable rune ever
-                // reaches here, carrying params_types through would silently key the bound-search off a
-                // stale rune, so fail loudly — remap them here (mirror the genuine `where func` lowering)
-                // rather than removing this assert.
                 let mut mentioned: Vec<IRuneS<'s>> = Vec::new();
                 for pt in x.params_types.iter() {
                     pt.collect_rune_mentions(&mut mentioned);
                 }
                 x.return_type.collect_rune_mentions(&mut mentioned);
                 for rune in &mentioned {
-                    assert!(
-                        func(*rune).ptr_eq(rune),
-                        "map_runes_anonymous_interface: a Resolve's params_types/return_type mentions a \
-                         rune the remap would rewrite — these are carried through un-remapped and must be \
-                         remapped instead (did an abstract method gain a method-local generic?)"
-                    );
+                    assert!(func(*rune).ptr_eq(rune));
                 }
                 IRulexSR::Resolve(ResolveSR {
                     range: x.range,
@@ -452,28 +430,14 @@ where 's: 't,
             struct_generic_params.push(gp);
         }
 
-        // The interface's generic params (e.g. `R`, `P1`) are the anonymous substruct's own generic
-        // params — declared bare just above. A method references them directly by their `CodeRune`, so
-        // a bound must reference them *bare* too; inherited-wrapping exists only to disambiguate each
-        // method's *local* runes within the struct's single rule namespace, and wrapping a shared
-        // generic would disconnect it from the struct's generic-param declaration (nothing defines the
-        // wrapped form — the method has no header rule redefining a generic).
         let iface_gp_runes: Vec<IRuneS<'s>> =
             interface_a.generic_params.iter().map(|gp| gp.rune.rune).collect();
 
-        // A `where func` bound is lowered as BOTH the `DefinitionFunc`/`CallSiteFunc`/`Resolve` rules
-        // (already emitted into `rules_builder` below) AND a `(prototype_rune, AbstractBody FunctionS)`
-        // entry on the citizen's `func_bounds` — the latter is what `resolve_citizen_bounds` reads to
-        // export the member's callable `__call` as an assumed reachable bound (mirrors
-        // `translate_func_templex`). Without it the impl resolves `member.__call` concretely and wrongly
-        // binds the forwarder. Keyed by the same prototype rune the rules use.
         let mut struct_func_bounds: Vec<(RuneUsage<'s>, FunctionS<'s>)> = Vec::new();
 
         for ((internal_method, member_rune), _method_index) in
             interface_a.internal_methods.iter().zip(member_runes.iter()).zip(0i32..) {
             let internal_method = *internal_method;
-            // Wrap a method rune to scope it to this method — except the shared interface generics,
-            // which pass through bare (see `iface_gp_runes`).
             let inherit = |method_rune: IRuneS<'s>| -> IRuneS<'s> {
                 if iface_gp_runes.iter().any(|r| r.ptr_eq(&method_rune)) {
                     method_rune
@@ -492,7 +456,6 @@ where 's: 't,
                 rune: inherit(original_ret_rune.rune),
             };
 
-            // __call bound block
             {
                 let self_borrow_kind_rune_s = self.scout_arena.intern_rune(IRuneValS::AnonymousSubstructMethodSelfBorrowKindRune(
                     AnonymousSubstructMethodSelfBorrowKindRuneS {
@@ -510,17 +473,9 @@ where 's: 't,
                 for param in internal_method.params.iter() {
                     match param.virtuality {
                         None => {
-                            // Each param carries its own type-connecting rules: `type_outer_ref_rules`
-                            // (the `&`/wrap chain) and `value_type_rules` (the named-type Lookup/Call).
-                            // Emit them into the struct's rules, scoped via `inherit` (which keeps the
-                            // shared interface generics bare), so the param's `full_type_rune` is defined.
-                            // A bare-generic param has empty lists and connects by rune identity, so this
-                            // is a no-op for it.
                             for rule in param.type_outer_ref_rules.iter().chain(param.value_type_rules.iter()) {
                                 rules_builder.push(self.map_runes_anonymous_interface(*rule, &inherit));
                             }
-                            // The bound's param type is the parameter's full type (including any `&`
-                            // wrap); for a bare generic `full == value`.
                             param_runes.push(RuneUsage {
                                 range: param.range,
                                 rune: inherit(param.full_type_rune.rune),
@@ -612,14 +567,6 @@ where 's: 't,
                     params_list_rune: method_params_list_rune,
                     return_rune,
                 }));
-                // `params_types` is load-bearing, not dormant: satisfying this bound (both the
-                // solver's FuncBoundStep and the callsite conclusion-resolve) collects the runes these
-                // types *mention* and searches each mentioned rune's concluded-value environment for
-                // the callable (@ENECCLZ). So the self entry must be `&member` — a BorrowRef whose
-                // inner names the member (substitution) rune — not the flat borrow-result rune, whose
-                // conclusion is a `&lambda` borrow kind that yields no citizen env, so the lambda's own
-                // `__call` is never found. This mirrors the genuine `where func` lowering (templex_scout.rs),
-                // which stores each param's real source ITypeST (a `&G` param => BorrowRef{ inner: G }).
                 let call_bound_params_types: Vec<ITypeST<'s>> = internal_method.params.iter().map(|param| {
                     match param.virtuality {
                         Some(_) => ITypeST::BorrowRef(self.scout_arena.alloc(BorrowRefST {
@@ -628,8 +575,6 @@ where 's: 't,
                                 self.scout_arena.alloc(RuneUsageST { rune: *member_rune }))),
                             region: RegionS::Unspecified,
                         })),
-                        // A non-self param names its value-type rune (the substitution rune whose
-                        // conclusion is the concrete arg kind), scoped via `inherit`.
                         None => ITypeST::Rune(self.scout_arena.alloc(RuneUsageST {
                             rune: RuneUsage {
                                 range: param.value_type_rune.range,
@@ -648,10 +593,6 @@ where 's: 't,
                     return_type: ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: return_rune })),
                 }));
 
-                // Capture `__call` as a func_bound on the struct (the member's assumed callable),
-                // mirroring `translate_func_templex`. `resolve_citizen_bounds` evaluates each param's
-                // `tyype` + `maybe_return_type` against the struct's generic-param runes, so the receiver
-                // is `&member` and the value/return runes stay bare shared generics.
                 let bound_params: Vec<ParameterS<'s>> = internal_method.params.iter().map(|param| {
                     let bound_param_name = IVarDeclarationNameS::DesugaredParamName(DesugaredParamNameDeclarationS {
                         imprecise_name: self.scout_arena.intern_desugared_param_name(internal_method.range.begin),
@@ -659,7 +600,6 @@ where 's: 't,
                     });
                     match param.virtuality {
                         Some(_) => {
-                            // The receiver is a borrow of the member: `&member`.
                             let member_type = self.scout_arena.alloc(ITypeST::Rune(
                                 self.scout_arena.alloc(RuneUsageST { rune: *member_rune })));
                             ParameterS::new(
@@ -684,9 +624,6 @@ where 's: 't,
                             )
                         }
                         None => {
-                            // A non-self param keeps its own (inherit-remapped) type. A shared interface
-                            // generic stays a bare rune that `resolve_citizen_bounds` reifies against the
-                            // citizen's generic params.
                             ParameterS::new(
                                 param.range,
                                 None,
@@ -714,29 +651,24 @@ where 's: 't,
                         code_location: internal_method.range.begin,
                         lid: LocationInDenizen { path: &[] },
                     }),
-                    &[], // attributes
-                    &[], // generic_params (the enclosing struct owns them)
+                    &[],
+                    &[],
                     TemplateTemplataType {
                         param_types: &[],
                         return_type: self.scout_arena.alloc(ITemplataType::FunctionTemplataType(FunctionTemplataType {})),
                     },
                     self.scout_arena.alloc_slice_from_vec(bound_params),
                     Some(return_rune),
-                    // The bound's return is the method's own written return type, symmetric with the
-                    // params using `param.tyype`, so `resolve_citizen_bounds` reifies it against the
-                    // citizen's generic params. A concrete return like `int` lowers to a zero-arg Call it
-                    // evaluates directly; an interface generic is a bare shared-generic Rune.
                     internal_method.maybe_return_type,
-                    &[], // effects
-                    &[], // header_rules: the return type is self-contained (concrete Name/Call or bare generic)
-                    &[], // impl_bounds
-                    &[], // func_bounds
+                    &[],
+                    &[],
+                    &[],
+                    &[],
                     self.scout_arena.alloc(IBodyS::AbstractBody(AbstractBodyS {})),
                 );
                 struct_func_bounds.push((method_prototype_rune, call_bound_fn));
             }
 
-            // drop bound block
             {
                 let drop_params_list_rune = RuneUsage {
                     range: internal_method.range,
@@ -785,7 +717,6 @@ where 's: 't,
                     result_rune: drop_prototype_rune,
                     name: self.keywords.drop,
                     params_list_rune: drop_params_list_rune,
-                    // Dormant runes→types migration fields, mirroring the drop param + void return runes.
                     params_types: self.scout_arena.alloc_slice_from_vec(
                         drop_params_slice.iter()
                             .map(|ru| ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: *ru })))
@@ -794,9 +725,6 @@ where 's: 't,
                     return_type: ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: void_coord_ru })),
                 }));
 
-                // Capture `drop` as a func_bound too ("drop is just another function"): the member is
-                // dropped by value, returning void. Its return type is the concrete `void` name (not a
-                // generic rune), so `resolve_citizen_bounds` evaluates it by name lookup.
                 let drop_bound_param = ParameterS::new(
                     internal_method.range,
                     None,
@@ -818,16 +746,14 @@ where 's: 't,
                         code_location: internal_method.range.begin,
                         lid: LocationInDenizen { path: &[] },
                     }),
-                    &[], // attributes
-                    &[], // generic_params
+                    &[],
+                    &[],
                     TemplateTemplataType {
                         param_types: &[],
                         return_type: self.scout_arena.alloc(ITemplataType::FunctionTemplataType(FunctionTemplataType {})),
                     },
                     self.scout_arena.alloc_slice_from_vec(vec![drop_bound_param]),
                     Some(void_coord_ru),
-                    // A value-position `void`: lowers to a zero-arg Call of its Name (@TNLTZACZ), to
-                    // stay uniform with translate_templex_into_type_st's value-position construction.
                     Some(ITypeST::Call(self.scout_arena.alloc(CallST {
                         range: internal_method.range,
                         template: self.scout_arena.alloc(ITypeST::Name(self.scout_arena.alloc(NameST {
@@ -836,25 +762,17 @@ where 's: 't,
                         }))),
                         args: self.scout_arena.alloc_slice_from_vec(Vec::new()),
                     }))),
-                    &[], // effects
-                    &[], // header_rules
-                    &[], // impl_bounds
-                    &[], // func_bounds
+                    &[],
+                    &[],
+                    &[],
+                    &[],
                     self.scout_arena.alloc(IBodyS::AbstractBody(AbstractBodyS {})),
                 );
                 struct_func_bounds.push((drop_prototype_rune, drop_bound_fn));
             }
         }
 
-        // The interface's own `where func` bounds are the substruct's bounds too — e.g. a method-less
-        // `interface IXOption<T> where func drop(T)void`. The substruct names the interface's generic
-        // params bare (they ARE its generic params), and `interface_a.rules` (copied into
-        // `rules_builder` above) already carries their DefinitionFunc/Resolve rules. Only the func_bound
-        // entry is missing for `resolve_citizen_bounds` to export them as reachable bounds. Without it,
-        // compiling `impl <Iface> for <AnonSubstruct>` can't resolve the interface's bound.
         for (result_rune, bound_fn) in interface_a.func_bounds.iter() {
-            // FunctionS isn't Clone (sealed constructor); rebuild it by value from its (Copy/borrowed)
-            // fields. Every field references the interface's generic runes, which are the substruct's.
             let rebuilt = FunctionS::new(
                 bound_fn.range,
                 bound_fn.name,
@@ -903,9 +821,9 @@ where 's: 't,
           header_rules_slice,
           member_rules_slice,
           members_slice,
-          &[], // internal_methods
-          &[], // impl_bounds
-          self.scout_arena.alloc_slice_from_vec(struct_func_bounds), // func_bounds
+          &[],
+          &[],
+          self.scout_arena.alloc_slice_from_vec(struct_func_bounds),
         );
         self.scout_arena.alloc(struct_a)
     }
@@ -933,12 +851,6 @@ where 's: 't,
                 .all(|(a, b)| a.rune.rune.ptr_eq(&b.rune.rune));
         assert!(starts_with, "vassert: struct.genericParameters.startsWith(methodOriginalIdentifyingRunes)");
 
-        // The forwarder is its own denizen: it re-declares the struct's generics as `inherited(R)`/
-        // `inherited(P1)`/`inherited(member)` (see `generic_params_vec` below), so every method rune it
-        // references is inherited-wrapped — the wrapped runes connect to those re-declared generic params
-        // by identity, and being distinct from the impl's bare generics lets the impl's conclusion-resolve
-        // substitute cleanly. (Unlike the bound block, which is in the struct's own namespace over the
-        // struct's bare generics and so keeps them bare.)
         let inherit = |rune: IRuneS<'s>| -> IRuneS<'s> {
             self.inherited_method_rune_anonymous_interface(interface, method, rune)
         };
@@ -989,11 +901,6 @@ where 's: 't,
             rune: inherit(abstract_param.value_type_rune.rune),
         };
 
-        // The forwarder overrides the abstract method, so its self param wears the same reference
-        // wraps the abstract param declared — around the anonymous struct instead of the interface.
-        // Inherit the wrap chain into this function's rune namespace, then repoint its two endpoints:
-        // the outermost result becomes self's full type, the innermost inner becomes the struct kind.
-        // Intermediate runes keep their inherited identities (see @PFVSZ).
         let inherited_abstract_full_rune = inherit(abstract_param.full_type_rune.rune);
         let inherited_abstract_value_rune = inherit(abstract_param.value_type_rune.rune);
         let self_outer_ref_rules_vec: Vec<IRulexSR<'s>> = abstract_param.type_outer_ref_rules.iter()
@@ -1004,7 +911,6 @@ where 's: 't,
                 else { inherited }
             }))
             .collect();
-        // With no wraps the two runes must be the same one, per ParameterS::new's invariant.
         let self_full_rune =
             if self_outer_ref_rules_vec.is_empty() { self_kind_rune } else { self_full_type_rune };
         let self_outer_ref_rules = self.scout_arena.alloc_slice_from_vec(self_outer_ref_rules_vec);
@@ -1030,8 +936,6 @@ where 's: 't,
         });
         rules.push(lookup_struct_rule);
 
-        // Post-migration the self param is a `CodeVarName` spelled `self` (self-ness rides on
-        // `virtuality`), not a `SelfName` — `ParameterS::new` asserts the name is a param name.
         let self_name = IVarDeclarationNameS::CodeVarName(CodeVarNameS {
             imprecise_name: self.scout_arena.intern_code_name(self.keywords.self_),
             lid: LocationInDenizen { path: &[] },
@@ -1040,15 +944,11 @@ where 's: 't,
         for param in original_params.iter() {
             match param.virtuality {
                 Some(_) => {
-                    // The struct kind itself is bound by the Call rule above, so the value-type
-                    // rules are empty; the wraps come from the abstract param.
                     new_params_vec.push(ParameterS::new(
                         abstract_param_range,
                         None,
                         false,
                         self_name.clone(),
-                        // No user-written type; the `tyype` names the self full-type rune (dormant
-                        // migration field — the rune-based full/value runes below drive the solve).
                         ITypeST::Rune(self.scout_arena.alloc(RuneUsageST {
                             rune: RuneUsage { range: abstract_param_kind_rune.range, rune: self_full_rune },
                         })),
@@ -1074,8 +974,6 @@ where 's: 't,
                         param.virtuality,
                         param.pre_checked,
                         param.name,
-                        // Dormant migration field; carries the original method's source type (its runes
-                        // are the pre-inheritance ones — harmless while unconsumed by the solver).
                         param.tyype,
                         remap(param.full_type_rune),
                         remap(param.value_type_rune),
@@ -1146,8 +1044,6 @@ where 's: 't,
         });
         let body = self.scout_arena.alloc(IBodyS::CodeBody(CodeBodyS { body: body_se }));
 
-        // Forwarder name. Post-migration, function declaration names are identity (not interned): the
-        // imprecise/spelling side is interned, then the declaration name is built directly.
         let forwarder_imprecise = match self.scout_arena.intern_function_imprecise_name(
             IFunctionImpreciseNameValS::ForwarderFunctionDeclarationName(ForwarderFunctionImpreciseNameValS {
                 inner: method.name.imprecise_name(),
@@ -1188,10 +1084,10 @@ where 's: 't,
             method
                 .maybe_return_type
                 .map(|written| map_runes_in_type_st(self.scout_arena, &inherit, &written)),
-            &[], // effects
+            &[],
             rules_slice,
-            &[], // impl_bounds
-            &[], // func_bounds
+            &[],
+            &[],
             body,
         ))
     }

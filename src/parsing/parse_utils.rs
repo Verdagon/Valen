@@ -42,7 +42,6 @@ pub fn parse_region<'p>(
   }))
 }
 
-/// Helper method to skip past an equals sign while a condition is true
 pub fn try_skip_past_equals_while<'p, 's, F>(
   iter: &mut ScrambleIterator<'p, 's>,
   continue_while: F,
@@ -61,7 +60,6 @@ where
           let mut before_iter = iter.clone();
           before_iter.end = scouting_iter.index + 1;
 
-          // Now modify iter to skip past it
           iter.skip_to(&scouting_iter);
           iter.advance();
           iter.advance();
@@ -77,7 +75,6 @@ where
   None
 }
 
-/// Try to skip past a keyword, returning the portion before it
 pub fn try_skip_past_keyword_while<'p, 's, F>(
   iter: &mut ScrambleIterator<'p, 's>,
   keyword: StrI<'p>,
@@ -91,7 +88,6 @@ where
   while continue_while(&scouting_iter) {
     match scouting_iter.peek_cloned() {
       Some(INodeLEEnum::Word(w)) if w.str == keyword => {
-        // We'll return this iterator for the things that come before the keyword
         let mut before_iter = iter.clone();
         before_iter.end = scouting_iter.index;
 

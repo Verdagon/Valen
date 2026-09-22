@@ -7,7 +7,7 @@ use crate::typing::names::names::*;
 use crate::typing::templata::templata::*;
 use crate::typing::types::types::*;
 
-/// Value-type (see @TFITCX)
+
 pub enum CitizenDefinitionT<'s, 't> {
   Struct(&'t StructDefinitionT<'s, 't>),
   Interface(&'t InterfaceDefinitionT<'s, 't>),
@@ -57,7 +57,6 @@ where
     }
   }
 }
-/// Arena-allocated (see @TFITCX)
 pub struct StructDefinitionT<'s, 't> {
   pub template_name: IdT<'s, 't>,
   pub instantiated_citizen: StructTT<'s, 't>,
@@ -95,14 +94,13 @@ impl<'s, 't> StructDefinitionT<'s, 't> {
   }
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StructMemberT<'s, 't> {
   pub name: &'t MemberNameT<'s, 't>,
   pub tyype: KindT<'s, 't>,
 }
 
-/// Arena-allocated (see @TFITCX)
 pub struct InterfaceDefinitionT<'s, 't> {
   pub template_name: IdT<'s, 't>,
   pub instantiated_interface: InterfaceTT<'s, 't>,

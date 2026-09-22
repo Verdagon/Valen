@@ -2,7 +2,6 @@ use crate::interner::StrI;
 use crate::parse_arena::ParseArena;
 use crate::scout_arena::ScoutArena;
 
-/// All Vale keywords and commonly used identifiers
 // TODO: let's bake this into the ParseArena, ScoutArena, etc. and only include ones that are
 // actually frequently used by that pass.
 pub struct Keywords<'a> {

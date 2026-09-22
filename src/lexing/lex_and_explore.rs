@@ -9,7 +9,6 @@ use crate::parse_arena::ParseArena;
 use crate::utils::code_hierarchy::{FileCoordinate, FileCoordinateMap, PackageCoordinate};
 use crate::utils::fx::{HashMap, HashSet};
 
-/// Main lexing function with import-driven package discovery
 pub fn lex_and_explore<'p, 'ctx, D, F>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -56,7 +55,6 @@ where
 
       let mut iter = LexingIterator::new(&code);
       let lexer = Lexer::<'p, 'ctx>::new(parse_arena, keywords);
-      // Store (module, packages) as owned strings to avoid lexer borrow conflict.
       let mut packages_to_explore: Vec<(String, Vec<String>)> = Vec::new();
 
       iter.consume_comments_and_whitespace();
@@ -64,9 +62,6 @@ where
       let mut maybe_imports_accum: Option<Vec<ImportL>> = Some(Vec::new());
       let mut maybe_imports: Option<Vec<ImportL>> = None;
 
-      // Imports must come first, so that we can ship these denizens off with all
-      // their relevant imports.
-      // Defer intern_package_coordinate until after the lex loop to avoid borrow conflicts.
       while !iter.at_end() {
         let denizen = match lexer.lex_denizen(&mut iter) {
           Err(e) => {
@@ -88,10 +83,6 @@ where
             }
 
             if im.module_name.str == keywords.rust {
-              // The reserved `rust` module names rustc items resolved by the rust-interop oracle, not a
-              // Vale source package on disk, so it is not added to package discovery (that would send
-              // the explorer hunting for a `rust` package that does not exist). Without the feature
-              // there is no oracle to resolve it, so importing it is an error rather than a skip.
               #[cfg(not(feature = "rust_interop"))]
               panic!(
                 "`import {}.…` needs the `rust_interop` feature, which is not enabled in this build",
@@ -122,7 +113,6 @@ where
         }
       }
 
-      // Add discovered packages to unexplored (after lex loop to avoid borrow conflicts).
       for (module_str, package_strs) in packages_to_explore {
         let package_steps: Vec<StrI<'p>> =
           package_strs.iter().map(|s| parse_arena.intern_str(s)).collect();

@@ -17,8 +17,6 @@ use crate::typing::names::names::IdT;
 use crate::typing::types::types::KindT;
 use crate::utils::range::RangeS;
 
-/// An AHT (abstract high-level tree) denizen a sibling-entry macro synthesized and wants
-/// registered in the postparsed cache. Macros return these instead of registering directly.
 pub enum GeneratedAhtDenizen<'s, 't>
 where
   's: 't,
@@ -26,7 +24,6 @@ where
   Function(&'t IdT<'s, 't>, &'s FunctionS<'s>),
   Struct(&'t IdT<'s, 't>, &'s StructS<'s>),
   Impl(&'t IdT<'s, 't>, &'s ImplS<'s>),
-  // We could one day have interfaces here too
 }
 
 impl<'s, 't> GeneratedAhtDenizen<'s, 't>
@@ -41,8 +38,6 @@ where
     }
   }
 
-  // The env entry is fully derivable from the denizen: the variant fixes the entry kind, the id
-  // is the key, and a struct's tyype rides on its StructS.
   pub fn env_entry(&self) -> IEnvEntryT<'s, 't> {
     match self {
       GeneratedAhtDenizen::Function(id, _) => {

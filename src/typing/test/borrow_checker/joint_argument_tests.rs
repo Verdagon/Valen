@@ -1,7 +1,5 @@
 use super::util::{assert_borrow_error_renders, assert_compiles_clean};
 
-// Slice 1: passing one local to two params in *distinct* named groups, one of which is a `mut`
-// target, aliases two arguments the callee is allowed to believe are disjoint — a borrow error.
 #[test]
 fn test_alias_same_local_into_distinct_mut_groups_rejected() {
   assert_borrow_error_renders(
@@ -21,7 +19,6 @@ Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutat
   );
 }
 
-// Slice 2: two distinct groups, but the callee mutates neither — free immutable aliasing, no error.
 #[test]
 fn test_alias_into_distinct_groups_without_mut_is_clean() {
   assert_compiles_clean(r#"
@@ -35,8 +32,6 @@ exported func main() int {
 "#);
 }
 
-// Slice 3: both params share the mutated group `g`, so passing the same local twice is common-group
-// aliasing — safe.
 #[test]
 fn test_common_group_aliasing_is_clean() {
   assert_compiles_clean(r#"
@@ -50,7 +45,6 @@ exported func main() int {
 "#);
 }
 
-// Slice 4: distinct locals into distinct mutated groups do not alias.
 #[test]
 fn test_distinct_locals_into_distinct_mut_groups_clean() {
   assert_compiles_clean(r#"
@@ -65,8 +59,6 @@ exported func main() int {
 "#);
 }
 
-// Slice 5: borrowing the *same field* twice into distinct mutated groups aliases through a member
-// path.
 #[test]
 fn test_same_field_alias_rejected() {
   assert_borrow_error_renders(
@@ -87,8 +79,6 @@ Arguments 0 and 1 both borrow into f, but their parameters are in disjoint mutat
   );
 }
 
-// Slice 6: distinct fields of one struct are provably disjoint (the sibling-disjointness lemma), so
-// borrowing two different fields into two mutated groups is clean even though they share a root.
 #[test]
 fn test_sibling_fields_are_disjoint_clean() {
   assert_compiles_clean(r#"
@@ -103,8 +93,6 @@ exported func main() int {
 "#);
 }
 
-// Slice 7: a whole-struct borrow and a borrow of one of its fields are nested (one path a prefix of
-// the other), so into distinct mutated groups they alias.
 #[test]
 fn test_prefix_path_alias_rejected() {
   assert_borrow_error_renders(
@@ -125,7 +113,6 @@ Arguments 0 and 1 both borrow into f, but their parameters are in disjoint mutat
   );
 }
 
-// Slice 8: aliasing is checked over every unordered argument pair — here arguments 0 and 2 alias.
 #[test]
 fn test_nonadjacent_arg_pair_alias_rejected() {
   assert_borrow_error_renders(
@@ -146,7 +133,6 @@ Arguments 0 and 2 both borrow into e, but their parameters are in disjoint mutat
   );
 }
 
-// Slice 9: the mutated group can be *either* of the pair — here it is the second group `s`.
 #[test]
 fn test_mut_on_second_group_triggers() {
   assert_borrow_error_renders(

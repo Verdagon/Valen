@@ -1,4 +1,3 @@
-// cargo test --manifest-path Cargo.toml --lib parsing::tests::top_level_tests
 
 #![allow(nonstandard_style)]
 
@@ -25,8 +24,6 @@ fn unicode_ellipsis_is_an_expression() {
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
-  // The Unicode `…` symbol parses as an ordinary expression. (Three ASCII dots `...` are no longer a
-  // comment — they are the descendant group operator, e.g. `&T in g...`.)
   compile(&parse_arena, &keywords, "exported func main() int {x = …;}");
   compile(&parse_arena, &keywords, "exported func main() int {set x = …;}");
 }

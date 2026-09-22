@@ -11,11 +11,10 @@ use crate::StrI;
 
 type ParseResult<T> = Result<T, ParseError>;
 
-// Helper enum for expression parsing
 #[derive(Debug)]
 enum ExpressionElement<'p> {
   Data(&'p IExpressionPE<'p>),
-  BinaryCall(NameP<'p>, i32), // name and precedence
+  BinaryCall(NameP<'p>, i32),
 }
 
 #[derive(Clone, Debug)]
@@ -26,24 +25,20 @@ pub struct ScrambleIterator<'p, 's> {
 }
 
 impl<'p, 's> ScrambleIterator<'p, 's> {
-  /// Create a new iterator over the entire scramble
   pub fn new(scramble: &'s ScrambleLE<'p>) -> Self {
     let end = scramble.elements.len();
     ScrambleIterator { scramble, index: 0, end }
   }
 
-  /// Create a new iterator with custom bounds
   pub fn with_bounds(scramble: &'s ScrambleLE<'p>, index: usize, end: usize) -> Self {
     assert!(end <= scramble.elements.len());
     ScrambleIterator { scramble, index, end }
   }
 
-  /// Check if at end of iteration
   pub fn at_end(&self) -> bool {
     self.index == self.end
   }
 
-  /// Get the range covered by remaining elements
   pub fn range(&self) -> RangeL {
     if self.index < self.end {
       RangeL::new(
@@ -56,7 +51,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Get current position
   pub fn get_pos(&self) -> i32 {
     if self.index >= self.end {
       self.scramble.range.end()
@@ -65,7 +59,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Get the end position of the previous element
   pub fn get_prev_end_pos(&self) -> i32 {
     if self.index == 0 {
       self.scramble.range.begin()
@@ -74,7 +67,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Peek at the previous element
   pub fn peek_prev(&self) -> Option<&INodeLEEnum<'p>> {
     if self.index > 0 {
       Some(&self.scramble.elements[self.index - 1])
@@ -83,22 +75,18 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Skip to the position of another iterator
   pub fn skip_to(&mut self, that: &ScrambleIterator<'p, 's>) {
     self.index = that.index;
   }
 
-  /// Stop iteration (move to end)
   pub fn stop(&mut self) {
     self.index = self.end;
   }
 
-  /// Check if there are more elements
   pub fn has_next(&self) -> bool {
     self.index < self.end
   }
 
-  /// Peek at the current element
   pub fn peek(&self) -> Option<&INodeLEEnum<'p>> {
     if self.index >= self.end {
       None
@@ -107,12 +95,10 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Peek at the current element, returning owned clone to avoid borrow conflicts.
   pub fn peek_cloned(&self) -> Option<INodeLEEnum<'p>> {
     self.peek().cloned()
   }
 
-  /// Take the current element and advance (returning owned)
   pub fn take(&mut self) -> Option<INodeLEEnum<'p>> {
     if self.index >= self.end {
       None
@@ -123,7 +109,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Peek at the next n elements
   pub fn peek_n(&self, n: usize) -> Vec<Option<&INodeLEEnum<'p>>> {
     (0..n)
       .map(|i| {
@@ -137,7 +122,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
       .collect()
   }
 
-  /// Peek at the next 2 elements
   pub fn peek2(&self) -> (Option<&INodeLEEnum<'p>>, Option<&INodeLEEnum<'p>>) {
     let first =
       if self.index < self.end { Some(&**&self.scramble.elements[self.index]) } else { None };
@@ -149,13 +133,11 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     (first, second)
   }
 
-  /// Peek at the next 2 elements, returning owned clones to avoid borrow conflicts.
   pub fn peek2_cloned(&self) -> (Option<INodeLEEnum<'p>>, Option<INodeLEEnum<'p>>) {
     let (a, b) = self.peek2();
     (a.cloned(), b.cloned())
   }
 
-  /// Peek at the next 3 elements
   pub fn peek3(
     &self,
   ) -> (Option<&INodeLEEnum<'p>>, Option<&INodeLEEnum<'p>>, Option<&INodeLEEnum<'p>>) {
@@ -174,7 +156,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     (first, second, third)
   }
 
-  /// Peek at the next 3 elements, returning owned clones to avoid borrow conflicts.
   pub fn peek3_cloned(
     &self,
   ) -> (Option<INodeLEEnum<'p>>, Option<INodeLEEnum<'p>>, Option<INodeLEEnum<'p>>) {
@@ -182,7 +163,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     (a.cloned(), b.cloned(), c.cloned())
   }
 
-  /// Check if next element is a specific word
   pub fn peek_word(&self, word: StrI<'_>) -> bool {
     match self.peek() {
       Some(INodeLEEnum::Word(WordLE { str, .. })) => *str == word,
@@ -190,7 +170,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Advance and return a reference to the current element
   pub fn advance(&mut self) -> &INodeLEEnum<'p> {
     assert!(self.has_next());
     let result = &**&self.scramble.elements[self.index];
@@ -198,7 +177,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     result
   }
 
-  /// Try to skip a symbol
   pub fn try_skip_symbol(&mut self, symbol: char) -> bool {
     match self.peek() {
       Some(INodeLEEnum::Symbol(SymbolLE(_, c))) if *c == symbol => {
@@ -209,7 +187,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Try to skip multiple symbols in sequence
   pub fn try_skip_symbols(&mut self, symbols: &[char]) -> bool {
     if self.index + symbols.len() > self.end {
       return false;
@@ -226,7 +203,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     true
   }
 
-  /// Get the next word element
   pub fn next_word(&mut self) -> Option<WordLE<'p>> {
     match self.peek() {
       Some(INodeLEEnum::Word(w)) => {
@@ -238,13 +214,11 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Expect a specific word (panics if not found)
   pub fn expect_word(&mut self, str: StrI<'_>) {
     let found = self.try_skip_word(str).is_some();
     assert!(found, "Expected word {:?}", str);
   }
 
-  /// Try to skip a specific word
   pub fn try_skip_word(&mut self, str: StrI<'_>) -> Option<RangeL> {
     match self.peek() {
       Some(INodeLEEnum::Word(WordLE { range, str: s })) if *s == str => {
@@ -256,7 +230,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Find the index where a condition is true
   pub fn find_index_where<F>(&self, func: F) -> Option<usize>
   where
     F: Fn(&INodeLEEnum) -> bool,
@@ -269,7 +242,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     None
   }
 
-  /// Split the scramble on a specific symbol
   pub fn split_on_symbol(
     &self,
     needle: char,
@@ -301,7 +273,6 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     iters
   }
 
-  /// Get remaining elements count
   pub fn remaining(&self) -> usize {
     if self.end > self.index {
       self.end - self.index
@@ -310,12 +281,10 @@ impl<'p, 's> ScrambleIterator<'p, 's> {
     }
   }
 
-  /// Check if there are at least n elements remaining
   pub fn has_at_least(&self, n: usize) -> bool {
     self.index + n <= self.end
   }
 
-  /// Consume and return all remaining elements
   pub fn consume_rest(&mut self) -> Vec<INodeLEEnum<'p>> {
     let mut result = Vec::new();
     while self.has_next() {
@@ -334,7 +303,6 @@ impl<'p, 'ctx> ExpressionParser<'p, 'ctx>
 where
   'p: 'ctx,
 {
-  /// Parse a while loop
   fn parse_while(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -347,10 +315,8 @@ where
       return Ok(None);
     }
 
-    // Parse condition (lines 255-259)
     let condition = self.parse_block_contents(iter, true, templex_parser, pattern_parser)?;
 
-    // Parse body (lines 261-271)
     let body = match iter.peek_cloned() {
       Some(INodeLEEnum::Curlied(CurliedLE { range: _, contents })) => {
         let contents = contents.clone();
@@ -372,7 +338,6 @@ where
     })))
   }
 
-  /// Parse an explicit block
   fn parse_explicit_block(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -385,7 +350,6 @@ where
       return Ok(None);
     }
 
-    // Parse body
     let contents = match iter.peek_cloned() {
       Some(INodeLEEnum::Curlied(CurliedLE { contents, .. })) => {
         let contents = contents.clone();
@@ -482,7 +446,6 @@ where
     })))
   }
 
-  /// Parse an if ladder (if/else if/else)
   fn parse_if_ladder(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -491,16 +454,13 @@ where
   ) -> ParseResult<Option<IExpressionPE<'p>>> {
     let if_ladder_begin = iter.get_pos();
 
-    // Check for 'if' keyword (lines 391-394)
     match iter.peek_cloned() {
       Some(INodeLEEnum::Word(WordLE { str, .. })) if str == self.keywords.iff => {}
       _ => return Ok(None),
     }
 
-    // Parse root if (lines 396-400)
     let root_if = self.parse_if_part(iter, templex_parser, pattern_parser)?;
 
-    // Parse else if parts (lines 402-415)
     let mut if_elses = Vec::new();
     while match iter.peek2_cloned() {
       (
@@ -513,7 +473,6 @@ where
       if_elses.push(self.parse_if_part(iter, templex_parser, pattern_parser)?);
     }
 
-    // Parse else block (lines 417-436)
     let else_begin = iter.get_pos();
     let maybe_else_block = if iter.try_skip_word(self.keywords.elsse).is_some() {
       let body = match iter.peek_cloned() {
@@ -539,7 +498,6 @@ where
       None
     };
 
-    // Build final else block (lines 438-448)
     let final_else = match maybe_else_block {
       None => {
         let pos = iter.get_prev_end_pos();
@@ -554,7 +512,6 @@ where
       Some(block) => block,
     };
 
-    // Fold right to build nested if/else (lines 449-466)
     let mut root_else_block = final_else;
     for (cond_block, then_block) in if_elses.into_iter().rev() {
       root_else_block = BlockPE {
@@ -603,7 +560,6 @@ where
     }
     iter.advance();
 
-    // Use try_skip_past_equals_while to find the mutatee expression
     let mutatee_expr =
       match try_skip_past_equals_while(iter, |scouting_iter| match scouting_iter.peek_cloned() {
         None => false,
@@ -647,7 +603,6 @@ where
       None,
     )?;
 
-    // Validate the pattern doesn't use 'set' keyword
     if let Some(DestinationLocalP {
       decl: INameDeclarationP::LocalNameDeclaration(NameP(_, name)),
       mutate: None,
@@ -666,7 +621,6 @@ where
     })
   }
 
-  /// Parse a single if part (condition and then block)
   fn parse_if_part(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -679,10 +633,8 @@ where
       return Err(ParseError::BadExpressionBegin(iter.get_pos()));
     }
 
-    // Parse condition (lines 318-321)
     let condition = self.parse_block_contents(iter, true, templex_parser, pattern_parser)?;
 
-    // Parse then block (lines 323-369)
     let body = match iter.peek_cloned() {
       Some(INodeLEEnum::Curlied(CurliedLE { range: _, contents })) => {
         let contents = contents.clone();
@@ -707,7 +659,6 @@ where
     ExpressionParser { parse_arena, keywords }
   }
 
-  /// Parse a block from a curlied expression
   pub fn parse_block(
     &self,
     block_l: &CurliedLE<'p>,
@@ -718,7 +669,6 @@ where
     self.parse_block_contents(&mut iter, false, templex_parser, pattern_parser)
   }
 
-  /// Parse block contents
   pub fn parse_block_contents(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -728,7 +678,6 @@ where
   ) -> ParseResult<&'p IExpressionPE<'p>> {
     let mut statements: Vec<&'p IExpressionPE<'p>> = Vec::new();
 
-    // Parse statements (lines 603-615)
     while match iter.peek_cloned() {
       None => false,
       Some(INodeLEEnum::Curlied(_)) if stop_on_curlied => false,
@@ -740,7 +689,6 @@ where
       }
     } {}
 
-    // If we just ate a semicolon, but there's nothing after it, then add a void (lines 617-633)
     if iter.has_next() {
       match iter.peek_cloned() {
         Some(INodeLEEnum::Symbol(SymbolLE(_, ')'))) => {
@@ -763,7 +711,6 @@ where
       }
     }
 
-    // Return result (lines 635-639)
     match statements.len() {
       0 => {
         Ok(self.parse_arena.alloc(IExpressionPE::Void(VoidPE {
@@ -777,8 +724,6 @@ where
     }
   }
 
-  /// Parse lone block
-  /// Parse lone block expression
   fn parse_lone_block(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -844,14 +789,11 @@ where
     })))
   }
 
-  /// Parse unlet
   fn parse_unlet(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
   ) -> ParseResult<Option<IExpressionPE<'p>>> {
-    // Check for 'unlet' keyword
     if let Some(range) = iter.try_skip_word(self.keywords.unlet) {
-      // Parse the name to unlet
       match iter.peek_cloned() {
         Some(INodeLEEnum::Word(WordLE { range: name_range, str: name_str })) => {
           let name = IImpreciseNameP::LookupName(NameP(name_range, name_str));
@@ -907,7 +849,6 @@ where
     Ok(Some(IExpressionPE::Break(BreakPE { range: RangeL::new(begin, iter.get_prev_end_pos()) })))
   }
 
-  /// Parse a statement
   pub fn parse_statement(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -919,7 +860,6 @@ where
       return Err(ParseError::BadExpressionBegin(iter.get_pos()));
     }
 
-    // Try various statement types (lines 754-785)
     if let Some(x) = self.parse_while(iter, templex_parser, pattern_parser)? {
       return Ok(self.parse_arena.alloc(x));
     }
@@ -941,7 +881,6 @@ where
 
     assert!(iter.has_next());
 
-    // Parse let or lone expression (lines 789-818)
     let let_or_lone_expr: &'p IExpressionPE<'p> = if self.next_is_set_expr(iter) {
       self.parse_arena.alloc(
         self
@@ -974,12 +913,11 @@ where
       }
     };
 
-    // Consume optional semicolon (lines 819-827)
     match iter.peek_cloned() {
-      None => {}                                             // okay, hit the end
-      Some(INodeLEEnum::Curlied(_)) if stop_on_curlied => {} // okay, hit the end
+      None => {}
+      Some(INodeLEEnum::Curlied(_)) if stop_on_curlied => {}
       Some(INodeLEEnum::Symbol(SymbolLE(_, ';'))) => {
-        iter.advance(); // consume it to end the statement
+        iter.advance();
       }
       _ => return Err(ParseError::BadExpressionEnd(iter.get_pos())),
     }
@@ -987,8 +925,6 @@ where
     Ok(let_or_lone_expr)
   }
 
-  /// Get operator precedence
-  /// Get operator precedence
   pub fn get_precedence(&self, str: StrI<'_>) -> i32 {
     if str == self.keywords.dot_dot {
       6
@@ -1009,11 +945,10 @@ where
     } else if str == self.keywords.and || str == self.keywords.or {
       1
     } else {
-      3 // Default precedence for custom operators like "mod", "florgle", etc.
+      3
     }
   }
 
-  /// Parse an expression
   pub fn parse_expression(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1027,7 +962,6 @@ where
 
     let mut elements = Vec::new();
 
-    // Parse expression elements (lines 853-890)
     loop {
       let sub_expr = self.parse_expression_data_element(
         iter,
@@ -1064,12 +998,10 @@ where
       }
     }
 
-    // Descramble the expression (lines 892-894)
     let (expr_pe, _) = self.descramble_elements(&elements, 0, elements.len() - 1, 1)?;
     Ok(expr_pe)
   }
 
-  /// Parse a lookup expression
   pub fn parse_lookup(&self, iter: &mut ScrambleIterator<'p, '_>) -> Option<IExpressionPE<'p>> {
     let begin = iter.get_pos();
     match iter.peek3_cloned() {
@@ -1126,7 +1058,6 @@ where
     }
   }
 
-  /// Parse a boolean literal
   pub fn parse_boolean(&self, iter: &mut ScrambleIterator<'p, '_>) -> Option<IExpressionPE<'p>> {
     if let Some(range) = iter.try_skip_word(self.keywords.truue) {
       return Some(IExpressionPE::ConstantBool(ConstantBoolPE { range, value: true }));
@@ -1137,7 +1068,6 @@ where
     None
   }
 
-  /// Parse an atomic expression
   pub fn parse_atom(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1148,7 +1078,6 @@ where
     assert!(iter.has_next());
     let begin = iter.get_pos();
 
-    // Check for keywords that can't be used in expressions (lines 960-969)
     if iter.try_skip_word(self.keywords.r#break).is_some() {
       return Err(ParseError::CantUseBreakInExpression(iter.get_pos()));
     }
@@ -1159,22 +1088,18 @@ where
       return Err(ParseError::CantUseWhileInExpression(iter.get_pos()));
     }
 
-    // Check for underscore (magic param lookup) (lines 970-973)
     if let Some(range) = iter.try_skip_word(self.keywords.underscore) {
       return Ok(IExpressionPE::MagicParamLookup(MagicParamLookupPE { range }));
     }
 
-    // Try foreach (lines 974-978)
     if let Some(x) = self.parse_foreach(iter, templex_parser, pattern_parser)? {
       return Ok(x);
     }
 
-    // Try mut expression (lines 980-984)
     if let Some(x) = self.parse_mut_expr(iter, stop_on_curlied, templex_parser, pattern_parser)? {
       return Ok(x);
     }
 
-    // Parse literals (lines 986-1014)
     match iter.peek_cloned() {
       Some(INodeLEEnum::ParsedInteger(ParsedIntegerLE { range, value, bits })) => {
         iter.advance();
@@ -1187,7 +1112,6 @@ where
       Some(INodeLEEnum::String(StringLE { range, parts })) => {
         iter.advance();
 
-        // Check if it's a simple literal string
         if parts.len() == 1 {
           if let StringPart::Literal { s, .. } = &parts[0] {
             return Ok(IExpressionPE::ConstantStr(ConstantStrPE {
@@ -1197,7 +1121,6 @@ where
           }
         }
 
-        // String interpolation
         let mut parts_p: Vec<&'p IExpressionPE<'p>> = Vec::new();
         for part in parts {
           match part {
@@ -1224,36 +1147,29 @@ where
       _ => {}
     }
 
-    // Try boolean (lines 1015-1018)
     if let Some(e) = self.parse_boolean(iter) {
       return Ok(e);
     }
 
-    // Try array (lines 1019-1023)
     if let Some(e) = self.parse_array(iter, templex_parser, pattern_parser)? {
       return Ok(e);
     }
 
-    // Try lambda (lines 1024-1028)
     if let Some(e) = self.parse_lambda(iter, templex_parser, pattern_parser)? {
       return Ok(e);
     }
 
-    // Try lookup (lines 1029-1032)
     if let Some(e) = self.parse_lookup(iter) {
       return Ok(e);
     }
 
-    // Try tuple or sub-expression (lines 1033-1039)
     if let Some(e) = self.parse_tuple_or_sub_expression(iter, templex_parser, pattern_parser)? {
       return Ok(e);
     }
 
-    // If nothing matched, error (continuing from line 1039+)
     Err(ParseError::BadExpressionBegin(begin))
   }
 
-  /// Parse a spree step (method call, field access, etc.)
   pub fn parse_spree_step(
     &self,
     spree_begin: i32,
@@ -1265,20 +1181,17 @@ where
   ) -> ParseResult<Option<IExpressionPE<'p>>> {
     let operator_begin = iter.get_pos();
 
-    // Trailing `&` on a spree — Borrow expression variant.
     if iter.try_skip_symbol('&') {
       let borrow_pe =
         BorrowPE { range: RangeL::new(spree_begin, iter.get_prev_end_pos()), inner: expr_so_far };
       return Ok(Some(IExpressionPE::Borrow(borrow_pe)));
     }
 
-    // Try template lookup
     match self.parse_template_lookup(iter, expr_so_far, templex_parser)? {
       Some(call) => return Ok(Some(IExpressionPE::Lookup(self.parse_arena.alloc(call)))),
       None => {}
     }
 
-    // Try function call
     match self.parse_function_call(
       iter,
       spree_begin,
@@ -1290,7 +1203,6 @@ where
       None => {}
     }
 
-    // Try brace pack (e.g., foo[1, 2, 3])
     match self.parse_brace_pack(iter, templex_parser, pattern_parser)? {
       Some(arg_exprs) => {
         return Ok(Some(IExpressionPE::BraceCall(BraceCallPE {
@@ -1304,7 +1216,6 @@ where
       None => {}
     }
 
-    // Check for range operator (..)
     if iter.try_skip_symbols(&['.', '.']) {
       let operand = self.parse_atom(iter, stop_on_curlied, templex_parser, pattern_parser)?;
       let range_pe = RangePE {
@@ -1315,7 +1226,6 @@ where
       return Ok(Some(IExpressionPE::Range(range_pe)));
     }
 
-    // Check for map call (*.) or method call (.)
     let is_map_call = iter.try_skip_symbols(&['*', '.']);
     let is_method_call = if is_map_call { false } else { iter.try_skip_symbol('.') };
 
@@ -1376,7 +1286,6 @@ where
             (Some(INodeLEEnum::Symbol(SymbolLE(_, '/'))), _, _) => self.keywords.slash,
             _ => return Err(ParseError::BadDot(iter.get_pos())),
           };
-          // Advance by the length of the keyword
           for _ in 0..name.as_str().len() {
             iter.advance();
           }
@@ -1428,7 +1337,6 @@ where
     Ok(None)
   }
 
-  /// Parse a function call
   pub fn parse_function_call(
     &self,
     original_iter: &mut ScrambleIterator<'p, '_>,
@@ -1454,7 +1362,6 @@ where
     }
   }
 
-  /// Parse an atom and tight suffixes
   pub fn parse_atom_and_tight_suffixes(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1494,7 +1401,6 @@ where
     Ok(expr_so_far)
   }
 
-  /// Parse chevron pack (template arguments)
   pub fn parse_chevron_pack(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1520,7 +1426,6 @@ where
     }
   }
 
-  /// Parse a template lookup
   pub fn parse_template_lookup(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1547,7 +1452,6 @@ where
     Ok(Some(result_pe))
   }
 
-  /// Parse a pack (parens, squares, or curlies)
   pub fn parse_pack(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1574,7 +1478,6 @@ where
     Ok(Some((parend_le.range, elements)))
   }
 
-  /// Parse a square pack (array/seq literal)
   pub fn parse_square_pack(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1602,7 +1505,6 @@ where
     Ok(Some(elements_p))
   }
 
-  /// Parse a brace pack
   pub fn parse_brace_pack(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1631,7 +1533,6 @@ where
     }
   }
 
-  /// Parse a tuple or sub-expression
   pub fn parse_tuple_or_sub_expression(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1690,7 +1591,6 @@ where
     }
   }
 
-  /// Parse expression data element
   pub fn parse_expression_data_element(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1784,8 +1684,6 @@ where
       _ => {}
     }
 
-    // Value-level prefix operators — 3 structural variants. `^x` = Move,
-    // `&x` = Borrow (`&&x` = nested double-borrow), `weak x` = Weak.
     enum Prefix {
       Move,
       Borrow,
@@ -1808,8 +1706,6 @@ where
     };
 
     if let Some(prefix) = maybe_prefix {
-      // Recurse into parse_expression_data_element so nested prefixes stack (e.g. `&&x` →
-      // Borrow(Borrow(x)) rather than choking on the inner `&`).
       let inner_pe = self.parse_expression_data_element(
         iter,
         stop_on_curlied,
@@ -1828,7 +1724,6 @@ where
     self.parse_atom_and_tight_suffixes(iter, stop_on_curlied, templex_parser, pattern_parser)
   }
 
-  /// Parse a braced body
   pub fn parse_braced_body(
     &self,
     _iter: &mut ScrambleIterator<'p, '_>,
@@ -1836,7 +1731,6 @@ where
     panic!("parse_braced_body: NOT IMPLEMENTED")
   }
 
-  /// Parse single-arg lambda begin
   pub fn parse_single_arg_lambda_begin(
     &self,
     _original_iter: &mut ScrambleIterator<'p, '_>,
@@ -1844,7 +1738,6 @@ where
     panic!("parse_single_arg_lambda_begin: NOT IMPLEMENTED")
   }
 
-  /// Parse multi-arg lambda begin
   pub fn parse_multi_arg_lambda_begin(
     &self,
     _original_iter: &mut ScrambleIterator<'p, '_>,
@@ -1852,7 +1745,6 @@ where
     panic!("parse_multi_arg_lambda_begin: NOT IMPLEMENTED")
   }
 
-  /// Parse a lambda
   pub fn parse_lambda(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -1862,7 +1754,6 @@ where
     let begin = iter.get_pos();
 
     let header_p = match iter.peek3_cloned() {
-      // Just a curlied block with no params (e.g., { ... })
       (Some(INodeLEEnum::Curlied(CurliedLE { range, .. })), _, _) => {
         let retuurn =
           FunctionReturnP { range: RangeL::new(iter.get_pos(), iter.get_pos()), ret_type: None };
@@ -2007,7 +1898,6 @@ where
     Ok(Some(IExpressionPE::Lambda(lam)))
   }
 
-  /// Parse an array literal
   pub fn parse_array(
     &self,
     original_iter: &mut ScrambleIterator<'p, '_>,
@@ -2081,7 +1971,6 @@ where
     Ok(Some(IExpressionPE::ConstructArray(array_pe)))
   }
 
-  /// Descramble - converts scrambled expression elements to properly structured AST
   fn descramble_elements(
     &self,
     elements: &[ExpressionElement<'p>],
@@ -2094,7 +1983,6 @@ where
 
     const MAX_PRECEDENCE: i32 = 6;
 
-    // Base cases (lines 1832-1839)
     if begin_index_inclusive == end_index_inclusive {
       if let ExpressionElement::Data(expr) = &elements[begin_index_inclusive] {
         return Ok((*expr, begin_index_inclusive + 1));
@@ -2110,7 +1998,6 @@ where
       }
     }
 
-    // Recursive descent (lines 1841-1842)
     let (mut left_operand, mut next_index) = self.descramble_elements(
       elements,
       begin_index_inclusive,
@@ -2118,7 +2005,6 @@ where
       min_precedence + 1,
     )?;
 
-    // Process operators at this precedence level (lines 1844-1876)
     while next_index < end_index_inclusive {
       if let ExpressionElement::BinaryCall(_, precedence) = &elements[next_index] {
         if *precedence != min_precedence {
@@ -2139,7 +2025,6 @@ where
         self.descramble_elements(elements, next_index, end_index_inclusive, min_precedence + 1)?;
       next_index = new_next_index;
 
-      // Construct the appropriate expression (lines 1854-1875)
       left_operand = if binary_call.str() == self.keywords.and {
         self.parse_arena.alloc(IExpressionPE::And(AndPE {
           range: RangeL::new(left_operand.range().begin(), right_operand.range().end()),
@@ -2173,7 +2058,6 @@ where
     Ok((left_operand, next_index))
   }
 
-  /// Parse a binary call
   pub fn parse_binary_call(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -2251,7 +2135,6 @@ where
     Ok(Some(name))
   }
 
-  /// Check if at expression end
   pub fn at_expression_end(&self, iter: &ScrambleIterator, stop_on_curlied: bool) -> bool {
     match iter.peek_cloned() {
       None => true,

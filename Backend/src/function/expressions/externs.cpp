@@ -581,10 +581,6 @@ Ref buildExternCall(
     return makeVoidRef(globalState);
   } else if (prototype->name->name == "__vbi_getMainArg") {
     // Signature: (i int) -> str
-    // Pulls argv[i] from the process's stashed __main_args pointer and hands
-    // its (length, byte pointer) to mallocStr, which does its own memcpy into
-    // a fresh Vale-owned share str. Mirrors the __vbi_castI64Str shape but
-    // uses argv storage directly instead of a formatted stack buffer.
     assert(args.size() == 1);
     auto int32LT = LLVMInt32TypeInContext(globalState->context);
     auto int64LT = LLVMInt64TypeInContext(globalState->context);

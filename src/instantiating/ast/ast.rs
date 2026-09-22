@@ -19,7 +19,7 @@ use std::ptr::hash;
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct KindExportI<'s, 'i> {
     pub range: RangeS<'s>,
@@ -32,7 +32,7 @@ pub struct KindExportI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FunctionExportI<'s, 'i> where 's: 'i {
     pub range: RangeS<'s>,
@@ -44,31 +44,19 @@ pub struct FunctionExportI<'s, 'i> where 's: 'i {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FunctionExternI<'s, 'i> where 's: 'i {
     pub prototype: &'i PrototypeI<'s, 'i>,
-    // How many of the function's trailing generic-arg slots were inherited from a parent
-    // citizen template, per @PRIIROZ (0 = no inheritance / top-level extern). Hammer uses
-    // this to reshape the wire-format SimpleId so container template args land on the
-    // citizen step (e.g. Vec<i32>::capacity rather than Vec::capacity<i32>), which is
-    // what the Backend's rustifySimpleId expects per @SMLRZ.
     pub num_inherited_generic_parameters: i32,
-    // The real callee symbol this extern ultimately calls — always present, never composed by the
-    // backend. For a C extern it is the user's declared symbol (`FunctionExternT.extern_name`); for a
-    // Rust-interop leaf it is rustc's own mangled name (`tcx.symbol_name`), overwritten onto this field
-    // by the provider after the leaf resolves (at creation it holds the Valen name as a placeholder).
-    // The backend binds this verbatim for a Rust leaf, and composes the `vale_abi_` shim name from it
-    // for a C extern.
     pub link_name: &'i str,
 }
 
 
 
-// (Canonical groups equals/hashCode on one physical line — see the eq block above.)
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct KindExternI<'s, 'i> where 's: 'i {
     pub r#struct: &'i StructIT<'s, 'i>,
@@ -76,11 +64,10 @@ pub struct KindExternI<'s, 'i> where 's: 'i {
 
 
 
-// (Canonical groups equals/hashCode on one physical line — see the eq block above.)
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct InterfaceEdgeBlueprintI<'s, 'i> where 's: 'i {
     pub interface: IdI<'s, 'i>,
@@ -90,7 +77,7 @@ pub struct InterfaceEdgeBlueprintI<'s, 'i> where 's: 'i {
 
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct EdgeI<'s, 'i> where 's: 'i {
     pub edge_id: IdI<'s, 'i>,
@@ -104,7 +91,7 @@ pub struct EdgeI<'s, 'i> where 's: 'i {
 
 
 
-/// Temporary state
+
 #[derive(Debug)]
 pub struct FunctionDefinitionI<'s, 'i> where 's: 'i {
     pub header: FunctionHeaderI<'s, 'i>,
@@ -114,18 +101,6 @@ pub struct FunctionDefinitionI<'s, 'i> where 's: 'i {
 }
 
 
-
-
-impl<'s, 'i> FunctionDefinitionI<'s, 'i> {
-    pub fn is_pure(&self) -> bool {
-        panic!("Unimplemented: is_pure")
-        // header.isPure
-    }
-}
-
-
-
-/// Temporary state
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct LocI<'i> {
     pub path: &'i [i32],
@@ -146,13 +121,13 @@ impl<'i> LocI<'i> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct AbstractI;
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ParameterI<'s, 'i> where 's: 'i {
     pub name: IVarNameI<'s, 'i>,
@@ -171,23 +146,12 @@ impl<'s, 'i> ParameterI<'s, 'i> {
 }
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SignatureI<'s, 'i> {
     pub id: IdI<'s, 'i>,
 }
 
-
-
-impl<'s, 'i> SignatureI<'s, 'i> {
-    pub fn param_types(&self) -> Vec<()> {
-        panic!("Unimplemented: param_types")
-        // id.localName.parameters
-    }
-}
-
-
-/// Polyvalue
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum IFunctionAttributeI<'s> {
     PureI,
@@ -197,7 +161,7 @@ pub enum IFunctionAttributeI<'s> {
 
 
 
-/// Polyvalue
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ICitizenAttributeI<'s> {
     SealedI,
@@ -213,7 +177,7 @@ pub struct ExternI<'s> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct RegionI<'s, 'i> where 's: 'i {
     pub name: IRegionNameI<'s, 'i>,
@@ -222,7 +186,7 @@ pub struct RegionI<'s, 'i> where 's: 'i {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FunctionHeaderI<'s, 'i> where 's: 'i {
     // This one little name field can illuminate much of how the compiler works, see UINIT.
@@ -294,7 +258,7 @@ impl<'s, 'i> FunctionHeaderI<'s, 'i> {
 }
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PrototypeI<'s, 'i> {
     pub id: IdI<'s, 'i>,
@@ -317,10 +281,6 @@ impl<'s, 'i> PrototypeI<'s, 'i> {
 }
 
 
-/// A variable is either a local or a closure capture. Both are identity-bearing arena types
-/// referenced as `&'i`, mirroring typing's IVariableT (Local/Capture) — the addressible/reference
-/// split is retired (addressibility is gone; every local is storage).
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum IVariableI<'s, 'i> where 's: 'i {
     Local(&'i LocalVariableI<'s, 'i>),
@@ -339,14 +299,12 @@ impl<'s, 'i> IVariableI<'s, 'i> where 's: 'i {
 }
 
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LocalVariableI<'s, 'i> where 's: 'i {
     pub name: IVarNameI<'s, 'i>,
     pub tyype: KindIT<'s, 'i>,
 }
 
-// Identity equality per @IEOIBZ — `LocalVariableI` is arena-allocated.
 impl<'s, 'i> PartialEq for LocalVariableI<'s, 'i> where 's: 'i {
     fn eq(&self, other: &Self) -> bool {
         eq(self, other)
@@ -360,7 +318,6 @@ impl<'s, 'i> Hash for LocalVariableI<'s, 'i> where 's: 'i {
 }
 
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct CapturedVariableI<'s, 'i> where 's: 'i {
     pub name: IVarNameI<'s, 'i>,
@@ -368,7 +325,6 @@ pub struct CapturedVariableI<'s, 'i> where 's: 'i {
     pub tyype: KindIT<'s, 'i>,
 }
 
-// Identity equality per @IEOIBZ — `CapturedVariableI` is arena-allocated.
 impl<'s, 'i> PartialEq for CapturedVariableI<'s, 'i> where 's: 'i {
     fn eq(&self, other: &Self) -> bool {
         eq(self, other)

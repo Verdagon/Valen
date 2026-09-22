@@ -63,8 +63,6 @@ impl Opt for Some;
   let _ = interface.internal_methods;
 }
 
-/// An `impl` that supplies no override for an interface's method must be reported as a compile
-/// error. `Impl` implements `Handler` but provides no `handle`, so the program must fail to compile.
 #[test]
 fn missing_interface_override_reports_a_compile_error() {
   let parse_bump = Bump::new();
@@ -627,7 +625,7 @@ fn integer_is_compatible_with_interface_anonymous_substruct() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: x6 int → x6 &int — anonymous-interface-macro forwarder accesses captured `6` as a borrowed field
+  // TSUGAR: x6 int -> x6 &int
   let code = r#"
 import v.builtins.drop.*;
 interface AFunction2<R, P1> {
@@ -695,8 +693,6 @@ exported func main() str {
   compile.expect_compiler_outputs();
 }
 
-// A `where func` bound whose param type names a concrete citizen (here `&Win`) must compile: the
-// value-position name lowers to a zero-arg Call and evaluate_templex applies it, matching the rules.
 #[test]
 fn where_func_bound_can_name_a_concrete_citizen() {
   let parse_bump = Bump::new();

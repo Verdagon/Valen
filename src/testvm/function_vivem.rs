@@ -63,8 +63,6 @@ pub fn execute_function<'i, 's, 'v>(
     args: &'v [ReferenceV<'v, 'i, 's>],
     function_h: &'i FunctionDefinitionI<'s, 'i>,
 ) -> Result<(CallIdV<'v, 'i, 's>, NodeReturnV<'v, 'i, 's>), VmRuntimeErrorV<'s>> {
-    // The stack-frame call-id needs an `&'i PrototypeI`; the header computes one by value, so
-    // arena-allocate it.
     let prototype: &'i PrototypeI<'s, 'i> = interner.bump().alloc(function_h.header.to_prototype());
     let call_id = heap.push_new_stack_frame(prototype, args);
     {
@@ -114,12 +112,8 @@ pub fn get_extern_function<'i, 's, 'v>(
 ) -> Box<dyn for<'a> Fn(&mut AdapterForExternsV<'a, 'v, 'i, 's>, &'v [ReferenceV<'v, 'i, 's>]) -> Result<ReferenceV<'v, 'i, 's>, VmRuntimeErrorV<'s>> + 'i>
 where 's: 'i, 'i: 'v,
 {
-    // Externs are ordinary functions carrying the `extern` attribute, so their prototype name is a
-    // FunctionNameIX; the builtin dispatch key is its human name (e.g. "__vbi_addI32").
     let name = match ref_.id.local_name {
         INameI::FunctionNameIX(n) => n.template.human_name.0,
-        // A builtin/extern function's prototype carries an ExternFunctionNameI, whose human_name is
-        // the dispatch key (e.g. "__vbi_addI32").
         INameI::ExternFunction(n) => n.human_name.0,
         other => panic!("get_extern_function: unexpected prototype name variant {:?}", other),
     };

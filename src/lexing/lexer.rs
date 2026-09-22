@@ -8,7 +8,6 @@ use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, ParseError>;
 
-/// Helper enum for string parsing
 enum StringPartResult<'p> {
   Char(char),
   Expr(ScrambleLE<'p>),
@@ -26,7 +25,6 @@ where
     Lexer { parse_arena, keywords }
   }
 
-  /// Lex attributes on a declaration
   pub fn lex_attributes(&self, iter: &mut LexingIterator) -> Result<&'p [IAttributeL<'p>]> {
     let mut attributes = Vec::new();
 
@@ -41,11 +39,9 @@ where
     Ok(self.parse_arena.alloc_slice_from_vec(attributes))
   }
 
-  /// Lex a single attribute
   pub fn lex_attribute(&self, iter: &mut LexingIterator) -> Result<Option<IAttributeL<'p>>> {
     let attribute_begin = iter.get_pos();
 
-    // Check for macro calls
     if iter.try_skip_complete_word("#DeriveStructDrop") {
       let end = iter.get_pos();
       return Ok(Some(IAttributeL::MacroCall {
@@ -118,7 +114,6 @@ where
       }));
     }
 
-    // Regular attributes
     if iter.try_skip_complete_word("abstract") {
       let end = iter.get_pos();
       return Ok(Some(IAttributeL::AbstractAttribute(RangeL::new(attribute_begin, end))));
@@ -147,39 +142,32 @@ where
     Ok(None)
   }
 
-  /// Lex a top-level denizen (function, struct, interface, impl, import, export)
   pub fn lex_denizen(&self, iter: &mut LexingIterator) -> Result<IDenizenL<'p>> {
     let denizen_begin = iter.get_pos();
 
     let attributes = self.lex_attributes(iter)?;
     iter.consume_comments_and_whitespace();
 
-    // Try function
     if let Some(func) = self.lex_function(iter, denizen_begin, attributes)? {
       return Ok(IDenizenL::TopLevelFunction(func));
     }
 
-    // Try struct
     if let Some(strukt) = self.lex_struct(iter, denizen_begin, attributes)? {
       return Ok(IDenizenL::TopLevelStruct(strukt));
     }
 
-    // Try interface
     if let Some(interface) = self.lex_interface(iter, denizen_begin, attributes)? {
       return Ok(IDenizenL::TopLevelInterface(interface));
     }
 
-    // Try impl
     if let Some(impl_) = self.lex_impl(iter, denizen_begin, attributes)? {
       return Ok(IDenizenL::TopLevelImpl(impl_));
     }
 
-    // Try import
     if let Some(import) = self.lex_import(iter, denizen_begin, attributes)? {
       return Ok(IDenizenL::TopLevelImport(import));
     }
 
-    // Try export
     if let Some(export) = self.lex_export(iter, denizen_begin, attributes)? {
       return Ok(IDenizenL::TopLevelExportAs(export));
     }
@@ -187,7 +175,6 @@ where
     Err(ParseError::UnrecognizedDenizenError(iter.get_pos()))
   }
 
-  /// Lex an impl block
   pub fn lex_impl(
     &self,
     iter: &mut LexingIterator,
@@ -300,7 +287,6 @@ where
     let name = if let Some(id) = self.lex_identifier(iter) {
       id
     } else {
-      // Check for operator names
       let name_str = match iter.peek() {
         '!' if iter.peek_string("!=") => {
           iter.skip_to(name_begin as usize + 2);
@@ -395,7 +381,6 @@ where
     Ok(Some(FunctionL::<'p> { range: RangeL::new(begin, end), header, body: maybe_body }))
   }
 
-  /// Lex a struct definition
   pub fn lex_struct(
     &self,
     iter: &mut LexingIterator,
@@ -496,7 +481,6 @@ where
     }))
   }
 
-  /// Lex an interface definition
   pub fn lex_interface(
     &self,
     iter: &mut LexingIterator,
@@ -574,7 +558,6 @@ where
     }))
   }
 
-  /// Lex an import declaration
   pub fn lex_import(
     &self,
     iter: &mut LexingIterator,
@@ -624,7 +607,6 @@ where
     }))
   }
 
-  /// Lex an export declaration
   pub fn lex_export(
     &self,
     iter: &mut LexingIterator,
@@ -653,7 +635,6 @@ where
     Ok(Some(ExportAsL { range: RangeL::new(begin, iter.get_pos()), contents: scramble }))
   }
 
-  /// Lex parenthesized expression
   fn lex_parend(&self, iter: &mut LexingIterator) -> Result<Option<ParendLE<'p>>> {
     let begin = iter.get_pos();
 
@@ -676,7 +657,6 @@ where
     Ok(Some(ParendLE::<'p> { range: RangeL::new(begin, end), contents: innards }))
   }
 
-  /// Lex curly braced block
   fn lex_curlied(
     &self,
     iter: &mut LexingIterator,
@@ -715,7 +695,6 @@ where
     Ok(Some(CurliedLE { range: RangeL::new(begin, end), contents: innards }))
   }
 
-  /// Lex square bracketed expression
   fn lex_squared(&self, iter: &mut LexingIterator) -> Result<Option<SquaredLE<'p>>> {
     let begin = iter.get_pos();
 
@@ -738,7 +717,6 @@ where
     Ok(Some(SquaredLE { range: RangeL::new(begin, end), contents: innards }))
   }
 
-  /// Lex angle bracketed expression (generics)
   fn lex_angled(&self, iter: &mut LexingIterator) -> Result<Option<AngledLE<'p>>> {
     let begin = iter.get_pos();
 
@@ -762,7 +740,6 @@ where
     Ok(Some(AngledLE { range: RangeL::new(begin, end), contents: innards }))
   }
 
-  /// Check if < or > is an open/close bracket vs a comparison operator
   fn angle_is_open_or_close(&self, iter: &LexingIterator) -> bool {
     let c = iter.peek();
     if c != '<' && c != '>' {
@@ -774,7 +751,7 @@ where
       return false;
     }
 
-    // => is lambda arrow, not a closer
+    // => is lambda arrow, not an equals then end/greater
     if iter.code[..iter.position].chars().next_back() == Some('=') && c == '>' {
       return false;
     }
@@ -790,7 +767,6 @@ where
     !whitespace_on_both_sides
   }
 
-  /// Check if we're at the end of a scramble
   fn at_end(
     &self,
     iter: &LexingIterator,
@@ -815,7 +791,6 @@ where
     }
   }
 
-  /// Lex a scramble of nodes (unstructured sequence)
   pub fn lex_scramble(
     &self,
     iter: &mut LexingIterator,
@@ -844,47 +819,38 @@ where
     })
   }
 
-  /// Lex a single node
   fn lex_node(
     &self,
     iter: &mut LexingIterator,
     stop_on_open_brace: bool,
     stop_on_where: bool,
   ) -> Result<INodeLEEnum<'p>> {
-    // Try angled
     if let Some(x) = self.lex_angled(iter)? {
       return Ok(INodeLEEnum::Angled(x));
     }
 
-    // Try squared
     if let Some(x) = self.lex_squared(iter)? {
       return Ok(INodeLEEnum::Squared(x));
     }
 
-    // Try curlied
     if let Some(x) = self.lex_curlied(iter, stop_on_open_brace)? {
       return Ok(INodeLEEnum::Curlied(x));
     }
 
-    // Try parend
     if let Some(x) = self.lex_parend(iter)? {
       return Ok(INodeLEEnum::Parend(x));
     }
 
-    // Lex atom
     self.lex_atom(iter, stop_on_where)
   }
 
-  /// Lex an atomic element (identifier, number, string, symbol)
   fn lex_atom(&self, iter: &mut LexingIterator, stop_on_where: bool) -> Result<INodeLEEnum<'p>> {
     assert!(!(stop_on_where && iter.try_skip_complete_word("where")));
 
-    // Try number
     if let Some(n) = self.lex_number(iter)? {
       return Ok(n);
     }
 
-    // Try string
     if let Some(s) = self.lex_string(iter)? {
       return Ok(s);
     }
@@ -903,7 +869,6 @@ where
     Ok(INodeLEEnum::Symbol(SymbolLE(RangeL::new(begin, iter.get_pos()), c)))
   }
 
-  /// Check if a character is a Unicode identifier part (matches Java's isUnicodeIdentifierPart)
   fn is_unicode_identifier_part(c: char) -> bool {
     // This matches Java's Character.isUnicodeIdentifierPart behavior
     c.is_alphabetic() || c.is_numeric() || c == '_' ||
@@ -912,7 +877,6 @@ where
         (c >= '\u{203F}' && c <= '\u{2040}') // Undertie and character tie
   }
 
-  /// Lex an identifier
   fn lex_identifier(&self, iter: &mut LexingIterator) -> Option<WordLE<'p>> {
     let begin = iter.get_pos();
 
@@ -929,8 +893,7 @@ where
       Some(WordLE { range: RangeL::new(begin, end), str: self.parse_arena.intern_str(word) })
     }
   }
-  // Lex optional ownership prefix symbols (&, &&, ^) for impl interface/struct positions.
-  // Returns SymbolLE nodes for each prefix character, e.g. && becomes two SymbolLE('&').
+
   fn lex_impl_ownership_prefix(&self, iter: &mut LexingIterator) -> Vec<SymbolLE> {
     let mut symbols: Vec<SymbolLE> = Vec::new();
     while !iter.at_end() && (iter.peek() == '&' || iter.peek() == '^') {
@@ -946,7 +909,6 @@ where
     panic!("Unimplemented");
   }
 
-  /// Check if we're at the end of a string
   fn lex_string_end(&self, iter: &mut LexingIterator, is_long_string: bool) -> bool {
     if iter.at_end() {
       return true;
@@ -959,7 +921,6 @@ where
     }
   }
 
-  /// Lex a string literal (with interpolation support)
   fn lex_string(&self, iter: &mut LexingIterator) -> Result<Option<INodeLEEnum<'p>>> {
     let begin = iter.get_pos();
 
@@ -1013,28 +974,23 @@ where
     })))
   }
 
-  /// Lex a part of a string (character or interpolated expression)
   fn lex_string_part(
     &self,
     iter: &mut LexingIterator,
     _string_begin_pos: i32,
   ) -> Result<StringPartResult<'p>> {
-    // Handle interpolation
     if iter.try_skip_str("{\\\n") {
       // Line ending in {\
       let expr = self.lex_scramble(iter, false, false, false)?;
       return Ok(StringPartResult::Expr(expr));
     } else if iter.peek_string("{\n") {
-      // Line ending in { - treat as literal
       iter.advance();
       return Ok(StringPartResult::Char('{'));
     } else if iter.try_skip('{') {
-      // { with stuff after - interpolation
       let expr = self.lex_scramble(iter, false, false, false)?;
       return Ok(StringPartResult::Expr(expr));
     }
 
-    // Handle escape sequences
     if iter.try_skip('\\') {
       if iter.try_skip('r') || iter.try_skip('\r') {
         Ok(StringPartResult::Char('\r'))
@@ -1069,7 +1025,6 @@ where
     }
   }
 
-  /// Parse a four-digit hexadecimal number
   pub fn parse_four_digit_hex_num(&self, iter: &mut LexingIterator, _offset: usize) -> Option<i32> {
     let str = iter.peek_exact(4)?;
 
@@ -1089,7 +1044,6 @@ where
     i32::from_str_radix(&str_owned, 16).ok()
   }
 
-  /// Lex a number (integer or float)
   fn lex_number(&self, original_iter: &mut LexingIterator) -> Result<Option<INodeLEEnum<'p>>> {
     let begin = original_iter.get_pos();
 

@@ -2291,7 +2291,7 @@ fn use_after_churn_through_a_rust_borrow_return_is_rejected() {
 // until the importer follows `Deref<Target=[T]>` and lowers the slice
 // `[T]` / `usize`, so the program cannot compile yet.
 #[test]
-#[ignore = "the autoderef mechanism exists (single-step shared Deref), but real Vec::get still needs a generic Deref source (Vec<T>), slice [T] lowering, usize indexing, Option<&T> return groups, and stdlib-in-interop"]
+#[ignore]
 fn a_real_vec_element_accessor_is_importable() {
   let outcome = run_case(&REAL_VEC_ELEMENT_ACCESSOR_IS_IMPORTABLE, callees_in_main);
 

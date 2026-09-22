@@ -1,6 +1,3 @@
-// ScoutArena: arena + interning maps for the postparsing (scout) pass.
-// Has string/coord interning (like ParseArena) plus name/rune/imprecise-name interning.
-
 use crate::interner::{InternedSlice, StrI};
 use crate::postparsing::ast::{LocationInDenizen, LocationInDenizenVal};
 use crate::utils::range::{CodeLocationS, RangeS};
@@ -62,19 +59,9 @@ impl<'s> Hash for FileCoordLookupKey<'s> {
   }
 }
 
-/// Construction-witness token for postparse interned payloads (mirrors typing's `MustIntern`, see
-/// @SICZ). The inner unit field is private to this module, so only `scout_arena.rs` — specifically
-/// the `alloc_*_canonical` helpers — can write `ScoutInterned(())`. A sealed payload carries a
-/// `pub _must_intern: ScoutInterned` field; because the constructor is unnameable elsewhere, the only
-/// way to obtain the payload is via an `intern_*` method (E0423 otherwise). This makes "interned" a
-/// compiler-enforced category rather than a convention.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ScoutInterned(());
 
-/// The `self` imprecise name is an empty marker, so a single blessed value serves every variable's
-/// `imprecise_name()` without allocating. It lives here (not at the use site) because `SelfNameS` is
-/// sealed (@SICZ) — only this module can name `ScoutInterned(())`. Non-canonical by design: compare
-/// it by value (`==`), never `ptr_eq`, like every other result of `IVarNameT::imprecise_name()`.
 pub static SELF_IMPRECISE_NAME: SelfNameS = SelfNameS { _must_intern: ScoutInterned(()) };
 
 pub struct ScoutArena<'s> {
@@ -90,7 +77,6 @@ struct ScoutArenaInner<'s> {
   function_imprecise_name_val_to_ref:
     HashMap<IFunctionImpreciseNameValS<'s>, IFunctionImpreciseNameS<'s>>,
   name_val_to_ref: HashMap<INameValS<'s>, INameS<'s>>,
-  // Per @DSAUIMZ, uses hashbrown for heterogeneous lookup (IRuneValS<'s, 'tmp> against IRuneValS<'s, 's> keys).
   rune_val_to_ref: hashbrown::HashMap<IRuneValS<'s, 's>, IRuneS<'s>>,
 }
 
@@ -119,25 +105,20 @@ impl<'s> ScoutArena<'s> {
     self.bump.alloc_slice_copy(src)
   }
 
-  /// Allocate a slice from a Vec into the arena.
   pub fn alloc_slice_from_vec<T>(&self, vec: Vec<T>) -> &'s [T] {
     self.bump.alloc_slice_fill_iter(vec.into_iter())
   }
 
-  /// Create an empty ArenaIndexMap allocated in this arena.
   pub fn alloc_index_map<K: Hash + Eq + Clone, V>(&self) -> ArenaIndexMap<'s, K, V> {
     ArenaIndexMap::new_in(self.bump)
   }
 
-  /// Create an ArenaIndexMap from an iterator, allocated in this arena.
   pub fn alloc_index_map_from_iter<K: Hash + Eq + Clone, V, I: IntoIterator<Item = (K, V)>>(
     &self,
     iter: I,
   ) -> ArenaIndexMap<'s, K, V> {
     ArenaIndexMap::from_iter_in(iter, self.bump)
   }
-
-  // --- String interning ---
 
   pub fn intern_str(&self, s: &str) -> StrI<'s> {
     let mut inner = self.inner.borrow_mut();
@@ -148,8 +129,6 @@ impl<'s> ScoutArena<'s> {
     inner.string_to_interned.insert(s.to_string(), arena_str);
     StrI(arena_str)
   }
-
-  // --- Package/File coordinate interning ---
 
   pub fn intern_package_coordinate(
     &self,
@@ -186,8 +165,6 @@ impl<'s> ScoutArena<'s> {
     new_ref
   }
 
-  // --- Imprecise name interning ---
-
   pub fn intern_imprecise_name(&self, val: IImpreciseNameValS<'s>) -> IImpreciseNameS<'s> {
     {
       let inner = self.inner.borrow();
@@ -200,10 +177,6 @@ impl<'s> ScoutArena<'s> {
     inner.imprecise_name_val_to_ref.insert(val, canonical.clone());
     canonical
   }
-
-  // Interned-ref helpers: return the canonical `&'s <payload>` for the imprecise-name variants a
-  // declaration name embeds. Declarations hold their imprecise name by interned ref, always
-  // (typing-design "Names"), so these are the only sanctioned way to fill those fields.
 
   pub fn intern_code_name(&self, name: StrI<'s>) -> &'s CodeNameS<'s> {
     match self.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS { name })) {
@@ -426,8 +399,6 @@ impl<'s> ScoutArena<'s> {
     }
   }
 
-  // --- Name interning ---
-
   pub fn intern_struct_declaration_name(
     &self,
     val: TopLevelStructDeclarationNameS<'s>,
@@ -464,9 +435,6 @@ impl<'s> ScoutArena<'s> {
     canonical
   }
 
-  /// The forwarder payload is a shallow already-canonical-children case (its `inner` is an
-  /// already-canonical `IFunctionImpreciseNameS`), so no `'tmp` machinery is needed. The other
-  /// variants reduce to the shared imprecise-name interner (`CodeNameS`/`LambdaImpreciseNameS`).
   fn alloc_function_imprecise_name_canonical(
     &self,
     val: IFunctionImpreciseNameValS<'s>,
@@ -552,8 +520,6 @@ impl<'s> ScoutArena<'s> {
     }
   }
 
-  /// Function declaration names are identity (not interned, @WVSBIZ): arena-alloc directly, no
-  /// dedup. Callers wrap the result in `INameS::FunctionDeclaration` where a denizen name is needed.
   pub fn alloc_function_declaration_name(
     &self,
     val: IFunctionDeclarationNameS<'s>,
@@ -561,34 +527,25 @@ impl<'s> ScoutArena<'s> {
     self.bump.alloc(val)
   }
 
-
-  // --- Rune interning ---
-
-  // Per @DSAUIMZ, slices are arena-allocated here on miss, not by the caller.
   pub fn intern_rune<'tmp>(&self, val: IRuneValS<'s, 'tmp>) -> IRuneS<'s> {
     {
       let inner = self.inner.borrow();
       let query = RuneValQuery(&val);
       if let Some(existing) = inner.rune_val_to_ref.get(&query) {
-        return existing.clone(); // HIT — zero allocation
+        return existing.clone();
       }
     }
-    // MISS — promote val (arena-alloc slices) and build canonical
     let (promoted_key, canonical) = self.alloc_rune_canonical(val);
     let mut inner = self.inner.borrow_mut();
     inner.rune_val_to_ref.insert(promoted_key, canonical.clone());
     canonical
   }
 
-  /// Promotes a Val (which may borrow temporaries via 'tmp) into an arena-allocated
-  /// canonical IRuneS and a stored key IRuneValS<'s, 's>.
-  /// Per @DSAUIMZ, this is where lid slices get arena-allocated — only on intern miss.
   fn alloc_rune_canonical<'tmp>(
     &self,
     val: IRuneValS<'s, 'tmp>,
   ) -> (IRuneValS<'s, 's>, IRuneS<'s>) {
     match val {
-      // ── 7 lid variants: promote LocationInDenizenVal → LocationInDenizen ──
       ImplicitRune(v) => {
         let lid = v.lid().promote_in(self.bump);
         let canonical = IRuneS::ImplicitRune(self.bump.alloc(ImplicitRuneS { lid }));
@@ -651,9 +608,6 @@ impl<'s> ScoutArena<'s> {
           canonical,
         )
       }
-      // ── Shallow Val variants (already have separate Val structs) ──
-      // Clone v for the stored key before moving fields into the canonical payload.
-      // These inner fields are all small Copy-ish types (IRuneS is a tagged pointer).
       ImplicitRegionRune(v) => {
         let key = v.clone();
         let payload = ImplicitRegionRuneS { original_rune: v.original_rune };
@@ -691,7 +645,6 @@ impl<'s> ScoutArena<'s> {
         let canonical = IRuneS::CaseRuneFromImpl(self.bump.alloc(payload));
         (IRuneValS::CaseRuneFromImpl(key), canonical)
       }
-      // ── Simple Val variants (same struct in both enums) ──
       CodeRune(p) => {
         let c = IRuneS::CodeRune(self.bump.alloc(p.clone()));
         (IRuneValS::CodeRune(p), c)

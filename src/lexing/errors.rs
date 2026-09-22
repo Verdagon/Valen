@@ -1,6 +1,5 @@
 use crate::utils::code_hierarchy::FileCoordinate;
 
-/// Failed parse with context
 #[derive(Debug)]
 pub struct FailedParse<'p> {
   pub code: String,
@@ -8,15 +7,11 @@ pub struct FailedParse<'p> {
   pub error: ParseError,
 }
 
-/// Parse error types
 #[derive(Debug)]
 pub enum ParseError {
   RangedInternalError { pos: i32, msg: String },
   UnrecognizableExpressionAfterRefPrefix(i32),
   OnlyRegionRunesCanHaveMutability(i32),
-  /// A single effect clause held more than one group, e.g. `mut(a, b)`. Each clause takes exactly one
-  /// group; two mutated regions are spelled as separate clauses (`mut(a) mut(b)`). Rejected rather than
-  /// silently keeping only the first group.
   MultipleGroupsInEffectClause(i32),
   BadMemberEnd(i32),
   BadLambdaBegin(i32),

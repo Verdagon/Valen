@@ -53,8 +53,6 @@ where
     // let incoming_ownership = local_name.parameters().first().expect("vassertSome: parameters.headOption").ownership;
 
     let incoming_coord = param_coords[0].tyype;
-    // The declared param is `&SuperType` or `SuperType`, so the citizen sits under whatever wraps
-    // the signature wrote. is_parent and ISuperKindTT below want the citizen, not the reference.
     let incoming_kind = peel_all_references(incoming_coord);
 
     let success_coord =
@@ -102,7 +100,6 @@ where
       }
     };
 
-    // This is a compiler-generated builtin body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70110);
     let as_subtype_expr = ExpressionTE::AsSubtype(self.typing_interner.alloc(AsSubtypeTE::new(
       synth_range,

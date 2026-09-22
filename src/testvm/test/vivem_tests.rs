@@ -14,12 +14,6 @@ use crate::typing::typing_interner::TypingInterner;
 use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::testvm::von::{IVonData, VonInt};
 
-/// Dark-box harness: compile a real `.vale` program all the way through the instantiator to a
-/// `HinputsI`, then run its `main` in the TestVM and hand back the computed VON return value. This
-/// replaces the old hand-built `ProgramH` fixtures (S6) — the tests now assert on the same path the
-/// real compiler drives. `with_builtins` prepends the `v.builtins.arrays` bundle (arrays + arith +
-/// drop + implicit_clone) so arithmetic-using fixtures resolve `+`; without it the program stands
-/// alone (mirrors the two instantiator test harnesses).
 fn run_vale(code: &str, with_builtins: bool) -> IVonData {
     let parse_bump = Bump::new();
     let scout_bump = Bump::new();
@@ -72,8 +66,6 @@ fn run_vale(code: &str, with_builtins: bool) -> IVonData {
         &instantiating_bump,
     );
 
-    // Populate the monouts cache under the `&mut` borrow, then read the cached HinputsI and the
-    // interner as two coexisting `&` borrows for the VM run.
     compile.get_monouts();
     let program_h = compile.cached_monouts();
     let interner = &compile.instantiating_interner;

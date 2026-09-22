@@ -6,14 +6,11 @@ use crate::lexing::RangeL;
 use crate::utils::code_hierarchy::FileCoordinate;
 use crate::StrI;
 
-/// Something that exists in the source code. An Option[UnitP] is better than a boolean
-/// because it also contains the range it was found.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct UnitP {
   pub range: RangeL,
 }
 
-/// Name in source code
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NameP<'p>(pub RangeL, pub StrI<'p>);
 
@@ -26,13 +23,11 @@ impl<'p> NameP<'p> {
     self.1
   }
 
-  /// Returns the underlying string slice.
   pub fn as_str(&self) -> &'p str {
     self.1.as_str()
   }
 }
 
-/// Parsed file
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct FileP<'p> {
   pub file_coord: &'p FileCoordinate<'p>,
@@ -206,8 +201,6 @@ pub struct GenericParameterP<'p> {
   pub coord_region: Option<RegionRunePT<'p>>,
   pub attributes: &'p [IRuneAttributeP],
   pub maybe_default: Option<ITemplexPT<'p>>,
-  /// For a group param `<g': T>`, the element type `T` the group is over. Only a group (region)
-  /// param carries one; a regular rune param leaves it `None`.
   pub maybe_group_type: Option<&'p ITemplexPT<'p>>,
 }
 
@@ -258,7 +251,6 @@ pub struct FunctionHeaderP<'p> {
   pub template_rules: Option<TemplateRulesP<'p>>,
   pub params: Option<ParamsP<'p>>,
   pub ret: FunctionReturnP<'p>,
-  /// Effect clauses on the signature: `mut(g)` / `not(mut(g))`.
   pub effects: &'p [EffectP<'p>],
 }
 
@@ -268,10 +260,6 @@ pub enum SharednessP {
   Shared,
 }
 
-/// The load intent for a value-level use — how the scout should interpret
-/// identifier occurrences. The prefix expression variants (Move / Borrow /
-/// Weak on `IExpressionPE`) lower to the matching variant here;
-/// `Use` is the "no explicit prefix, use whatever ownership is there" default.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum LoadAsP {
   Move,

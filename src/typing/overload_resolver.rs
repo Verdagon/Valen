@@ -115,7 +115,6 @@ where
     for (param_index, (desired_param, candidate_param)) in
       desired_params.iter().zip(candidate_params.iter()).enumerate()
     {
-      // Per @ENECCLZ, exact is used for looking for functions to satisfy bounds, looking for things in vtables, etc.
       if exact {
         if desired_param != candidate_param {
           return Err(IFindFunctionFailureReason::SpecificParamDoesntMatchExactly {
@@ -179,12 +178,7 @@ where
     for e in self.get_placeholder_extra_call_envs(env, coutputs, range, param_filters) {
       self.get_candidate_banners_inner(e, coutputs, range, function_name, searched_envs, results);
     }
-    // VCOORD: doublecheck this
-    // Empirically dead on the current Vale corpus (verified 2026-06-08 by reverting
-    // to a no-op shape and running the full suite — 1064/1064 still passed). Only
-    // EdgeCompiler's override resolution passes non-empty here, and both envs it
-    // passes are redundantly reached via the param-environments / calling-env paths.
-    // Kept as a no-op safeguard against a future callsite passing non-redundant envs.
+    // VCOORD: doublecheck this, dead?
     for e in extra_envs_to_look_in {
       self.get_candidate_banners_inner(*e, coutputs, range, function_name, searched_envs, results);
     }
@@ -256,7 +250,6 @@ where
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct AttemptedCandidate<'s, 't> {
   pub prototype: &'t PrototypeT<'s, 't>,
-  /// If the winning callee is a virtual (abstract) function, the index of its virtual param.
   pub maybe_virtual_index: Option<usize>,
 }
 
@@ -299,7 +292,6 @@ where
         range: RangeS<'s>,
         parts: &[IImpreciseNameS<'s>],
       ) -> Result<IRuneTypeSolverLookupResult<'s>, IRuneTypingLookupFailedError<'s>> {
-        // The last segment names the item; only diagnostics need it separately.
         let name_s = *parts.last().expect("vwat: an empty lookup path");
         let mut filter = HashSet::default();
         filter.insert(ILookupContext::TemplataLookupContext);
@@ -323,9 +315,6 @@ where
 
     match candidate {
       ICalleeCandidate::Function(FunctionCalleeCandidate { ft }) => {
-        // See OFCBT.
-        // The one site where a Rust import's signature decline can surface: it holds the call range,
-        // the reason, and the function name at once, so it builds the complete diagnostic here.
         let function = self
           .illuminate_function(coutputs, ft.function_template_id)
           .map_err(|reason| {
@@ -371,12 +360,6 @@ where
             }
             v
           };
-          // Now that we know what types are expected, we can FINALLY rule-type these explicitly
-          // specified template args! (The rest of the rule-typing happened back in the astronomer,
-          // this is the one time we delay it, see MDRTCUT).
-          // Args supplied through receivingRuneToExplicitTemplateArgRune (the named channel for
-          // container template args) also need their callsite rune seeded with the expected type,
-          // otherwise MaybeCoercingLookupSR for those args can't fire in the rune-type solver.
           let receiving_rune_to_type: IndexMap<IRuneS<'s>, ITemplataType<'s>> =
             function.generic_params.iter().map(|gp| (gp.rune.rune, gp.tyype.tyype())).collect();
           let callsite_rune_to_type: IndexMap<IRuneS<'s>, ITemplataType<'s>> =
@@ -435,8 +418,6 @@ where
               let rune_a_to_type: IndexMap<IRuneS<'s>, ITemplataType<'s>> = IndexMap::from_iter(
                 rune_a_to_type_with_implicitly_coercing_lookups_s.iter().map(|(k, v)| (*k, *v)),
               );
-              // The rules are already explicit Lookup/Call, so nothing rewrites them here (explicify_lookups is retired).
-              // Name-resolution failures still surface from the rune-type solve above.
               let rules_without_implicit_coercions_a = rules_s_deref.clone();
 
               // We preprocess out the rune parent env lookups, see MKRFA.
@@ -480,7 +461,6 @@ where
                 },
                 coutputs,
                 &rules_without_rune_parent_env_lookups,
-                // No bounds to solve because we're just evaluating the explicit generic args here.
                 &[],
                 &combined_rune_to_type,
                 call_range,
@@ -654,14 +634,10 @@ where
     param_filters: &[KindT<'s, 't>],
     exact: bool,
   ) -> Vec<IInDenizenEnvironmentT<'s, 't>> {
-    // Per @ENECCLZ, exact keeps the type whole and non-exact peels it.
     param_filters
       .iter()
       .flat_map(|tyype| {
         let type_whose_env_to_search = if exact {
-          // If we're doing exact searches, like for bounds or virtual tables,
-          // then we should look in this type's outer environment, even if it's
-          // a borrow ref (in which case we should look in borrow.vale).
           *tyype
         } else {
           // If a user callsite is searching for candidates, look in the value type.
@@ -878,7 +854,6 @@ where
       let mut seen = HashSet::default();
       unfiltered_banners.iter().filter(|b| seen.insert(**b)).copied().collect()
     };
-    // Group by paramTypes, prefer ordinary over bound
     let mut param_types_to_banners: HashMap<Vec<KindT<'s, 't>>, Vec<AttemptedCandidate<'s, 't>>> =
       HashMap::default();
     for banner in &deduped_banners {
@@ -907,10 +882,6 @@ where
       .collect();
 
     // VCOORD: doublecheck
-    // Per-param: prefer exact-match candidates over those that require conversion
-    // (e.g. auto-borrow). Mirrors Rust's "exact match wins over coercion" rule.
-    // `requires_conversion = true` means the candidate matched only via auto-conversion;
-    // `false` means the candidate's param type exactly matched the arg type.
     let param_index_to_surviving_banner_indices: Vec<Vec<usize>> = (0..arg_types.len())
       .map(|param_index| {
         let banner_index_to_requires_conversion: Vec<bool> =
@@ -928,14 +899,12 @@ where
         }
       })
       .collect();
-    // /VCOORD
 
     let all_indices: Vec<usize> = (0..banner_index_to_score.len()).collect();
     let surviving_banner_indices: Vec<usize> = param_index_to_surviving_banner_indices
       .iter()
       .fold(all_indices, |a, b| a.into_iter().filter(|i| b.contains(i)).collect());
 
-    // Split normal vs bound candidates
     let mut normal_indices_and_candidates: Vec<(usize, &'t PrototypeT<'s, 't>)> = Vec::new();
     let mut bound_indices_and_candidates: Vec<(usize, &'t PrototypeT<'s, 't>)> = Vec::new();
     for &i in &surviving_banner_indices {

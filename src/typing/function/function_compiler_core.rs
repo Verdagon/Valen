@@ -44,12 +44,10 @@ where
   ) -> Result<&'t FunctionHeaderT<'s, 't>, ICompileErrorT<'s, 't>> {
     // fullEnv.id match { case IdT(...drop...) => vpass(); case _ => }
     // (debug pattern match, not functionally needed)
-
     // val life = LocationInFunctionEnvironmentT(Vector())
     let life = LocT {
       path: self.typing_interner.alloc_slice_from_vec(Vec::new()),
     };
-
     // val isDestructor = params2.nonEmpty && params2.head.tyype.ownership == OwnT && ...
     let is_destructor = !params2.is_empty()
       && !is_ref(params2[0].tyype)
@@ -63,7 +61,6 @@ where
       IFunctionAttributeS::Export(e) => Some(e),
       _ => None,
     });
-
     // val signature2 = SignatureT(fullEnv.id)
     let signature2: &'t SignatureT<'s, 't> =
       self.typing_interner.alloc(SignatureT { id: full_env.id });
@@ -91,11 +88,6 @@ where
     let maybe_ret_coord = match maybe_ret_templata {
       None => None,
       Some(ITemplataT::Kind(coord_templata)) => {
-        // A share citizen is only ever held ShareRef-wrapped (mirror
-        // struct_constructor_macro.rs's SharednessT::Shared arm), so a bare share-struct
-        // return type concluded from the rune must be wrapped to match the generated header.
-        // VCOORD: this is effectively coercing to a coord so its fine for now, but
-        // remove this once the postparser correctly peeks at sharedness and wraps.
         let ret_coord = match coord_templata.kind {
           KindT::Struct(struct_tt)
             if coutputs.lookup_struct(*struct_tt.id, self).sharedness == SharednessT::Shared =>
@@ -124,11 +116,9 @@ where
 
         match maybe_ret_coord {
           Some(return_coord) => {
-            // val header = finalizeHeader(...)
             let header =
               self.finalize_header(full_env, coutputs, attributes_t.clone(), params2, return_coord);
 
-            // coutputs.deferEvaluatingFunctionBody(DeferredEvaluatingFunctionBody(...))
             let attributes_t_arena: &'t [IFunctionAttributeT<'s>] =
               self.typing_interner.alloc_slice_from_vec(attributes_t);
             let call_range_arena: &'t [RangeS<'s>] =
@@ -501,11 +491,6 @@ where
           init_steps: &[],
           local_name: INameT::Extern(placeholdered_extern_name),
         });
-        // Per @PRIIROZ, internal-method externs inherit the container's generic params at the end
-        // of their templateArgs. Hammer uses this count to reshape the wire-format SimpleId so the
-        // inherited args land on the citizen step instead of the function step (i.e.
-        // `Vec<i32>::capacity` rather than `Vec::capacity<i32>`), which is what Backend's
-        // rustifySimpleId expects per @SMLRZ.
         let maybe_inheritance = match ICitizenTemplateNameT::try_from(
           extern_prototype.id.init_id(self.typing_interner).local_name,
         ) {

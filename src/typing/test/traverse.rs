@@ -33,7 +33,6 @@ use crate::typing::types::types::{
 };
 
 pub enum NodeRefT<'s, 't> {
-  // ---- Top-level ----
   Hinputs(&'t HinputsT<'s, 't>),
   FunctionDefinition(&'t FunctionDefinitionT<'s, 't>),
   FunctionHeader(&'t FunctionHeaderT<'s, 't>),
@@ -43,11 +42,7 @@ pub enum NodeRefT<'s, 't> {
   InterfaceEdgeBlueprint(&'t InterfaceEdgeBlueprintT<'s, 't>),
   Parameter(&'t ParameterT<'s, 't>),
   InstantiationBoundArguments(&'t InstantiationBoundArgumentsT<'s, 't>),
-
-  // ---- Expression hierarchy ----
   Expression(ExpressionTE<'s, 't>),
-
-  // 48 reference expression variants
   LetAndLend(&'t LetAndLendTE<'s, 't>),
   LockWeak(&'t LockWeakTE<'s, 't>),
   BorrowToWeak(&'t BorrowToWeakTE<'s, 't>),
@@ -92,14 +87,10 @@ pub enum NodeRefT<'s, 't> {
   UpcastInterface(&'t UpcastInterfaceTE<'s, 't>),
   UpcastGeneric(&'t UpcastGenericTE<'s, 't>),
   Destroy(&'t DestroyTE<'s, 't>),
-
-  // 5 address expression variants
   LocalLookup(&'t LocalLookupTE<'s, 't>),
   StaticSizedArrayLookup(&'t StaticSizedArrayLookupTE<'s, 't>),
   RuntimeSizedArrayLookup(&'t RuntimeSizedArrayLookupTE<'s, 't>),
   MemberLookup(&'t MemberLookupTE<'s, 't>),
-
-  // ---- Templata hierarchy ----
   Templata(&'t ITemplataT<'s, 't>),
   KindTemplata(&'t KindTemplataT<'s, 't>),
   PlaceholderTemplata(&'t PlaceholderTemplataT<'s, 't>),
@@ -111,8 +102,6 @@ pub enum NodeRefT<'s, 't> {
   InterfaceDefinitionTemplata(&'t InterfaceDefinitionTemplataT<'s, 't>),
   ImplDefinitionTemplata(&'t ImplDefinitionTemplataT<'s, 't>),
   ExternFunctionTemplata(&'t ExternFunctionTemplataT<'s, 't>),
-
-  // ---- Kinds + types ----
   Kind(KindT<'s, 't>),
   StructTT(&'t StructTT<'s, 't>),
   InterfaceTT(&'t InterfaceTT<'s, 't>),
@@ -123,23 +112,15 @@ pub enum NodeRefT<'s, 't> {
   Id(&'t IdT<'s, 't>),
   Signature(&'t SignatureT<'s, 't>),
   Prototype(&'t PrototypeT<'s, 't>),
-
-  // ---- Names + envs (trait-level only; we do not enumerate sub-variants) ----
   Name(&'t INameT<'s, 't>),
   VarName(&'t IVarNameT<'s, 't>),
   MemberName(&'t MemberNameT<'s, 't>),
   Environment(IEnvironmentT<'s, 't>),
-
-  // ---- Auxiliaries (trait-level only) ----
   FunctionAttribute(&'t IFunctionAttributeT<'s>),
   CitizenAttribute(&'t ICitizenAttributeT<'s>),
   StructMember(&'t StructMemberT<'s, 't>),
   LocalVariable(&'t LocalVariable<'s, 't>),
-
-  // ---- Override / Edge children ----
   Override(&'t OverrideT<'s, 't>),
-
-  // ---- Exports / externs ----
   KindExport(&'t KindExportT<'s, 't>),
   FunctionExport(&'t FunctionExportT<'s, 't>),
   KindExtern(&'t KindExternT<'s, 't>),
@@ -155,9 +136,6 @@ where
   }
 }
 
-// ============================================================================
-// Public entry points
-// ============================================================================
 
 pub fn collect_in_hinputs<'s, 't, T, F>(hinputs: &'t HinputsT<'s, 't>, predicate: &F) -> Vec<T>
 where
@@ -235,9 +213,6 @@ where
   out
 }
 
-// ============================================================================
-// Top-level visitors
-// ============================================================================
 
 fn visit_hinputs<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, h: &'t HinputsT<'s, 't>)
 where
@@ -326,7 +301,6 @@ fn visit_struct_definition<'s, 't, T, F>(
   for attr in s.attributes {
     visit_citizen_attribute(pred, out, attr);
   }
-  // mutability is now a plain SharednessT enum, not a templata — nothing to visit.
   let _ = &s.sharedness;
   for member in s.members {
     visit_struct_member(pred, out, member);
@@ -450,9 +424,6 @@ fn visit_instantiation_bound_arguments<'s, 't, T, F>(
   }
 }
 
-// ============================================================================
-// Expression hierarchy visitors
-// ============================================================================
 
 fn visit_expression_te<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, e: ExpressionTE<'s, 't>)
 where
@@ -521,7 +492,6 @@ where
   }
 }
 
-// ---- 48 reference expression variant visitors ----
 
 fn visit_let_and_lend<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, x: &'t LetAndLendTE<'s, 't>)
 where
@@ -913,7 +883,6 @@ fn visit_destroy_static_sized_array_into_locals<'s, 't, T, F>(
   collect_if(pred, out, NodeRefT::DestroyStaticSizedArrayIntoLocals(x));
   visit_expression_te(pred, out, x.expr);
   visit_static_sized_array_tt(pred, out, x.static_sized_array);
-  // destination_reference_variables: ReferenceLocalVariableT — stop at trait level
 }
 
 fn visit_destroy_mut_runtime_sized_array<'s, 't, T, F>(
@@ -1019,10 +988,8 @@ where
   collect_if(pred, out, NodeRefT::Destroy(x));
   visit_expression_te(pred, out, x.expr);
   visit_struct_tt(pred, out, x.struct_tt);
-  // destination_reference_variables: ReferenceLocalVariableT — stop at trait level
 }
 
-// ---- 5 address expression variant visitors ----
 
 fn visit_local_lookup<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, x: &'t LocalLookupTE<'s, 't>)
 where
@@ -1076,9 +1043,6 @@ fn visit_member_lookup<'s, 't, T, F>(
   visit_kind(pred, out, KindT::BorrowRef(x.result));
 }
 
-// ============================================================================
-// Templata hierarchy
-// ============================================================================
 
 fn visit_templata<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, t: &'t ITemplataT<'s, 't>)
 where
@@ -1173,7 +1137,6 @@ fn visit_function_templata<'s, 't, T, F>(
   's: 't,
 {
   collect_if(pred, out, NodeRefT::FunctionTemplata(x));
-  // Stop at trait level for env / FunctionS — see TL.md "What This Plan Deliberately Does NOT Cover".
 }
 
 fn visit_struct_definition_templata<'s, 't, T, F>(
@@ -1221,11 +1184,7 @@ fn visit_extern_function_templata<'s, 't, T, F>(
   visit_function_header(pred, out, x.header);
 }
 
-// ============================================================================
-// Kinds + types
-// ============================================================================
 
-/// Emits a node for every onion layer on the way down, then for the base kind.
 fn visit_kind<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, k: KindT<'s, 't>)
 where
   F: Fn(NodeRefT<'s, 't>) -> Option<T>,
@@ -1310,7 +1269,6 @@ where
   's: 't,
 {
   collect_if(pred, out, NodeRefT::OverloadSet(o));
-  // Stop at trait level for env — see TL.md "What This Plan Deliberately Does NOT Cover".
 }
 
 fn visit_id<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, id: &'t IdT<'s, 't>)
@@ -1319,7 +1277,6 @@ where
   's: 't,
 {
   collect_if(pred, out, NodeRefT::Id(id));
-  // Stop at trait level for INameT — see TL.md "What This Plan Deliberately Does NOT Cover".
 }
 
 fn visit_signature<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, s: &'t SignatureT<'s, 't>)
@@ -1341,9 +1298,6 @@ where
   visit_kind(pred, out, p.return_type);
 }
 
-// ============================================================================
-// Names / envs / aux (trait-level only — no descent)
-// ============================================================================
 
 fn visit_var_name<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, n: &'t IVarNameT<'s, 't>)
 where
@@ -1398,9 +1352,6 @@ where
   collect_if(pred, out, NodeRefT::LocalVariable(v));
 }
 
-// ============================================================================
-// Exports / externs
-// ============================================================================
 
 fn visit_kind_export<'s, 't, T, F>(pred: &F, out: &mut Vec<T>, e: &'t KindExportT<'s, 't>)
 where
@@ -1441,9 +1392,6 @@ where
   visit_prototype(pred, out, &e.prototype);
 }
 
-// ============================================================================
-// Dispatcher
-// ============================================================================
 
 pub fn collect_in_tnode<'s, 't, T, F>(node: &NodeRefT<'s, 't>, predicate: &F) -> Vec<T>
 where
@@ -1464,9 +1412,6 @@ where
   out
 }
 
-// ============================================================================
-// Macros (verbatim-ported from postparsing/test/traverse.rs)
-// ============================================================================
 
 #[macro_export]
 macro_rules! collect_in_tnodes {

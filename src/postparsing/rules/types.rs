@@ -44,8 +44,6 @@ impl<'s> ITypeST<'s> {
     }
   }
 
-  /// Collects every rune this type mentions, e.g. `{T}` for `&T` and `{Lam}` for `&Lam`, recursing
-  /// through the ref wraps and applications. An AnonymousRune has no rune identity, so it adds none.
   pub fn collect_rune_mentions(&self, out: &mut Vec<IRuneS<'s>>) {
     match self {
       ITypeST::Rune(r) => out.push(r.rune.rune),
@@ -132,41 +130,23 @@ pub struct RuneUsageST<'s> {
   pub rune: RuneUsage<'s>,
 }
 
-/// The region of a borrow reference. `held` and an explicit group annotation are sibling values
-/// here alongside "no annotation", so a borrow's region lives in one slot.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RegionS<'s> {
-  /// No group written: `&Ship`.
   Unspecified,
-  /// A held reference: `held Ship`. A borrow into an anonymous group the callee treats as
-  /// undestroyable, proven at the call site by the caller.
   Held,
-  /// An explicit group annotation: `&Ship in g`.
   Group(&'s GroupS<'s>),
 }
 
-/// A group expression on a borrow's `in ...` clause or in an effect clause. Scout-stage: symbolic,
-/// with a group param resolved to a `Rune` and a local kept as a `Local` name. A leaf is never an
-/// `IdT`; that resolution happens in the borrow checker, as `GroupB`. Extensible: near-term the
-/// scout only produces `Rune`; the rest arrive with value-path/union groups.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum GroupS<'s> {
-  /// `in g`: a group param.
   Rune(&'s RuneUsage<'s>),
-  /// `in x`: a local, named by the imprecise (use-site) name it's mentioned by.
   Local(IImpreciseNameS<'s>),
-  /// `in x.items`: the named member.
   Member { base: &'s GroupS<'s>, member_name: StrI<'s> },
-  /// `in x.items[]`: an element of the member.
   Elements { base: &'s GroupS<'s> },
-  /// `in g...`: somewhere within g's territory (a descendant, exact spot unknown).
   Ellipsis { base: &'s GroupS<'s> },
-  /// `in (a | b)`: a union of groups.
   Union { members: &'s [&'s GroupS<'s>] },
 }
 
-/// An effect clause on a function signature: `mut(g)` / `not(mut(g))`. Scout-stage, over a `GroupS`.
-/// Lands (borrowed from `'s`) in the per-`FunctionT` side table, never on the durable header.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum EffectS<'s> {
   Mut(&'s GroupS<'s>),

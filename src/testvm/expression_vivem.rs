@@ -34,7 +34,7 @@ use std::mem::discriminant;
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum INodeExecuteResultV<'v, 'h, 's> {
   Continue(NodeContinueV<'v, 'h, 's>),
@@ -44,21 +44,21 @@ pub enum INodeExecuteResultV<'v, 'h, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NodeContinueV<'v, 'h, 's> {
   pub result_ref: ReferenceV<'v, 'h, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NodeReturnV<'v, 'h, 's> {
   pub return_ref: ReferenceV<'v, 'h, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NodeBreakV<'v, 'h, 's>
 where 's: 'h, 'h: 'v,
@@ -102,8 +102,6 @@ pub fn possess_callee_return<'v, 'h, 's>(heap: &mut HeapV<'v, 'h, 's>, call_id: 
 
 
 pub fn upcast<'v, 'i, 's>(source_reference: ReferenceV<'v, 'i, 's>, target_interface_ref: &'i InterfaceIT<'s, 'i>) -> ReferenceV<'v, 'i, 's> {
-    // An interface view is a bare kind (`KindIT::InterfaceIT`), so `seen_as_kind` stays wrap-free;
-    // ownership carries over unchanged, and identity stays the concrete `actual_kind`.
     ReferenceV::new(
         source_reference.actual_kind,
         RRKindV { hamut: KindIT::InterfaceIT(target_interface_ref), _phantom: PhantomData },
@@ -185,11 +183,11 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
                     INodeExecuteResultV::Return(_) => {
                         // do we have to, like, discard the previously made arguments?
                         // what happens with those?
-                        panic!("Construct arg produced Return — vimpl; return r");
+                        panic!("Construct arg produced Return");
                     }
-                    INodeExecuteResultV::Break(_) => panic!("Construct arg produced Break — vwat"),
+                    INodeExecuteResultV::Break(_) => panic!("Construct arg produced Break"),
                     INodeExecuteResultV::Continue(c) => c.result_ref,
-                    INodeExecuteResultV::Error(_) => panic!("Construct arg produced Error — vimpl (closure can't propagate)"),
+                    INodeExecuteResultV::Error(_) => panic!("Construct arg produced Error"),
                 }
             }).collect();
             for r in &member_references_vec {
@@ -215,14 +213,13 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             let source_ref = match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, 0), &r.source_expr) {
                 ret @ INodeExecuteResultV::Return(_) => return ret,
                 INodeExecuteResultV::Continue(c) => c.result_ref,
-                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: Return source produced Break — vwat"),
+                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: Return source produced Break"),
                 ret @ INodeExecuteResultV::Error(_) => return ret,
             };
             INodeExecuteResultV::Return(NodeReturnV { return_ref: source_ref })
         }
         ExpressionIE::Unlet(u) => {
             let var_address = get_var_address(expression_id.call_id, u.variable);
-            // expected == target, so `transmute` returns the stored reference as-is (moved out owned).
             let reference = heap.get_reference_from_local(program_h, interner, var_address, u.variable.tyype, u.variable.tyype);
             heap.increment_reference_ref_count(
                 IObjectReferrerV::RegisterToObjectReferrer(RegisterToObjectReferrerV { call_id }),
@@ -260,8 +257,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
                 let handle = &mut *heap.vivem_dout;
                 write!(handle, " v{}/{:?}<-o{}", var_addr.call_id.call_depth, var_addr.name, reference.num).unwrap();
             }
-            // The value is now owned by the local; drop the evaluation register-referrer, then lend a
-            // borrow of the freshly-created local as the result (@Double-References).
             if let Err(e) = discard(program_h, interner, scout_arena, heap, stdout, stdin, call_id, l.expr.result(), reference) { return INodeExecuteResultV::Error(e); }
             let borrow = heap.get_reference_from_local(program_h, interner, var_addr, l.variable.tyype, l.result);
             heap.increment_reference_ref_count(IObjectReferrerV::RegisterToObjectReferrer(RegisterToObjectReferrerV { call_id }), borrow);
@@ -297,7 +292,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
                 };
                 arg_refs.push(r);
             }
-            // `lookup_function` (by prototype) is a stub; resolve the callee by matching its id.
             let function_h = *program_h.functions.iter().find(|f| f.header.id == fc.callable.id).expect("FunctionCall: callee not found");
             {
                 let handle = &mut *heap.vivem_dout;
@@ -339,7 +333,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
         }
         ExpressionIE::ConstantStr(c) => {
             let interned = scout_arena.intern_str(c.value);
-            // Str stays Share — RC'd/shared.
             let r#ref = make_primitive(heap, interner, call_id, OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData }));
             INodeExecuteResultV::Continue(NodeContinueV { result_ref: r#ref })
         }
@@ -353,13 +346,7 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             INodeExecuteResultV::Continue(NodeContinueV { result_ref: heap.void() })
         }
         ExpressionIE::LocalLookup(ll) => {
-            // VCOORD: simplify this, LocalLoad should only return references
-            // Onion LocalLookup always yields a `BorrowRef` of the local's storage, so the old
-            // "primitives-only-as-Own" carve-out is gone — the result is always a reference.
-            // /VCOORD
             let var_address = get_var_address(expression_id.call_id, ll.local_variable);
-            // Look up the local's stored reference and re-view it as this lookup's `&(local kind)`
-            // result (points at the same object; @Double-References).
             let target_type = KindIT::BorrowRefIT(ll.result);
             let reference = heap.get_reference_from_local(program_h, interner, var_address, ll.local_variable.tyype, target_type);
             heap.increment_reference_ref_count(IObjectReferrerV::RegisterToObjectReferrer(RegisterToObjectReferrerV { call_id }), reference);
@@ -374,19 +361,13 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
                 r @ (INodeExecuteResultV::Return(_) | INodeExecuteResultV::Break(_) | INodeExecuteResultV::Error(_)) => return r,
                 INodeExecuteResultV::Continue(c) => c.result_ref,
             };
-            // Peel one outer wrap (@Double-References / S8): keep the same pointee, re-derive the
-            // ownership tag + seen_as from the peeled type (so `&weak Ship` → `weak Ship`). Never a
-            // copy (that is CopyPrim), allocates nothing.
             let peeled = RRKindV { hamut: d.result, _phantom: PhantomData };
             let result_ref = ReferenceV::new(inner_ref.actual_kind, peeled.strip_outer_references(), peeled.outer_ownership(), inner_ref.num);
-            // Re-key the register-referrer from the inner flavor to the peeled flavor (strong↔weak can flip).
             heap.decrement_reference_ref_count(IObjectReferrerV::RegisterToObjectReferrer(RegisterToObjectReferrerV { call_id }), inner_ref);
             heap.increment_reference_ref_count(IObjectReferrerV::RegisterToObjectReferrer(RegisterToObjectReferrerV { call_id }), result_ref);
             INodeExecuteResultV::Continue(NodeContinueV { result_ref })
         }
         ExpressionIE::Mutate(m) => {
-            // Onion unifies local/member/element stores into one Mutate whose `destination_expr` is a
-            // lookup. Dispatch on it to find the storage, mutate, and return the displaced old value.
             let old_reference = match m.destination_expr {
                 ExpressionIE::LocalLookup(ll) => {
                     let source_reference = match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, 0), &m.source_expr) {
@@ -518,7 +499,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
                 Err(e) => return INodeExecuteResultV::Error(e),
             };
             assert!(old_member_references.len() == d.destination_reference_variables.len());
-            // Destructured members bind to the destination locals; each local's declared type is its tyype.
             for (member_ref, local_var) in old_member_references.iter().zip(d.destination_reference_variables.iter()) {
                 let var_addr = get_var_address(expression_id.call_id, *local_var);
                 heap.add_local(program_h, interner, var_addr, *member_ref, local_var.tyype);
@@ -530,15 +510,13 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             INodeExecuteResultV::Continue(NodeContinueV { result_ref: heap.void() })
         }
         ExpressionIE::ExternFunctionCall(e) => {
-            // `prototype2` is an inline `Copy` value-type; borrow it straight from the `&'i` node to
-            // get the `&'i PrototypeI` the stack-frame call-id needs (no copy).
             let prototype: &'i PrototypeI<'s, 'i> = &e.prototype2;
             let extern_function = get_extern_function(program_h, prototype);
             let arg_refs: Vec<ReferenceV<'v, 'i, 's>> =
                 e.args.iter().enumerate().map(|(i, arg_expr)| {
                     match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, i as i32), arg_expr) {
-                        INodeExecuteResultV::Break(_) | INodeExecuteResultV::Return(_) => panic!("execute_node_inner: ExternFunctionCall arg produced Break/Return — vwat (BRCOBS)"),
-                        INodeExecuteResultV::Error(_) => panic!("execute_node_inner: ExternFunctionCall arg produced Error — vimpl (closure can't propagate)"),
+                        INodeExecuteResultV::Break(_) | INodeExecuteResultV::Return(_) => panic!("execute_node_inner: ExternFunctionCall arg produced Break/Return"),
+                        INodeExecuteResultV::Error(_) => panic!("execute_node_inner: ExternFunctionCall arg produced Error"),
                         INodeExecuteResultV::Continue(c) => c.result_ref,
                     }
                 }).collect();
@@ -594,7 +572,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
                 r @ (INodeExecuteResultV::Return(_) | INodeExecuteResultV::Break(_) | INodeExecuteResultV::Error(_)) => return r,
                 INodeExecuteResultV::Continue(c) => c.result_ref,
             };
-            // Members are name-keyed onion-side; resolve the index (and declared type) off the instance.
             let (field_index, expected_member_type) = match heap.dereference(struct_reference, false) {
                 KindV::StructInstance(si) => {
                     let idx = si.struct_h.members.iter().position(|mem| mem.name == ml.member_name).expect("MemberLookup: member not found");
@@ -607,9 +584,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
                 let handle = &mut *heap.vivem_dout;
                 write!(handle, " *{}", address.to_string()).unwrap();
             }
-            // VCOORD: revisit
-            // Onion MemberLookup always yields a BorrowRef of the member's storage — no OwnH carve-out.
-            // /VCOORD
             let member_reference = heap.get_reference_from_struct(program_h, interner, address, expected_member_type, KindIT::BorrowRefIT(ml.result));
             heap.increment_reference_ref_count(IObjectReferrerV::RegisterToObjectReferrer(RegisterToObjectReferrerV { call_id }), member_reference);
             if let Err(e) = discard(program_h, interner, scout_arena, heap, stdout, stdin, call_id, ml.struct_expr.result(), struct_reference) { return INodeExecuteResultV::Error(e); }
@@ -619,10 +593,10 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             let element_refs: Vec<ReferenceV<'v, 'i, 's>> =
                 saf.elements.iter().enumerate().map(|(i, arg_expr)| {
                     match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, i as i32), arg_expr) {
-                        INodeExecuteResultV::Return(_) => panic!("execute_node_inner: StaticArrayFromValues element produced Return — vimpl"),
-                        INodeExecuteResultV::Break(_) => panic!("execute_node_inner: StaticArrayFromValues element produced Break — vimpl"),
+                        INodeExecuteResultV::Return(_) => panic!("execute_node_inner: StaticArrayFromValues element produced Return"),
+                        INodeExecuteResultV::Break(_) => panic!("execute_node_inner: StaticArrayFromValues element produced Break"),
                         INodeExecuteResultV::Continue(c) => c.result_ref,
-                        INodeExecuteResultV::Error(_) => panic!("execute_node_inner: StaticArrayFromValues element produced Error — vimpl (closure can't propagate)"),
+                        INodeExecuteResultV::Error(_) => panic!("execute_node_inner: StaticArrayFromValues element produced Error"),
                     }
                 }).collect();
             for r in element_refs.iter() {
@@ -654,9 +628,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             };
             let address = ElementAddressV { array_id: array_reference.alloc_id(), element_index: index as i64 };
             write!(heap.vivem_dout, " **o:{}.{}", address.array_id.num, address.element_index).unwrap();
-            // VCOORD: get rid of this, SSALoadH should only return a reference
-            // Onion lookup always yields a BorrowRef of the element's storage — no OwnH carve-out.
-            // /VCOORD
             let source = heap.get_reference_from_array(program_h, interner, address, ssal.array_type.inner.expect_static_sized_array().element_type(), KindIT::BorrowRefIT(ssal.result));
             heap.increment_reference_ref_count(IObjectReferrerV::RegisterToObjectReferrer(RegisterToObjectReferrerV { call_id }), source);
             if let Err(e) = discard(program_h, interner, scout_arena, heap, stdout, stdin, call_id, ssal.index_expr.result(), index_reference) { return INodeExecuteResultV::Error(e); }
@@ -793,10 +764,10 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
         ExpressionIE::InterfaceFunctionCall(ifc) => {
             let undeviewed_arg_references: Vec<ReferenceV<'v, 'i, 's>> = ifc.args.iter().enumerate().map(|(i, arg_expr)| {
                 match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, i as i32), arg_expr) {
-                    INodeExecuteResultV::Return(_) => panic!("InterfaceFunctionCall arg produced Return — vimpl"),
-                    INodeExecuteResultV::Break(_) => panic!("InterfaceFunctionCall arg produced Break — vwat"),
+                    INodeExecuteResultV::Return(_) => panic!("InterfaceFunctionCall arg produced Return"),
+                    INodeExecuteResultV::Break(_) => panic!("InterfaceFunctionCall arg produced Break"),
                     INodeExecuteResultV::Continue(c) => c.result_ref,
-                    INodeExecuteResultV::Error(_) => panic!("InterfaceFunctionCall arg produced Error — vimpl (closure can't propagate)"),
+                    INodeExecuteResultV::Error(_) => panic!("InterfaceFunctionCall arg produced Error"),
                 }
             }).collect();
             {
@@ -956,13 +927,13 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             let left_ref = match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, 0), &isi.left) {
                 ret @ INodeExecuteResultV::Return(_) => return ret,
                 INodeExecuteResultV::Continue(c) => c.result_ref,
-                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: IsSameInstance left produced Break — vwat"),
+                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: IsSameInstance left produced Break"),
                 ret @ INodeExecuteResultV::Error(_) => return ret,
             };
             let right_ref = match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, 1), &isi.right) {
                 ret @ INodeExecuteResultV::Return(_) => return ret,
                 INodeExecuteResultV::Continue(c) => c.result_ref,
-                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: IsSameInstance right produced Break — vwat"),
+                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: IsSameInstance right produced Break"),
                 ret @ INodeExecuteResultV::Error(_) => return ret,
             };
             if let Err(e) = discard(program_h, interner, scout_arena, heap, stdout, stdin, call_id, isi.left.result(), left_ref) { return INodeExecuteResultV::Error(e); }
@@ -973,7 +944,7 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
         ExpressionIE::StaticArrayFromCallable(cac) => {
             let generator_reference = match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, 0), &cac.generator) {
                 nr @ INodeExecuteResultV::Return(_) => return nr,
-                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: StaticArrayFromCallable generator produced Break — vwat"),
+                INodeExecuteResultV::Break(_) => panic!("execute_node_inner: StaticArrayFromCallable generator produced Break"),
                 INodeExecuteResultV::Continue(v) => v.result_ref,
                 nr @ INodeExecuteResultV::Error(_) => return nr,
             };
@@ -1024,7 +995,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             assert!(weak_ref.ownership == OwnershipV::Weak);
 
             if heap.contains_live_object(weak_ref) {
-                // Live: transmute the weak into the borrow (constraint) type the Some-constructor wants.
                 let constraint_type = lw.some_constructor.param_types()[0];
                 let constraint_ref = heap.transmute(weak_ref, lw.inner_expr.result(), constraint_type);
                 {
@@ -1075,11 +1045,6 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             };
             INodeExecuteResultV::Continue(NodeContinueV { result_ref: inner_ref })
         }
-        // VCOORD: revisit
-        // Source and target coord are the same MutableShare-flavored ref today (Borrow-of-share collapses at
-        // instantiator), so executing inner and passing through is correct. Once Backend supports
-        // Borrow-of-share, this arm gains RC-bump semantics for the reflavor.
-        // (Reinterpret/Alias arm removed — the onion IR no longer has a Reinterpret variant.)
         other => panic!("execute_node_inner: unimplemented arm {:?}", discriminant(other)),
     }
 }
@@ -1163,8 +1128,6 @@ pub fn execute_interface_function<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, i
     let override_function = *program_h.functions.iter()
         .find(|f| f.header.id == override_prototype.id)
         .expect("execute_interface_function: override function definition not found");
-    // Deview the virtual arg: view the same allocation as the concrete struct instead of the
-    // interface.
     let ReferenceV { actual_kind, ownership, num, .. } = interface_reference;
     let struct_reference = ReferenceV::new(actual_kind, actual_kind, ownership, num);
     let mut deviewed_arg_references: Vec<ReferenceV<'v, 'i, 's>> = undeviewed_arg_references.to_vec();
@@ -1200,9 +1163,6 @@ pub fn cleanup<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner: &Instantia
         }
         OwnershipV::Borrow => Ok(()),
         OwnershipV::Own | OwnershipV::Share => {
-            // Strong reference at refcount-zero: dispatch on the bare kind. Own and Share share
-            // the same cleanup shape — primitives deallocate inline; aggregates destructure and
-            // recurse on members/elements.
             match expected.strip_outer_references().hamut {
                 KindIT::VoidIT(_) | KindIT::IntIT(_) | KindIT::BoolIT(_) | KindIT::FloatIT(_) | KindIT::StrIT(_) | KindIT::NeverIT(_) | KindIT::USizeIT(_) => {
                     heap.zero(actual_reference);

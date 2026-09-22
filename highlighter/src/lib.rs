@@ -60,8 +60,6 @@ pub fn html_escape(s: &str) -> String {
     out
 }
 
-/// Dark-box API: highlight `source` as `lang` and return HTML markup with
-/// class-based `<span>` tokens. Unknown languages return HTML-escaped plaintext.
 pub fn run(lang: &str, source: &str) -> Result<String, InkjetError> {
     let language = match language_for(lang) {
         Some(l) => l,

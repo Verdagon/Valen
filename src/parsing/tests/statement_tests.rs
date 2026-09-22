@@ -1,4 +1,3 @@
-// cargo test --manifest-path Cargo.toml --lib parsing::tests::statement_tests
 
 use crate::interner::StrI;
 use crate::keywords::Keywords;

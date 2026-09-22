@@ -18,29 +18,15 @@ pub type PrintStream = dyn Write;
 
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct PanicExceptionV;
 
-
-// (Realized by `impl Hash for PanicExceptionV` below.)
-
-
-// (Realized by `impl PartialEq for PanicExceptionV` below.)
-
-
-/// Temporary state
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct ConstraintViolatedExceptionV<'s>
 {
     pub msg: StrI<'s>,
 }
-
-
-// (Realized by `impl Hash for ConstraintViolatedExceptionV` below.)
-
-
-// (Realized by `impl PartialEq for ConstraintViolatedExceptionV` below.)
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum VmRuntimeErrorV<'s>

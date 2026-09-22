@@ -1,5 +1,3 @@
-// Main entry point for the Vale compiler
-
 use crate::backend_ffi::backend_inputs::{BackendInputs, BackendMode, SourceFilePath, StandaloneInputs};
 use crate::compile_options::GlobalOptions;
 use crate::utils::source_code_utils;
@@ -45,9 +43,6 @@ impl<'a> IFrontendInput<'a> {
   }
 }
 
-/// Read the frontend inputs into a package-coord → filename → contents map.
-/// Also returns the `(basename, absolute path)` of every file read from disk, so the backend's DWARF
-/// emission can record a real `DW_AT_comp_dir` (see `resolve_source_abspath`).
 fn build_inputs_code_map<'p>(
   parse_arena: &ParseArena<'p>,
   inputs: &[IFrontendInput<'p>],
@@ -87,8 +82,6 @@ fn build_inputs_code_map<'p>(
   (map, source_paths)
 }
 
-/// Recursively read `.vale` files under a module directory; a file at `<dir>/a/b/c.vale`
-/// lands at package coordinate `(module, [a, b])` under filename `c.vale`.
 fn read_module_dir<'p>(
   parse_arena: &ParseArena<'p>,
   module: StrI<'p>,
@@ -362,19 +355,8 @@ pub fn resolve_package_contents<'a>(
 }
 
 
-/// Configuration for the post-backend clang link step that produces the
-/// final executable. Both `valec` and the test harness build a `ClangConfig`
-/// and hand it to `build`; the function handles abi/builtin walking + clang
-/// invocation internally.
 pub struct ClangConfig {
-  /// Directory holding the Backend builtins (`strings.c`, `assert.c`, etc.).
   pub builtins_dir: PathBuf,
-  /// Additional `.c` files to link beyond builtins, the abi auto-walker,
-  /// and the Frontend-driven `native/*.c` auto-walker.
-  /// Used ONLY for caller-explicit non-Vale inputs: valec's `name=file.c`
-  /// CLI form, test-only shims (`testbuiltins.c`), and extern tests'
-  /// `native/test.c`. Per-package `native/*.c` isnt needed here, those are
-  /// auto-discovered.
   pub extra_inputs: Vec<PathBuf>,
   pub clang_path: Option<String>,
   pub libc_path: Option<String>,
@@ -384,13 +366,7 @@ pub struct ClangConfig {
   pub pic: bool,
   pub pie: bool,
   pub windows: bool,
-  /// LLVM/clang target triple. `None` means host. Set to e.g.
-  /// `"wasm32-wasi"` to cross-compile to a non-host target — `invoke_clang`
-  /// switches link recipes accordingly, and the value is also forwarded to
-  /// the backend as `--triple` so LLVM emits the matching data layout.
   pub target_triple: Option<String>,
-  /// Sysroot for cross-compilation (e.g. wasi-sdk's `share/wasi-sysroot`).
-  /// Required when `target_triple` is a non-host wasi target.
   pub sysroot: Option<PathBuf>,
 }
 
@@ -400,11 +376,6 @@ pub struct BuiltProgram {
   pub exe_path: PathBuf,
 }
 
-/// Drive the full pipeline (parse → scout → typing → instantiating →
-/// MetalLowerer → backend → clang link) and return the linked executable's
-/// path. Returns `BuiltProgram { rc, package_stems, exe_path }`. The stems
-/// are dot-joined `(project, package_steps...)` strings (e.g. `"__vale"`,
-/// `"stdlib.collections.hashmap"`) — one per compiled package.
 pub fn build<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -500,8 +471,6 @@ where
 
   let monouts = compilation.get_monouts();
 
-  // HinputsI is flat (no packages map), so derive the set of package coordinates
-  // that actually got compiled from the defs' ids (deduped, first-seen order).
   // VCOORD: revisit this
   let mut compiled_package_coords: Vec<&PackageCoordinate> = Vec::new();
   let mut seen_package_coords: HashSet<&PackageCoordinate> = HashSet::default();
@@ -518,10 +487,6 @@ where
     if seen_package_coords.insert(pc) { compiled_package_coords.push(pc); }
   }
 
-  // Collect (project, package_steps) stems for each compiled package, so
-  // the valec bin can find their matching native/*.c dirs at link time.
-  // Empty module → "__vale" (Backend's `userFuncName` convention; see the
-  // walker's lower_package_coord and Backend/src/vale.cpp).
   let package_coord_stems: Vec<String> = compiled_package_coords.iter()
     .map(|coord| {
       let module = if coord.module.0.is_empty() { "__vale" } else { coord.module.0 };
@@ -530,17 +495,10 @@ where
     })
     .collect();
 
-  // MetalLowerer: I-AST (HinputsI) → MetalCache via FFI, replacing readjson.cpp.
-  // Standalone has no producer for the extern layout/ABI maps, so they cross empty (the backend
-  // then sizes structs from members and takes the descriptor-less C-extern boundary path).
   let cache = crate::backend_ffi::metal_cache::MetalCache::new();
   let program = crate::backend_ffi::metal_lowerer::populate_metal_cache(
     &cache, monouts, &vale_code_map, &std::collections::HashMap::new(), &std::collections::HashMap::new());
 
-  // Inject --triple into the backend options when ClangConfig requests a
-  // cross-target, so LLVM emits the correct data layout (e.g. 32-bit
-  // pointers for wasm32). Callers shouldn't have to remember to forward
-  // it, they already set target_triple on ClangConfig for the link.
   let mut backend_opts = backend_opts;
   if let Some(triple) = &clang_cfg.target_triple {
     backend_opts.triple = triple.clone();
@@ -561,9 +519,6 @@ where
     });
   }
 
-  // Clang link: collect builtin .c files + abi/<project>/*.c files written
-  // by the backend + caller-supplied extras, then invoke clang. Returns the
-  // path of the linked executable.
   let mut clang_inputs: Vec<PathBuf> = Vec::new();
   let obj = PathBuf::from(output_dir_path).join("build.o");
   clang_inputs.push(obj);
@@ -600,12 +555,6 @@ where
     }
   }
 
-  // For each PackageCoordinate the Frontend actually reached, look up its
-  // project root (from opts.inputs' ModulePathInput entries) and scan that
-  // package's `native/` dir for *.c files. Unreached packages' natives are
-  // skipped, for example, stdlib subpackages a program doesn't import (e.g.
-  // stdlib.date when nothing calls UnixTimestamp) don't get their native impls
-  // compiled.
   let module_paths: HashMap<&str, &str> = opts.inputs.iter().filter_map(|input| {
     if let IFrontendInput::ModulePathInput { module, module_path } = input {
       Some((module.0, module_path.as_str()))
@@ -614,8 +563,6 @@ where
     }
   }).collect();
   for coord in compiled_package_coords.iter() {
-    // Synthetic __vale module (empty module name) has its impls in
-    // clang_cfg.builtins_dir; skip the native walk for it.
     if coord.module.0.is_empty() { continue; }
     let project_root = match module_paths.get(coord.module.0) {
       Some(p) => *p,

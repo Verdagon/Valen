@@ -4,7 +4,6 @@ fn p(rel: &str) -> std::path::PathBuf {
     programs_dir().join(rel)
 }
 
-// The loop counter increments across iterations while the body line is re-hit.
 #[test]
 fn while_loop() {
     assert_compile_and_run_dbg(&p("programs/while/while.vale"), 42, &[

@@ -5,8 +5,6 @@ use crate::keywords::Keywords;
 use crate::lexing::ast::RangeL;
 use crate::lexing::errors::FailedParse;
 use crate::parsing::ast::FileP;
-// Simplifying pass unlinked during instantiating bring-up (Slabs 16a–16j).
-// use crate::simplifying::HammerCompilationOptions;
 use crate::typing::TypingPassCompilation;
 use crate::typing::TypingPassOptions;
 use crate::typing::oracles::Oracles;
@@ -48,9 +46,6 @@ where 's: 't, 's: 'i,
   scout_arena: &'ctx ScoutArena<'s>,
   keywords: &'ctx Keywords<'s>,
   global_options: GlobalOptions,
-  // The instantiating arena's interner, built from the externally-owned 'i Bump
-  // passed to `new` — mirrors TypingPassCompilation's `typing_interner` (built
-  // from `typing_bump: &'t Bump`).
   pub instantiating_interner: InstantiatingInterner<'s, 'i>,
   monouts_cache: Option<HinputsI<'s, 'i>>,
 }
@@ -150,8 +145,6 @@ where
     if self.monouts_cache.is_some() {
       return self.monouts_cache.as_ref().unwrap();
     }
-    // Populate the typing-pass output cache (the `&mut` borrow ends here), so the two reads below —
-    // the typing_interner and the cached outputs, both fields of typing_pass_compilation — can coexist.
     self.typing_pass_compilation.expect_compiler_outputs();
     let monouts =
       instantiator::translate(

@@ -79,7 +79,6 @@ fn supply_bounds_to_child_functions() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: K Ref → K Ref; __call(x int) → __call(x &int) with __copy_prim body
         r"
 import v.builtins.arrays.*;
 
@@ -110,7 +109,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn hash_map_update() {
     let compilation_bump = bumpalo::Bump::new();
@@ -127,7 +126,6 @@ fn hash_map_update() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: m.get(8) → m.get(&8); return __copy_prim(...) because get returns Opt<&V>
         r"
 import hashmap.*;
 exported func main() int {
@@ -147,7 +145,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn hash_map_collisions() {
     let compilation_bump = bumpalo::Bump::new();
@@ -164,7 +162,6 @@ fn hash_map_collisions() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: m.get(N) → m.get(&N); vassertEq's 2nd arg also &; return __copy_prim(...) for Borrow→Own
         r#"
 import hashmap.*;
 import panicutils.*;
@@ -205,7 +202,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn hash_map_with_functors() {
     let compilation_bump = bumpalo::Bump::new();
@@ -222,7 +219,6 @@ fn hash_map_with_functors() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: m.get(42) → m.get(&42); return __copy_prim(...) for Borrow→Own
         r"
 import hashmap.*;
 func add42(map &HashMap<int, int, IntHasher, IntEquator>) {
@@ -243,8 +239,7 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn hash_map_with_struct_as_key() {
     unimplemented!();
     /*
@@ -264,7 +259,7 @@ fn hash_map_with_struct_as_key() {
         &compilation_bump,
         &hammer_interner, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: return __copy_prim(...) — get() returns &V
+        // TSUGAR: return __copy_prim(...)
         r"
 import hashmap.*;
 
@@ -302,7 +297,7 @@ exported func main() int {
     */
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn hash_map_has() {
     let compilation_bump = bumpalo::Bump::new();
@@ -319,7 +314,7 @@ fn hash_map_has() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: m.has(N) — wrap primitive args with `&` to match `has`'s &K parameter
+        // TSUGAR: m.has(N)
         r"
 import hashmap.*;
 import panicutils.*;
@@ -460,7 +455,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "strings not implemented yet (R3 @str->&str share-peel Reinterpret at instantiator)"]
+#[ignore]
 #[test]
 fn hash_map_values() {
     let compilation_bump = bumpalo::Bump::new();
@@ -503,7 +498,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn hash_map_with_mutable_values() {
     let compilation_bump = bumpalo::Bump::new();
@@ -520,7 +515,6 @@ fn hash_map_with_mutable_values() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: m.has(N) → m.has(&N); m.remove takes K by value, kept owned
         r"
 import hashmap.*;
 import panicutils.*;
@@ -548,7 +542,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn hash_map_remove() {
     let compilation_bump = bumpalo::Bump::new();
@@ -565,7 +559,6 @@ fn hash_map_remove() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: m.has(N) → m.has(&N)
         r"
 import hashmap.*;
 import panicutils.*;
@@ -593,7 +586,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "strings not implemented yet (R3 @str->&str share-peel Reinterpret at instantiator)"]
+#[ignore]
 #[test]
 fn hash_map_remove_2() {
     let compilation_bump = bumpalo::Bump::new();
@@ -610,7 +603,7 @@ fn hash_map_remove_2() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: values[N] is &int — wrap with __copy_prim
+        // TSUGAR: values[N] is &int
         r#"
 import hashmap.*;
 import panicutils.*;

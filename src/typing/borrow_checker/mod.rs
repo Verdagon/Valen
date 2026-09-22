@@ -1,7 +1,3 @@
-// Two mutually-exclusive borrow-checker impls, selected by the `borrow_checker_symphony` feature.
-// Default (feature off) compiles the `experimental` checker, the one the suite is green on; enabling
-// the feature compiles the in-progress `symphony` rewrite instead. Both define
-// `Compiler::check_function`, so only one is ever compiled.
 #[cfg(not(feature = "borrow_checker_symphony"))]
 pub mod experimental;
 #[cfg(not(feature = "borrow_checker_symphony"))]

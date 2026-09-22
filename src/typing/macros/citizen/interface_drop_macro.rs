@@ -114,8 +114,6 @@ where
         self.scout_arena.alloc_slice_from_vec::<IRulexSR<'s>>(Vec::new()),
       )]),
       Some(use_(-64002, void_kind_rune_s)),
-      // The written return, `void`, spelled as a written `void` is: the zero-arg Call of its Name
-      // (@TNLTZACZ). Every non-lambda carries a written return type.
       Some(ITypeST::Call(self.scout_arena.alloc(CallST {
         range: interface_a.range,
         template: self.scout_arena.alloc(ITypeST::Name(self.scout_arena.alloc(NameST {
@@ -126,7 +124,6 @@ where
         }))),
         args: self.scout_arena.alloc_slice_from_vec(Vec::new()),
       }))),
-      // A synthesized drop carries no effect clause.
       &[],
       rules_slice,
       &[],

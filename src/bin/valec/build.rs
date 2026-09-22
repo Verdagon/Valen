@@ -1,5 +1,3 @@
-// Build orchestration logic.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -11,42 +9,32 @@ use crate::frontend::{
 };
 use crate::midas;
 
-/// Flags accepted by `valec build`.
 #[derive(Args, Debug)]
 pub struct BuildArgs {
-  /// Where to write the compiled .ll, .o, and executable.
   #[arg(long, default_value = "build")]
   output_dir: PathBuf,
 
-  /// Name of the produced executable.
   #[arg(short = 'o', default_value = "main")]
   executable_name: String,
 
-  /// Override the location of the builtins/ directory shipped alongside valec.
   #[arg(long)]
   builtins_dir_override: Option<PathBuf>,
 
-  /// Override the clang binary used for the final link.
   #[arg(long)]
   clang_override: Option<String>,
 
-  /// Override the libc include + lib directory.
   #[arg(long)]
   libc_override: Option<String>,
 
-  /// LLVM optimisation level (e.g. O0, O1, O2, O3).
   #[arg(long, default_value = "O0")]
   opt_level: String,
 
-  /// LLVM CPU target.
   #[arg(long)]
   cpu: Option<String>,
 
-  /// Generational-reference field size in bits.
   #[arg(long)]
   gen_size: Option<String>,
 
-  // --- boolean knobs ---
   #[arg(long, default_value_t = false)]
   benchmark: bool,
 
@@ -74,7 +62,6 @@ pub struct BuildArgs {
   #[arg(long, default_value_t = true)]
   sanity_check: bool,
 
-  /// Skip linking the standard library.
   #[arg(long, default_value_t = false)]
   no_std: bool,
 
@@ -84,41 +71,30 @@ pub struct BuildArgs {
   #[arg(long, default_value_t = false)]
   census: bool,
 
-  /// Build with AddressSanitizer.
   #[arg(long, default_value_t = false)]
   asan: bool,
 
   #[arg(long, default_value_t = false)]
   verify: bool,
 
-  /// Include debug symbols in the executable.
   #[arg(short = 'g', default_value_t = false)]
   debug_symbols: bool,
 
-  /// Emit LLVM IR alongside the executable.
   #[arg(long, default_value_t = false)]
   llvm_ir: bool,
 
-  /// Build with position-independent code.
   #[arg(long, default_value_t = true)]
   pic: bool,
 
-  /// Build a position-independent executable.
   #[arg(long, default_value_t = true)]
   pie: bool,
 
-  /// LLVM target triple (e.g. `wasm32-wasi`). Defaults to the host triple
-  /// when unset. Forwarded to both clang (`--target=`) and the backend
-  /// (`--triple`).
   #[arg(long)]
   target_triple: Option<String>,
 
-  /// Sysroot for cross-compilation. Required when `--target_triple` names
-  /// a non-host wasi target. Point at e.g. `~/wasi-sdk/share/wasi-sysroot`.
   #[arg(long)]
   sysroot: Option<PathBuf>,
 
-  /// Emit assembly alongside the executable.
   #[arg(long, default_value_t = true)]
   asm: bool,
 
@@ -131,13 +107,10 @@ pub struct BuildArgs {
   #[arg(long, default_value_t = true)]
   include_bounds_checks: bool,
 
-  /// Module=directory and module=file.vale mappings. Any positional arg
-  /// containing `=` is parsed as `<name>=<path>`; everything else is rejected.
   #[arg(trailing_var_arg = true)]
   inputs: Vec<String>,
 }
 
-/// Main build entry point.
 pub fn build_stuff(compiler_dir: &Path, args: BuildArgs) {
   let windows = cfg!(windows);
 
@@ -165,7 +138,7 @@ pub fn build_stuff(compiler_dir: &Path, args: BuildArgs) {
     });
   }
 
-  // Parse positional inputs: name=path entries become project declarations.
+  // Parse positional inputs: name=path entries become project declarations
   for input in &args.inputs {
     let Some((project_name, path_str)) = input.split_once('=') else {
       eprintln!("Unrecognized input: {}", input);
@@ -204,9 +177,9 @@ pub fn build_stuff(compiler_dir: &Path, args: BuildArgs) {
     println!("Invoking Frontend...");
   }
 
+  // VCOORD: lets remove this soon
   if args.reuse_vast {
-    // The in-process MetalLowerer path has no JSON intermediate to reuse.
-    eprintln!("Error: --reuse-vast is no longer supported; compilation runs directly in-process.");
+    eprintln!("Error: --reuse-vast is no longer supported");
     process::exit(1);
   }
 

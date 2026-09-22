@@ -187,7 +187,7 @@ exported func main() { AFn(() => { }); }
 }
 
 #[test]
-#[ignore = "unimplemented"]
+#[ignore]
 fn tuple_with_all_imm_fields_is_imm() {
   panic!("Unimplemented test: tuple_with_all_imm_fields_is_imm");
 }
@@ -322,7 +322,6 @@ exported func main() int {
 }
 
 #[test]
-// VCOORD: re enable w borrowing
 fn can_downcast_interface_to_interface_through_registered_impl() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -377,7 +376,7 @@ exported func main() bool {
 }
 
 #[test]
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn test_two_instantiations_of_anonymous_param_lambda() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -535,12 +534,6 @@ Number of params doesn't match! Supplied 4 but function takes 3
   );
 }
 
-// Canonical minimal repro for @BRRZ. The generic function `callAndReturn` has a
-// bound `func(&G)E` where E is an identifying generic rune appearing only in the
-// bound's return position. The caller supplies a lambda for G but does not (and
-// syntactically cannot) write E. The relaxed ResolveSR resolves
-// `__call(&closure)` and takes its return type as E.
-// VCOORD: enable this
 #[test]
 fn bound_driven_return_rune_cannot_be_inferred_from_lambda_msae_general() {
   let parse_bump = Bump::new();
@@ -574,12 +567,7 @@ exported func main() int {
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// Edge case for @BRRZ: the lambda body itself invokes another generic function
-// with its own bound. Exercises stamping-during-solve recursing into a nested
-// generic. The CompilerOutputs.signatureToFunction cache terminates recursion.
-// VCOORD: enable this
 #[test]
-// VCOORD: re enable w borrowing
 fn brrz_nested_bound_return_inference_through_a_lambda_body() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -613,10 +601,6 @@ exported func main() int {
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// Edge case for @BRRZ: two bounds on the same function, each resolving to a
-// different lambda. Exercises multiple ResolveSR rules firing in the same solve
-// under the relaxed puzzle.
-// VCOORD: enable this
 #[test]
 fn brrz_two_bound_return_inferences_in_the_same_call() {
   let parse_bump = Bump::new();

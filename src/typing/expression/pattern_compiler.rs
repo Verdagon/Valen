@@ -62,8 +62,6 @@ where
           rune_a_to_type_with_implicitly_coercing_lookups_s.clone();
         let snapshot = nenv.snapshot(self.typing_interner);
         let snapshot_env = IInDenizenEnvironmentT::Node(snapshot);
-        // The rules are already explicit Lookup/Call, so nothing rewrites them here (explicify_lookups is retired).
-        // Name-resolution failures (CouldntFindType/TooManyMatchingTypes) still surface from solve_rune_types above.
         let rules_a = rules_s.to_vec();
 
         // We preprocess out the rune parent env lookups, see MKRFA.
@@ -114,7 +112,7 @@ where
                         &initial_knowns,
                         &[],
                     ).unwrap_or_else(|_f| {
-                        panic!("implement: infer_and_translate_pattern — TypingPassDefiningError");
+                        panic!("implement: infer_and_translate_pattern");
                         // throw CompileErrorExceptionT(TypingPassDefiningError(pattern.range :: parentRanges, f))
                     });
 
@@ -256,7 +254,6 @@ where
     };
 
     if maybe_capture_local_var_t.is_some() {
-      // Capturing moved the input into the local, so what we pass on is a borrow of it.
       assert!(matches!(expr_to_destructure_or_drop_or_pass_te.result(), KindT::BorrowRef(_)));
     }
 
@@ -287,7 +284,6 @@ where
             let snap = IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner));
             let ranges: Vec<RangeS<'s>> =
               once(pattern.range).chain(parent_ranges.iter().copied()).collect();
-            // Until a test path forces Result conversion through this pattern_compiler site.
             result.push(
               self
                 .drop(
@@ -349,7 +345,6 @@ where
               "a weak reference is never destructured; the pattern compiler only sees it via lock"
             );
           }
-          // A bare value is owned, so destructuring it destroys it.
           _ => {
             vec![self.destructure_owning(
               coutputs,
@@ -407,7 +402,6 @@ where
       assert!(names == distinct);
     }
     let expected_container_kind = match input_expr.result() {
-      // Only a bare value is owned, and destructure_owning destroys what it's given.
       KindT::BorrowRef(_) | KindT::OwnRef(_) | KindT::ShareRef(_) | KindT::WeakRef(_) => {
         panic!("destructure_owning: expected a bare value")
       }
@@ -439,12 +433,12 @@ where
         let size_templata = static_sized_array_t.size();
         let size = match size_templata {
           ITemplataT::Placeholder(_) => {
-            panic!("implement: destructureOwning StaticSizedArray — RangedInternalErrorT: Can't create static sized array by values, can't guarantee size is correct!");
+            panic!("implement: destructureOwning StaticSizedArray");
             // throw CompileErrorExceptionT(RangedInternalErrorT(parentRanges, "Can't create static sized array by values, can't guarantee size is correct!"))
           }
           ITemplataT::Integer(size) => {
             if size != list_of_maybe_destructure_member_patterns.len() as i64 {
-              panic!("implement: destructureOwning StaticSizedArray — RangedInternalErrorT: Wrong num exprs!");
+              panic!("implement: destructureOwning StaticSizedArray");
               // throw CompileErrorExceptionT(RangedInternalErrorT(parentRanges, "Wrong num exprs!"))
             }
             size
@@ -489,7 +483,7 @@ where
           assert!(names == distinct);
         }
         if element_locals.len() != list_of_maybe_destructure_member_patterns.len() {
-          panic!("implement: destructureOwning StaticSizedArray — WrongNumberOfDestructuresError");
+          panic!("implement: destructureOwning StaticSizedArray");
           // throw CompileErrorExceptionT(WrongNumberOfDestructuresError(parentRanges, ...))
         }
         let live_capture_locals_slice =
@@ -511,7 +505,7 @@ where
       }
       KindT::RuntimeSizedArray(_) => {
         if !list_of_maybe_destructure_member_patterns.is_empty() {
-          panic!("implement: destructureOwning RuntimeSizedArray — RangedInternalErrorT: Can only destruct RSA with zero destructure targets.");
+          panic!("implement: destructureOwning RuntimeSizedArray");
           // throw CompileErrorExceptionT(RangedInternalErrorT(parentRanges, "Can only destruct RSA with zero destructure targets."))
         }
         ExpressionTE::DestroyRuntimeSizedArray(
@@ -519,7 +513,7 @@ where
         )
       }
       _ => {
-        panic!("implement: destructureOwning — non-struct kind");
+        panic!("implement: destructureOwning");
         // vfail("impl!")
       }
     }
@@ -656,13 +650,10 @@ where
             member_index,
           ),
           _ => {
-            panic!("implement: iterate_destructure_non_owning_and_maybe_continue — unknown container kind");
+            panic!("implement: iterate_destructure_non_owning_and_maybe_continue");
             // throw CompileErrorExceptionT(RangedInternalErrorT(parentRanges, "Unknown type to destructure: " + other))
           }
         };
-        // A member lookup is already a borrow reference to the member. Reading it as a
-        // value is the sub-pattern's business: its type annotation drives convert(),
-        // which probes implicit_clone.
         let load_expr = member_addr_expr_te;
         let next_member_index = member_index + 1;
         self.inner_translate_sub_pattern_and_maybe_continue(

@@ -1,21 +1,3 @@
-//! A deterministic, insertion-ordered hash map with arena-allocated backing storage.
-//!
-//! `ArenaIndexMap` combines a `hashbrown::HashMap` (for O(1) key lookup) with a
-//! `bumpalo::collections::Vec` (for insertion-ordered storage). Both structures
-//! allocate their backing memory from the same `bumpalo::Bump` arena, so all
-//! memory is freed in one shot when the arena is dropped.
-//!
-//! Iteration always follows insertion order and is fully deterministic across
-//! runs, platforms, and hash seeds — the hash table is never iterated directly.
-//!
-//! # Cargo.toml dependencies
-//!
-//! ```toml
-//! [dependencies]
-//! bumpalo = { version = "3", features = ["collections", "allocator-api2"] }
-//! hashbrown = "0.16"
-//! rustc-hash = "2"
-//! ```
 
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
@@ -23,49 +5,26 @@ use hashbrown::HashMap;
 use rustc_hash::FxBuildHasher;
 use std::fmt;
 
-// ---------------------------------------------------------------------------
-// Core struct
-// ---------------------------------------------------------------------------
-
-/// A deterministic, insertion-ordered map backed by a bump arena.
-///
-/// - **Lookup**: O(1) average via hash table.
-/// - **Insert**: O(1) amortized (append to vec + hash insert).
-/// - **Iteration**: Insertion order, always deterministic.
-/// - **Memory**: Both the hash table buckets and entry vec live in the arena.
 pub struct ArenaIndexMap<'bump, K, V> {
-  /// Maps keys → indices into `entries`.
   indices: HashMap<K, usize, FxBuildHasher, &'bump Bump>,
-  /// Insertion-ordered entries.
   entries: BumpVec<'bump, (K, V)>,
 }
-
-// ---------------------------------------------------------------------------
-// Construction
-// ---------------------------------------------------------------------------
 
 impl<'bump, K, V> ArenaIndexMap<'bump, K, V>
 where
   K: Hash + Eq + Clone,
 {
-  /// Creates an empty map allocating from `bump`.
   pub fn new_in(bump: &'bump Bump) -> Self {
     Self { indices: HashMap::with_hasher_in(FxBuildHasher, bump), entries: BumpVec::new_in(bump) }
   }
 
-  /// Creates an empty map with preallocated capacity.
   pub fn with_capacity_in(capacity: usize, bump: &'bump Bump) -> Self {
     Self {
       indices: HashMap::with_capacity_and_hasher_in(capacity, FxBuildHasher, bump),
       entries: BumpVec::with_capacity_in(capacity, bump),
     }
   }
-  // ---------------------------------------------------------------------------
-  // Mutation
-  // ---------------------------------------------------------------------------
-  /// Inserts a key-value pair. If the key already exists, the value is
-  /// overwritten and the old value is returned. Insertion order of the
-  /// key is preserved (the key stays at its original position).
+
   pub fn insert(&mut self, key: K, value: V) -> Option<V> {
     match self.indices.get(&key) {
       Some(&idx) => {
@@ -81,8 +40,6 @@ where
     }
   }
 
-  /// Inserts a key-value pair only if the key is absent.
-  /// Returns a mutable reference to the (possibly existing) value.
   pub fn entry_or_insert(&mut self, key: K, default: V) -> &mut V {
     if let Some(&idx) = self.indices.get(&key) {
       &mut self.entries[idx].1
@@ -94,16 +51,12 @@ where
     }
   }
 
-  /// Extends the map with entries from an iterator.
   pub fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
     for (k, v) in iter {
       self.insert(k, v);
     }
   }
 
-  /// Retains only entries for which the predicate returns true.
-  /// **Note**: This is O(n) and rebuilds the index. Insertion order of
-  /// retained entries is preserved.
   pub fn retain<F>(&mut self, mut f: F)
   where
     F: FnMut(&K, &V) -> bool,
@@ -122,65 +75,44 @@ where
   }
 }
 
-// ---------------------------------------------------------------------------
-// Read access
-// ---------------------------------------------------------------------------
-
 impl<'bump, K, V> ArenaIndexMap<'bump, K, V>
 where
   K: Hash + Eq,
 {
-  /// Returns a reference to the value associated with the key.
   pub fn get(&self, key: &K) -> Option<&V> {
     self.indices.get(key).map(|&idx| &self.entries[idx].1)
   }
 
-  /// Returns a mutable reference to the value associated with the key.
   pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
     self.indices.get(key).copied().map(move |idx| &mut self.entries[idx].1)
   }
 
-  /// Returns true if the map contains the key.
   pub fn contains_key(&self, key: &K) -> bool {
     self.indices.contains_key(key)
   }
 
-  /// Returns the number of entries.
   pub fn len(&self) -> usize {
     self.entries.len()
   }
 
-  /// Returns true if the map is empty.
   pub fn is_empty(&self) -> bool {
     self.entries.is_empty()
   }
 
-  /// Returns the entry at the given insertion-order index.
   pub fn get_index(&self, index: usize) -> Option<(&K, &V)> {
     self.entries.get(index).map(|(k, v)| (k, v))
   }
 
-  /// Returns the insertion-order index for a key.
   pub fn get_index_of(&self, key: &K) -> Option<usize> {
     self.indices.get(key).copied()
   }
 }
 
-// ---------------------------------------------------------------------------
-// Freezing (convert to arena slice)
-// ---------------------------------------------------------------------------
-
 impl<'bump, K, V> ArenaIndexMap<'bump, K, V> {
-  /// Consumes the map and returns a bump-allocated slice of entries in
-  /// insertion order. The hash table's memory becomes dead space in the
-  /// arena (freed when the arena drops).
   pub fn into_bump_slice(self) -> &'bump [(K, V)] {
     self.entries.into_bump_slice()
   }
 
-  /// Consumes the map and returns a bump-allocated slice of entries
-  /// sorted by key. Useful when you want deterministic sorted-order
-  /// iteration and O(log n) binary search on the frozen slice.
   pub fn into_sorted_bump_slice(mut self) -> &'bump [(K, V)]
   where
     K: Ord,
@@ -190,11 +122,6 @@ impl<'bump, K, V> ArenaIndexMap<'bump, K, V> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Iterators
-// ---------------------------------------------------------------------------
-
-/// An iterator over references to key-value pairs in insertion order.
 pub struct Iter<'a, K, V> {
   inner: SliceIter<'a, (K, V)>,
 }
@@ -218,7 +145,6 @@ impl<K, V> DoubleEndedIterator for Iter<'_, K, V> {
   }
 }
 
-/// An iterator over mutable references to key-value pairs in insertion order.
 pub struct IterMut<'a, K, V> {
   inner: SliceIterMut<'a, (K, V)>,
 }
@@ -237,7 +163,6 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
 
 impl<K, V> ExactSizeIterator for IterMut<'_, K, V> {}
 
-/// An iterator over keys in insertion order.
 pub struct Keys<'a, K, V> {
   inner: Iter<'a, K, V>,
 }
@@ -256,7 +181,6 @@ impl<'a, K, V> Iterator for Keys<'a, K, V> {
 
 impl<K, V> ExactSizeIterator for Keys<'_, K, V> {}
 
-/// An iterator over values in insertion order.
 pub struct Values<'a, K, V> {
   inner: Iter<'a, K, V>,
 }
@@ -275,7 +199,6 @@ impl<'a, K, V> Iterator for Values<'a, K, V> {
 
 impl<K, V> ExactSizeIterator for Values<'_, K, V> {}
 
-/// An owning iterator (consumes the vec, yields owned pairs).
 pub struct IntoIter<'bump, K, V> {
   inner: bumpalo::collections::vec::IntoIter<'bump, (K, V)>,
 }
@@ -292,28 +215,22 @@ impl<'bump, K, V> Iterator for IntoIter<'bump, K, V> {
   }
 }
 
-// --- Trait impls on ArenaIndexMap to vend iterators ---
-
 impl<'bump, K, V> ArenaIndexMap<'bump, K, V>
 where
   K: Hash + Eq,
 {
-  /// Iterates over `(&K, &V)` in insertion order.
   pub fn iter(&self) -> Iter<'_, K, V> {
     Iter { inner: self.entries.iter() }
   }
 
-  /// Iterates over `(&K, &mut V)` in insertion order.
   pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
     IterMut { inner: self.entries.iter_mut() }
   }
 
-  /// Iterates over keys in insertion order.
   pub fn keys(&self) -> Keys<'_, K, V> {
     Keys { inner: self.iter() }
   }
 
-  /// Iterates over values in insertion order.
   pub fn values(&self) -> Values<'_, K, V> {
     Values { inner: self.iter() }
   }
@@ -343,10 +260,6 @@ where
   }
 }
 
-// ---------------------------------------------------------------------------
-// Trait impls
-// ---------------------------------------------------------------------------
-
 use std::hash::Hash;
 use std::mem::replace;
 use std::slice::Iter as SliceIter;
@@ -370,7 +283,6 @@ where
     if self.len() != other.len() {
       return false;
     }
-    // Order-sensitive equality: same entries in same insertion order.
     self.entries.iter().zip(other.entries.iter()).all(|(a, b)| a.0 == b.0 && a.1 == b.1)
   }
 }
@@ -382,15 +294,10 @@ where
 {
 }
 
-// ---------------------------------------------------------------------------
-// FromIterator (requires a bump reference threaded through)
-// ---------------------------------------------------------------------------
-
 impl<'bump, K, V> ArenaIndexMap<'bump, K, V>
 where
   K: Hash + Eq + Clone,
 {
-  /// Constructs a map from an iterator, allocating in the given bump.
   pub fn from_iter_in<I: IntoIterator<Item = (K, V)>>(iter: I, bump: &'bump Bump) -> Self {
     let iter = iter.into_iter();
     let (lower, _) = iter.size_hint();
@@ -402,15 +309,9 @@ where
   }
 }
 
-// ===========================================================================
-// Tests
-// ===========================================================================
-
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  // -- Basic operations --------------------------------------------------
 
   #[test]
   fn test_empty_map() {
@@ -445,7 +346,6 @@ mod tests {
     assert_eq!(map.insert("key", 20), Some(10));
     assert_eq!(map.insert("key", 30), Some(20));
     assert_eq!(map.get(&"key"), Some(&30));
-    // Overwrite should NOT change length.
     assert_eq!(map.len(), 1);
   }
 
@@ -469,8 +369,6 @@ mod tests {
     assert_eq!(map.get(&"x"), Some(&150));
   }
 
-  // -- Insertion order ---------------------------------------------------
-
   #[test]
   fn test_insertion_order_preserved() {
     let bump = Bump::new();
@@ -490,7 +388,6 @@ mod tests {
     map.insert("first", 1);
     map.insert("second", 2);
     map.insert("third", 3);
-    // Overwrite "second" — it should stay at index 1.
     map.insert("second", 99);
 
     let keys: Vec<_> = map.keys().copied().collect();
@@ -500,7 +397,6 @@ mod tests {
 
   #[test]
   fn test_deterministic_across_multiple_builds() {
-    // Build the same map 10 times — iteration order must be identical.
     let orders: Vec<Vec<(&str, i32)>> = (0..10)
       .map(|_| {
         let bump = Bump::new();
@@ -516,8 +412,6 @@ mod tests {
       assert_eq!(&orders[0], order);
     }
   }
-
-  // -- Indexed access ----------------------------------------------------
 
   #[test]
   fn test_get_index() {
@@ -545,8 +439,6 @@ mod tests {
     assert_eq!(map.get_index_of(&"z"), Some(2));
     assert_eq!(map.get_index_of(&"w"), None);
   }
-
-  // -- Iterators ---------------------------------------------------------
 
   #[test]
   fn test_keys_iterator() {
@@ -637,8 +529,6 @@ mod tests {
     assert_eq!(collected, vec![("a", 1), ("b", 2)]);
   }
 
-  // -- entry_or_insert ---------------------------------------------------
-
   #[test]
   fn test_entry_or_insert_absent() {
     let bump = Bump::new();
@@ -654,7 +544,7 @@ mod tests {
     let mut map = ArenaIndexMap::new_in(&bump);
     map.insert("key", 10);
     let v = map.entry_or_insert("key", 99);
-    assert_eq!(*v, 10); // existing value, not default
+    assert_eq!(*v, 10);
     assert_eq!(map.len(), 1);
   }
 
@@ -670,8 +560,6 @@ mod tests {
     assert_eq!(map.len(), 1);
   }
 
-  // -- extend ------------------------------------------------------------
-
   #[test]
   fn test_extend() {
     let bump = Bump::new();
@@ -680,12 +568,10 @@ mod tests {
     map.extend(vec![("b", 2), ("c", 3), ("a", 99)]);
 
     assert_eq!(map.len(), 3);
-    assert_eq!(map.get(&"a"), Some(&99)); // overwritten
+    assert_eq!(map.get(&"a"), Some(&99));
     let keys: Vec<_> = map.keys().copied().collect();
-    assert_eq!(keys, vec!["a", "b", "c"]); // "a" stays at position 0
+    assert_eq!(keys, vec!["a", "b", "c"]);
   }
-
-  // -- retain ------------------------------------------------------------
 
   #[test]
   fn test_retain() {
@@ -701,7 +587,6 @@ mod tests {
     assert_eq!(map.len(), 2);
     let collected: Vec<_> = map.iter().map(|(&k, &v)| (k, v)).collect();
     assert_eq!(collected, vec![("b", 2), ("d", 4)]);
-    // Removed keys are gone from the index too.
     assert!(!map.contains_key(&"a"));
     assert!(!map.contains_key(&"c"));
   }
@@ -713,13 +598,11 @@ mod tests {
     for i in 0..10 {
       map.insert(i, i * 10);
     }
-    map.retain(|k, _| k % 3 == 0); // keep 0, 3, 6, 9
+    map.retain(|k, _| k % 3 == 0);
 
     let keys: Vec<_> = map.keys().copied().collect();
     assert_eq!(keys, vec![0, 3, 6, 9]);
   }
-
-  // -- Freezing ----------------------------------------------------------
 
   #[test]
   fn test_into_bump_slice_insertion_order() {
@@ -754,17 +637,13 @@ mod tests {
     }
     let slice = map.into_sorted_bump_slice();
 
-    // Binary search lookup on the frozen slice.
     for i in 0..50 {
       let idx = slice.binary_search_by_key(&i, |(k, _)| *k).unwrap();
       assert_eq!(slice[idx].1, i * 100);
     }
 
-    // Missing key.
     assert!(slice.binary_search_by_key(&999, |(k, _)| *k).is_err());
   }
-
-  // -- from_iter_in ------------------------------------------------------
 
   #[test]
   fn test_from_iter_in() {
@@ -785,12 +664,10 @@ mod tests {
     let map = ArenaIndexMap::from_iter_in(items, &bump);
 
     assert_eq!(map.len(), 2);
-    assert_eq!(map.get(&"a"), Some(&99)); // last write wins
+    assert_eq!(map.get(&"a"), Some(&99));
     let keys: Vec<_> = map.keys().copied().collect();
-    assert_eq!(keys, vec!["a", "b"]); // "a" at original position
+    assert_eq!(keys, vec!["a", "b"]);
   }
-
-  // -- Debug + Eq --------------------------------------------------------
 
   #[test]
   fn test_debug_format() {
@@ -833,7 +710,6 @@ mod tests {
     b.insert("y", 2);
     b.insert("x", 1);
 
-    // Same entries but different insertion order → not equal.
     assert_ne!(a, b);
   }
 
@@ -851,8 +727,6 @@ mod tests {
     assert_ne!(a, b);
   }
 
-  // -- With capacity -----------------------------------------------------
-
   #[test]
   fn test_with_capacity() {
     let bump = Bump::new();
@@ -863,8 +737,6 @@ mod tests {
     assert_eq!(map.len(), 100);
     assert_eq!(map.get(&50), Some(&50));
   }
-
-  // -- Larger map stress test --------------------------------------------
 
   #[test]
   fn test_200_entries() {
@@ -878,7 +750,6 @@ mod tests {
     assert_eq!(map.get(&199), Some(&"val_199".to_string()));
     assert_eq!(map.get(&200), None);
 
-    // Verify insertion order.
     for (idx, (k, _)) in map.iter().enumerate() {
       assert_eq!(*k, idx);
     }

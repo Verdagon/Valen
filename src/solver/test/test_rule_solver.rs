@@ -83,7 +83,6 @@ impl<'ctx, 's> TestRuleSolver<'ctx, 's> {
         new_conclusions.insert(receiver, receiver_instantiation);
       }
     }
-    // Complex solve only produces conclusions, not solved/new rules.
     solver_state.commit_step::<String>(
       true,
       vec![],

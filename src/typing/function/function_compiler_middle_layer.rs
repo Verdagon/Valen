@@ -164,7 +164,6 @@ where
 
     // val paramTypes2 = evaluateFunctionParamTypes(runedEnv, function1.params);
     let param_types2 = self.evaluate_function_param_types(rued_env_as_i, &function1.params);
-
     // val functionId = assembleName(runedEnv.id, runedEnv.templateArgs, paramTypes2)
     let function_id = self.assemble_name(&rued_env.id, rued_env.template_args, &param_types2);
 
@@ -183,7 +182,6 @@ where
       Some(func_def) => Ok(&func_def.header),
       //   case None => {
       None => {
-        // coutputs.declareFunction(callRange, functionId)
         let function_id_ref = self.typing_interner.intern_id(IdValT {
           package_coord: function_id.package_coord,
           init_steps: function_id.init_steps,
@@ -191,7 +189,6 @@ where
         });
         coutputs.declare_function(call_range, function_id_ref);
 
-        // coutputs.declareFunctionOuterEnv(outerEnv.id, outerEnv)
         let outer_env_id_ref = self.typing_interner.intern_id(IdValT {
           package_coord: outer_env.id.package_coord,
           init_steps: outer_env.id.init_steps,
@@ -200,7 +197,6 @@ where
         let outer_env_as_i: IInDenizenEnvironmentT<'s, 't> =
           IInDenizenEnvironmentT::BuildingWithClosureds(outer_env);
         coutputs.declare_function_outer_env(outer_env_id_ref, outer_env_as_i);
-
         // val params2 = assembleFunctionParams(runedEnv, coutputs, callRange, function1.params)
         let params2 =
           self.assemble_function_params(rued_env_as_i, coutputs, call_range, &function1.params)?;
@@ -213,12 +209,10 @@ where
         let param_types_for_env: Vec<KindT<'s, 't>> = params2.iter().map(|p| p.tyype).collect();
         let named_env = self.make_named_env(rued_env, &param_types_for_env, maybe_return_type);
 
-        // coutputs.declareFunctionInnerEnv(functionId, namedEnv)
         let named_env_ref: &'t FunctionEnvironmentT<'s, 't> = self.typing_interner.alloc(named_env);
         let named_env_as_i: IInDenizenEnvironmentT<'s, 't> =
           IInDenizenEnvironmentT::Function(named_env_ref);
         coutputs.declare_function_inner_env(function_id_ref, named_env_as_i);
-
         // val header = core.evaluateFunctionForHeader(namedEnv, coutputs, callRange, callLocation, params2, instantiationBoundParams)
         let header = self.evaluate_function_for_header_core(
           named_env_ref,
@@ -286,10 +280,6 @@ where
       .iter()
       .enumerate()
       .map(|(index, param1)| {
-        //   val CoordTemplataT(coord) = vassertSome(
-        //     env.lookupNearestWithImpreciseName(
-        //       interner.intern(RuneNameS(param1.pattern.coordRune.get.rune)),
-        //       Set(TemplataLookupContext)))
         let rune = param1.full_type_rune.rune;
         let imprecise_name = self
           .scout_arena
@@ -430,7 +420,6 @@ where
     template_args: &[ITemplataT<'s, 't>],
     param_types: &[KindT<'s, 't>],
   ) -> IdT<'s, 't> {
-    // templateName.copy(localName = templateName.localName.makeFunctionName(interner, keywords, templateArgs, paramTypes))
     let function_template_name: IFunctionTemplateNameT<'s, 't> =
       template_name.local_name.try_into().unwrap();
     let local_name = function_template_name.make_function_name(

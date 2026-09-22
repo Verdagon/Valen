@@ -90,7 +90,6 @@ exported func main() {a = 3; set a = 4; }
       NodeRefT::FunctionDefinition(main),
       NodeRefT::LocalLookup(l) => Some(l)
   );
-  // The lookup is a borrow of the local's storage, so the int is what it points at.
   assert_eq!(lookup.result.inner, KindT::Int(IntT { bits: 32 }));
 }
 
@@ -128,7 +127,6 @@ exported func main() {
       NodeRefT::FunctionDefinition(main),
       NodeRefT::MemberLookup(l) => Some(l)
   );
-  // The lookup is a borrow of the member, so the struct is what it points at.
   match lookup.result.inner {
     KindT::Struct(_) => {}
     x => panic!("{:?}", x),

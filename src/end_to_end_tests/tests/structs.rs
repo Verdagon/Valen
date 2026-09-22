@@ -4,10 +4,6 @@ fn p(rel: &str) -> std::path::PathBuf {
     programs_dir().join(rel)
 }
 
-// structmutfield/bigstructmutfield/structmut build the struct as an inline
-// temporary with no named local, so there's nothing to field-walk — the real
-// gate is that a breakpoint resolves on the construction/return line. The
-// aggregate field-walk gates live on structmutstore/structmutstoreinner below.
 #[test]
 fn structmutfield() {
     assert_compile_and_run_dbg(&p("programs/structs/structmutfield.vale"), 5, &[
@@ -16,9 +12,9 @@ fn structmutfield() {
         expect("bt", &["structmutfield.vale", ":main"]),
     ]);
 }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share (RC of a share member inside a mut struct)"]
+#[ignore]
 fn memberrefcount()      { assert_compile_and_run(&p("programs/structs/memberrefcount.vale"), 5); }
 #[test]
 fn bigstructmutfield() {
@@ -36,7 +32,7 @@ fn structmut() {
         expect("bt", &["structmut.vale", ":main"]),
     ]);
 }
-// A named struct local walks both fields, showing the post-`set` mutated value.
+
 #[test]
 fn structmutstore() {
     assert_compile_and_run_dbg(&p("programs/structs/structmutstore.vale"), 42, &[

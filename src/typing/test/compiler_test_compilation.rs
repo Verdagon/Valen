@@ -29,11 +29,6 @@ fn test_typing_pass_options() -> TypingPassOptions {
   }
 }
 
-/// `TypingPassCompilation::new` for tests that don't exercise Rust interop — the same
-/// arguments, with an oracle that knows nothing supplied for you.
-///
-/// Tests reach for this rather than the constructor so that a test about Vale semantics
-/// never has to mention the build mode. Production still states its oracle explicitly.
 pub fn typing_pass_compilation_for_test<'s, 'ctx, 't, 'p>(
   typing_interner: &'ctx TypingInterner<'s, 't>,
   scout_arena: &'ctx ScoutArena<'s>,
@@ -85,11 +80,6 @@ where
   )
 }
 
-/// Like `compiler_test_compilation`, but with the borrow checker off — for typing-pass tests whose
-/// fixture exercises a feature the group-based borrow checker doesn't handle yet (e.g. a closure
-/// capturing a reference), so the test can assert on typing output without tripping a deferred
-/// borrow-checker panic.
-/// VCOORD: remove this
 pub fn compiler_test_compilation_without_borrow_check<'s, 'ctx, 't, 'p>(
   typing_interner: &'ctx TypingInterner<'s, 't>,
   scout_arena: &'ctx ScoutArena<'s>,
@@ -98,6 +88,7 @@ pub fn compiler_test_compilation_without_borrow_check<'s, 'ctx, 't, 'p>(
   parse_arena: &'ctx ParseArena<'p>,
   code_source: &'ctx CodeSource<'p>,
 ) -> TypingPassCompilation<'s, 'ctx, 't, 'p>
+// VCOORD: remove this function
 where
   's: 't,
 {
@@ -117,8 +108,6 @@ where
   )
 }
 
-/// Same as `compiler_test_compilation`, but with a caller-supplied Rust oracle, for
-/// tests that exercise the interop seam against a fixture.
 #[cfg(feature = "rust_interop")]
 pub fn compiler_test_compilation_with_rust_oracle<'s, 'ctx, 't, 'p>(
   typing_interner: &'ctx TypingInterner<'s, 't>,

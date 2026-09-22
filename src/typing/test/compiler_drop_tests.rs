@@ -1,4 +1,3 @@
-//! Auto-generated struct drop for generic structs.
 
 use crate::builtins::builtins::{builtin_source_bundle, empty_v_builtins_stub};
 use crate::code_source::CodeSource;
@@ -36,9 +35,6 @@ exported func main() { b = Box<int>(5); }
   compile.expect_compiler_outputs();
 }
 
-// A generic struct (`Holder`) must be able to drop a member that's also a generic struct (`Box`).
-// The Holder's auto-generated drop function must declare a bound for itself, and use it to call
-// Box's drop.
 #[test]
 fn generic_struct_nested_generic_member_auto_drops() {
   let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());

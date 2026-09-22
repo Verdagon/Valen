@@ -87,7 +87,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           .name
           .as_ref()
           .unwrap_or_else(|| panic!("POSTPARSER_SCOUT_BLOCK_DEFAULT_REGION_NAME_MISSING"));
-        // Re-intern string from 'p into 's for cross-arena translation
         let region_rune_name_s: StrI<'s> =
           self.scout_arena.intern_str(region_rune_name.str().as_str());
         let region_rune_s: IRuneS<'s> = self
@@ -215,22 +214,18 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           child_uses_before_constructing,
         )
       } else {
-        // Per @PPSPASTNZ, synthesize a constructor call as parser AST, then scout it.
         let function_name = match &stack_frame_before_constructing.parent_env.name {
           IFunctionDeclarationNameS::FunctionName(function_name_s) => {
-            // Re-intern into 'p arena for synthetic parser node (see @PPSPASTNZ)
             self.parse_arena.intern_str(function_name_s.imprecise_name.name.as_str())
           }
           _ => panic!("POSTPARSER_NEW_BLOCK_EXPECTED_FUNCTION_NAME"),
         };
         let range_at_end = RangeL::new(range_s.end.offset, range_s.end.offset);
-        // Per @PPSPASTNZ, allocate synthetic parser node in parse_arena
         let callable_expr_p =
           &*self.parse_arena.alloc(IExpressionPE::Lookup(self.parse_arena.alloc(LookupPE {
             name: IImpreciseNameP::LookupName(NameP(range_at_end, function_name)),
             template_args: None,
           })));
-        // Per @PPSPASTNZ, all synthetic parser nodes allocated in parse_arena ('p)
         let self_keyword_p = self.parse_arena.intern_str(self.keywords.self_.as_str());
         let arg_exprs_p: Vec<&'p IExpressionPE<'p>> = constructing_member_names
           .iter()
@@ -249,7 +244,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             }))
           })
           .collect();
-        // Per @PPSPASTNZ, allocate synthetic parser node in parse_arena
         let constructor_call_p: &'p IExpressionPE<'p> =
           &*self.parse_arena.alloc(IExpressionPE::FunctionCall(FunctionCallPE {
             range: range_at_end,
@@ -363,8 +357,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       )),
 
       IExpressionPE::Lambda(lambda) => {
-        // Mint the lambda's own unique LID within the enclosing function (one child per lambda,
-        // whether or not it captures), so the lambda's declarations nest under it.
         let lambda_lid = lidb.child().consume_in_arena(self.scout_arena);
         let (function_s, child_uses) =
           self.scout_lambda(stack_frame.clone(), lambda_lid, &lambda.function)?;
@@ -575,12 +567,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             name: container_name,
             template_args: container_maybe_template_args,
           }) => {
-            // VCOORD: revisit this
-            // TEMP: source-level `__copy_prim(x)` syntax.
-            // Detected by name here before normal overload-set construction so we
-            // can emit a dedicated CopyPrimSE. Removable when typing-pass
-            // auto-insertion of CopyPrim replaces the source syntax — at that
-            // point this whole branch (and CopyPrimSE) go away.
             if container_name == "__copy_prim" {
               if container_maybe_template_args.is_some() {
                 panic!("__copy_prim takes no template args");
@@ -592,9 +578,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
                 );
               }
               let mut arg_lidb = lidb.child();
-              // LoadAsBorrow on the inner so that __copy_prim(some_local) does NOT move
-              // some_local — we read it as a borrow, then the typing pass produces a fresh
-              // Own+primitive from the borrow's kind. Per plan: `x = 4; print(__copy_prim(x)); print(x)` works.
               let (stack_frame_arg, arg_se, arg_self_uses, arg_child_uses) = self
                 .scout_expression_and_coerce(
                   stack_frame0a,
@@ -788,7 +771,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
               &mut args_lidb,
               method_call.arg_exprs,
             )?;
-            // We don't support more than 2 parts yet
             let container_load_part_name =
               self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS {
                 name: container_name,
@@ -1174,8 +1156,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           .iter()
           .map(|decl| decl.name.clone())
           .find(|name| {
-            // Same-name conflict is by imprecise (source) name, not the full declaration name:
-            // the lid makes two same-spelling locals distinct, but they still collide by spelling.
             let name_imprecise = name.imprecise_name(self.scout_arena);
             declarations_from_pattern
               .vars
@@ -1211,7 +1191,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           VariableUses<'s>,
         ) = {
           let mut source_expr_lidb = lidb.child();
-          // AFTERM: consider doing &mut StackFrame instead of clone, everywhere.
           self.scout_expression_and_coerce(
             stack_frame,
             &mut source_expr_lidb,
@@ -1714,8 +1693,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       }
     }
   }
-  // (audit-trail for translateMaybeTemplateArgs lives at canonical position in scoutExpression's
-  //  audit-trail block above; no duplicate adjacent block needed.)
 
   // If we load an immutable with targetOwnershipIfLookupResult = Own or Borrow, it will just be Share.
   pub(crate) fn scout_expression_and_coerce(
@@ -1757,14 +1734,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           LoadAsP::LoadAsWeak => self_uses_before.mark_borrowed(name.clone()),
           LoadAsP::Use | LoadAsP::Move => self_uses_before.mark_moved(name.clone()),
         };
-        // A bare mention lowers to a plain LocalLoad, which already IS a reference
-        // (mention = reference). A borrow of a local is therefore the same thing — `&x`
-        // and a plain use both lower to LocalLoad, no wrapper needed. `^x` moves the local
-        // out, the same operation as the `unlet x` statement, so it lowers straight to
-        // Unlet. `weak x` genuinely produces a weak reference (distinct from a borrow), so
-        // it wraps the LocalLoad in Ownershipped to route through typing's weak-alias path.
-        // The node holds the imprecise (use-site) name; the declaration `name` stays for the
-        // `mark_*` move/use tracking above.
         let name_imprecise = name.imprecise_name(self.scout_arena);
         let expr: &'s IExpressionSE<'s> = match load_as_p {
           LoadAsP::Use | LoadAsP::LoadAsBorrow => {

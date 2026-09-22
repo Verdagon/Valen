@@ -20,7 +20,6 @@ use crate::utils::fx::HashSet;
 type ParseResult<T> = Result<T, ParseError>;
 
 pub struct Parser<'p, 'ctx> {
-  // VV: crate::
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
   pub templex_parser: TemplexParser<'p, 'ctx>,
@@ -32,20 +31,16 @@ impl<'p, 'ctx> Parser<'p, 'ctx>
 where
   'p: 'ctx,
 {
-  /// Parse a single generic parameter
   fn parse_generic_parameter(
     &self,
     mut iter: ScrambleIterator<'p, '_>,
   ) -> ParseResult<GenericParameterP<'p>> {
     let range = iter.range();
 
-    // Parse optional prefixing region
     let maybe_coord_region = self.parse_prefixing_region(&mut iter)?;
 
-    // Parse the main parameter
     let (name, maybe_type, attributes, maybe_group_type) = match self.parse_region(&mut iter)? {
       None => {
-        // Regular rune parameter
         let name = match iter.peek_cloned() {
           Some(INodeLEEnum::Word(WordLE { range, str })) => {
             let result = NameP(range, str);
@@ -75,7 +70,6 @@ where
         (name, maybe_type, maybe_attrs, None)
       }
       Some(region) => {
-        // Region / group parameter (`<g'>`, or `<g': T>` typed by its element type).
         let attributes = if let Some(range) = iter.try_skip_word(self.keywords.imm) {
           vec![IRuneAttributeP::ImmutableRegionRuneAttribute(range)]
         } else {
@@ -89,7 +83,6 @@ where
 
         let region_name = region.name.ok_or(ParseError::BadRuneNameError(iter.get_pos()))?;
 
-        // Optional `: T` group element type, e.g. `<g': Entity>`.
         let maybe_group_type = if iter.try_skip_symbol(':') {
           Some(&*self.parse_arena.alloc(self.templex_parser.parse_templex(&mut iter)?))
         } else {
@@ -100,7 +93,6 @@ where
       }
     };
 
-    // Parse optional default value
     let maybe_default = if iter.try_skip_symbol('=') {
       Some(self.templex_parser.parse_templex(&mut iter)?)
     } else {
@@ -120,8 +112,6 @@ where
     })
   }
 
-  /// True if the next token is an effect-clause keyword (`mut` / `not`), which trails the return
-  /// type in a header.
   fn peek_is_effect_keyword(&self, iter: &ScrambleIterator<'p, '_>) -> bool {
     match iter.peek_cloned() {
       Some(INodeLEEnum::Word(WordLE { str, .. })) => {
@@ -131,8 +121,6 @@ where
     }
   }
 
-  /// Parse a run of effect clauses `mut(g)` / `not(mut(g))` into `effects`. Near-term each takes a
-  /// single group; multi-group folds come later.
   fn parse_effect_clauses(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -150,7 +138,6 @@ where
     Ok(())
   }
 
-  /// Read a `( group )` parenthesized group, e.g. the `(g)` in `mut(g)`.
   fn parse_group_in_parens(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -160,9 +147,6 @@ where
         iter.advance();
         let mut inner = ScrambleIterator::new(&parend.contents);
         let group = self.templex_parser.parse_group(&mut inner)?;
-        // One group per clause. `parse_group` stops at a `,` (or any non-path token), so anything left
-        // in the parens is a multi-group clause like `mut(a, b)` — reject it rather than silently
-        // keeping only the first group. Two mutated regions are written as `mut(a) mut(b)`.
         if inner.has_next() {
           return Err(ParseError::MultipleGroupsInEffectClause(inner.get_pos()));
         }
@@ -172,7 +156,6 @@ where
     }
   }
 
-  /// Read the `( mut ( group ) )` that follows `not`, e.g. in `not(mut(g))`.
   fn parse_not_mut_group(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -198,7 +181,6 @@ where
     Parser { parse_arena, keywords, templex_parser, pattern_parser, expression_parser }
   }
 
-  /// Parse a complete file from lexer output
   pub fn parse_file(&self, file: FileL<'p>) -> ParseResult<FileP<'p>> {
     let FileL { denizens, comment_ranges } = file;
 
@@ -220,7 +202,6 @@ where
     })
   }
 
-  /// Parse a top-level denizen
   pub fn parse_denizen(&self, denizen: IDenizenL<'p>) -> ParseResult<IDenizenP<'p>> {
     match denizen {
       IDenizenL::TopLevelFunction(func) => {
@@ -250,7 +231,6 @@ where
     }
   }
 
-  /// Parse generic parameters from angled brackets
   fn parse_identifying_runes(&self, node: &AngledLE<'p>) -> ParseResult<GenericParametersP<'p>> {
     let iter = ScrambleIterator::new(&node.contents);
     let parts = iter.split_on_symbol(',', false);
@@ -267,14 +247,12 @@ where
     })
   }
 
-  /// Parse struct member
   fn parse_struct_member(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
   ) -> ParseResult<IStructContent<'p>> {
     let begin = iter.get_pos();
 
-    // Parse name (can be a word or integer for variadic)
     let name = match iter.peek_cloned() {
       Some(INodeLEEnum::ParsedInteger(ParsedIntegerLE { range, value, .. })) => {
         let result: NameP<'_> = NameP(range, self.parse_arena.intern_str(&value.to_string()));
@@ -287,7 +265,6 @@ where
       },
     };
 
-    // Check for variadic (..)
     let variadic = matches!(
       iter.peek2_cloned(),
       (Some(INodeLEEnum::Symbol(SymbolLE(_, '.'))), Some(INodeLEEnum::Symbol(SymbolLE(_, '.'))))
@@ -297,7 +274,6 @@ where
       iter.advance();
     }
 
-    // Parse type
     let tyype = self.templex_parser.parse_templex(iter)?;
 
     if variadic {
@@ -318,7 +294,6 @@ where
     }
   }
 
-  /// Parse a struct definition
   pub fn parse_struct(&self, struct_l: StructL<'p>) -> ParseResult<StructP<'p>> {
     let StructL {
       range: struct_range,
@@ -332,13 +307,11 @@ where
       methods: methods_l,
     } = struct_l;
 
-    // Parse identifying runes
     let maybe_identifying_runes = maybe_identifying_runes_l
       .as_ref()
       .map(|runes| self.parse_identifying_runes(runes))
       .transpose()?;
 
-    // Parse template rules
     let maybe_template_rules = maybe_template_rules_l
       .as_ref()
       .map(|rules_scramble| {
@@ -355,13 +328,11 @@ where
       })
       .transpose()?;
 
-    // Parse attributes
     let mut attributes = Vec::new();
     for attr_l in attributes_l {
       attributes.push(self.parse_attribute(*attr_l)?);
     }
 
-    // Parse struct members
     let mut contents_vec = Vec::new();
     for member_l in members_l {
       let mut iter = ScrambleIterator::new(member_l);
@@ -389,7 +360,6 @@ where
     })
   }
 
-  /// Parse an interface definition
   pub fn parse_interface(&self, interface_l: InterfaceL<'p>) -> ParseResult<InterfaceP<'p>> {
     let InterfaceL {
       range: interface_range,
@@ -402,13 +372,11 @@ where
       members: methods,
     } = interface_l;
 
-    // Parse identifying runes
     let maybe_identifying_runes = maybe_identifying_runes_l
       .as_ref()
       .map(|runes| self.parse_identifying_runes(runes))
       .transpose()?;
 
-    // Parse template rules
     let maybe_template_rules = maybe_template_rules_l
       .as_ref()
       .map(|rules_scramble| {
@@ -425,14 +393,11 @@ where
       })
       .transpose()?;
 
-    // Parse attributes
     let mut attributes = Vec::new();
     for attr_l in attributes_l {
       attributes.push(self.parse_attribute(*attr_l)?);
     }
 
-    // Parse interface methods
-    // Interface methods are in a citizen (interface), so is_in_citizen = true
     let mut members_vec = Vec::new();
     for method_l in methods {
       members_vec.push(self.parse_function(*method_l, true)?);
@@ -451,7 +416,6 @@ where
     })
   }
 
-  /// Parse an impl block
   pub fn parse_impl(&self, impl_l: ImplL<'p>) -> ParseResult<ImplP<'p>> {
     let ImplL {
       range: impl_range,
@@ -462,7 +426,6 @@ where
       attributes: attributes_l,
     } = impl_l;
 
-    // Parse identifying runes if present
     let maybe_identifying_runes = match maybe_identifying_runes_l {
       Some(user_specified_identifying_runes) => {
         Some(self.parse_identifying_runes(&user_specified_identifying_runes)?)
@@ -470,7 +433,6 @@ where
       None => None,
     };
 
-    // Parse template rules if present
     let maybe_template_rules_p = match maybe_template_rules_l {
       Some(template_rules_scramble) => {
         let iter = ScrambleIterator::new(&template_rules_scramble);
@@ -489,7 +451,6 @@ where
       None => None,
     };
 
-    // Parse struct templex if present
     let struct_p = match struct_l {
       None => None,
       Some(struct_l) => {
@@ -498,11 +459,9 @@ where
       }
     };
 
-    // Parse interface templex
     let mut iter = ScrambleIterator::new(&interface_l);
     let interface_p = self.templex_parser.parse_templex(&mut iter)?;
 
-    // Parse attributes
     let mut attributes_p = Vec::new();
     for attribute_l in attributes_l {
       attributes_p.push(self.parse_attribute(*attribute_l)?);
@@ -518,23 +477,19 @@ where
     })
   }
 
-  /// Helper to convert WordLE to NameP
   fn to_name(&self, word: WordLE<'p>) -> NameP<'p> {
     NameP(word.range, word.str)
   }
 
-  /// Parse an export-as declaration
   pub fn parse_export_as(&self, export_l: ExportAsL<'p>) -> ParseResult<ExportAsP<'p>> {
     let mut iter = ScrambleIterator::new(&export_l.contents);
 
-    // Try to find "as" keyword and get everything before it
     let exportee = {
       let mut scouting_iter = iter.clone();
       let mut found_as = false;
       let mut before_iter = iter.clone();
 
       while scouting_iter.has_next() {
-        // Check if we should continue (not at semicolon)
         let should_continue = match scouting_iter.peek_cloned() {
           None => false,
           Some(INodeLEEnum::Symbol(SymbolLE(_, ';'))) => false,
@@ -545,13 +500,11 @@ where
           break;
         }
 
-        // Check if this is the "as" keyword
         if let Some(INodeLEEnum::Word(WordLE { str, .. })) = scouting_iter.peek_cloned() {
           if str == self.keywords.r#as {
-            // Found "as"! Create iterator for everything before it
             before_iter.end = scouting_iter.index;
             iter.skip_to(&scouting_iter);
-            iter.advance(); // Skip past "as"
+            iter.advance();
             found_as = true;
             break;
           }
@@ -564,11 +517,9 @@ where
         return Err(ParseError::BadExportAs(iter.get_pos()));
       }
 
-      // Parse the templex from everything before "as"
       self.templex_parser.parse_templex(&mut before_iter)?
     };
 
-    // Get the name after "as"
     let name = match iter.peek_cloned() {
       None => return Err(ParseError::BadExportEnd(iter.get_pos())),
       Some(INodeLEEnum::Word(word)) => self.to_name(word.clone()),
@@ -578,7 +529,6 @@ where
     Ok(ExportAsP { range: export_l.range, struct_: exportee, exported_name: name })
   }
 
-  /// Parse an import declaration
   pub fn parse_import(&self, import_l: ImportL<'p>) -> ParseResult<ImportP<'p>> {
     let ImportL {
       range,
@@ -604,7 +554,6 @@ where
     })
   }
 
-  /// Parse an attribute
   fn parse_attribute(&self, attr_l: IAttributeL<'p>) -> ParseResult<IAttributeP<'p>> {
     match attr_l {
       IAttributeL::SealedAttribute(range) => {
@@ -628,8 +577,6 @@ where
             // extern("name") becomes BuiltinAttribute
             let iter = ScrambleIterator::new(&parend.contents);
             if let Some(INodeLEEnum::String(string_le)) = iter.peek_cloned() {
-              // Extract the string value from the parts
-              // For a simple string like "bork", there should be one Literal part
               if string_le.parts.len() == 1 {
                 if let StringPart::Literal { s, .. } = &string_le.parts[0] {
                   let name = NameP(string_le.range, *s);
@@ -652,7 +599,6 @@ where
     }
   }
 
-  /// Parse a function
   pub fn parse_function(
     &self,
     func_l: FunctionL<'p>,
@@ -669,7 +615,6 @@ where
       trailing_details: original_trailing_details_l,
     } = header_l;
 
-    // Parse identifying runes if present
     let maybe_identifying_runes = match maybe_identifying_runes_l {
       Some(user_specified_identifying_runes) => {
         Some(self.parse_identifying_runes(&user_specified_identifying_runes)?)
@@ -677,12 +622,10 @@ where
       None => None,
     };
 
-    // Parse parameters
     let mut params_p_vec = Vec::new();
     let params_iter = ScrambleIterator::new(&params_l.contents);
     let param_iters = params_iter.split_on_symbol(',', false);
 
-    // Use field splitting to borrow parsers separately
     let Self { pattern_parser, templex_parser, .. } = self;
 
     for (index, pattern_iter) in param_iters.into_iter().enumerate() {
@@ -702,7 +645,6 @@ where
       params: self.parse_arena.alloc_slice_from_vec(params_p_vec),
     };
 
-    // Parse trailing details to extract return type, where clause, and default region
     let (trailing_details_with_return_and_where, maybe_default_region) =
       self.parse_body_default_region(original_trailing_details_l.clone());
 
@@ -729,8 +671,6 @@ where
       };
 
     let return_begin_pos = trailing_details_with_return_and_where.range.begin();
-    // Effect clauses (`mut(g)` / `not(mut(g))`) trail the return type in the header. Peel them here,
-    // after the return templex. (Effects following a `where` clause are deferred.)
     let mut effects_p_vec: Vec<EffectP<'p>> = Vec::new();
     let maybe_return_type_p = if let Some(mut return_iter) = maybe_return_iter {
       let return_type = if return_iter.has_next() && !self.peek_is_effect_keyword(&return_iter) {
@@ -767,7 +707,6 @@ where
       })
       .transpose()?;
 
-    // Parse attributes
     let mut attributes_p = Vec::new();
     for attribute_l in attributes_l {
       attributes_p.push(self.parse_attribute(*attribute_l)?);
@@ -784,8 +723,6 @@ where
       effects: self.parse_arena.alloc_slice_from_vec(effects_p_vec),
     };
 
-    // Parse body if present
-    // Use field splitting to borrow parsers separately
     let Self { expression_parser, templex_parser, pattern_parser, .. } = self;
 
     let body_p = match maybe_body_l {
@@ -805,7 +742,6 @@ where
     Ok(FunctionP { range: func_range_l, header, body: body_p })
   }
 
-  /// Parse body default region from trailing details
   fn parse_body_default_region(
     &self,
     input_scramble: ScrambleLE<'p>,
@@ -818,7 +754,6 @@ where
 
     let default_region = match input_scramble.elements.len() {
       1 => {
-        // Check if it's just a single apostrophe
         match &*input_scramble.elements[0] {
           INodeLEEnum::Symbol(SymbolLE(symbol_range, '\'')) => {
             Some(RegionRunePT { range: *symbol_range, name: None })
@@ -827,7 +762,6 @@ where
         }
       }
       n if n >= 2 => {
-        // Check if the last two elements are word then apostrophe
         let last_two = &input_scramble.elements[n - 2..n];
         match (&*last_two[0], &*last_two[1]) {
           (
@@ -847,10 +781,9 @@ where
       return (input_scramble, None);
     }
 
-    // Remove the elements that made up the default region
     let elements_to_remove = match input_scramble.elements.len() {
-      1 => 1, // Just the apostrophe
-      _ => 2, // Word and apostrophe
+      1 => 1,
+      _ => 2,
     };
 
     let preceding_elements =
@@ -872,9 +805,6 @@ where
   }
 }
 
-// 'p: interner
-// 'p: parsed arena (parsed data outlives 'p; interner outlives parsed)
-// Arena is passed in by reference, caller owns it
 pub struct ParserCompilation<'p, 'ctx> {
   opts: GlobalOptions,
   parse_arena: &'ctx ParseArena<'p>,
@@ -1004,7 +934,6 @@ impl<'p, 'ctx> Parser<'p, 'ctx>
 where
   'p: 'ctx,
 {
-  /// Parse optional prefixing region (e.g., `'a`)
   fn parse_prefixing_region(
     &self,
     original_iter: &mut ScrambleIterator<'p, '_>,
@@ -1013,9 +942,6 @@ where
 
     let region = match parse_region_shared(&mut tentative_iter)? {
       Some(region) => {
-        // Check if the next token immediately follows (no gap). A `:` that abuts is the group-type
-        // separator of a `<g': T>` param, not a coord this region prefixes. Leave it for the
-        // generic-param parser.
         match tentative_iter.peek_cloned() {
           Some(INodeLEEnum::Symbol(SymbolLE(_, ':'))) => return Ok(None),
           Some(next) if next.range().begin() == region.range.end() => region,

@@ -39,21 +39,11 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::mem::discriminant;
 
-/// The *resolved* canonical name an `import` resolves to (post-re-export), as opposed to the raw
-/// written `ImportS` the parser produced. Vale-native: interned strings, no rustc `DefId`, so it
-/// crosses any boundary and is reusable for Vale's own package imports later. `rust_interop` uses it
-/// as the key to fetch the rustc item (`oracle.resolve`), both when declaring an import and when
-/// re-resolving a denizen for lazy synthesis. A denizen's template `IdT` carries this name (it is the
-/// id's `package_coord` + `local_name`), which is what retires the offset-encoding trick.
-///
-/// A method is not a `ResolvedName` on its own; it is expressed as its owner's `ResolvedName` plus the
-/// method's short name, resolved via `oracle.methods`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ResolvedName<'s> {
   pub module_name: StrI<'s>,
   pub package_names: &'s [StrI<'s>],
   pub importee_name: StrI<'s>,
-  /// Whether this name is a type or a free function, so a consumer can branch without re-resolving.
   pub kind: ImportedItemKind,
 }
 
@@ -61,17 +51,10 @@ pub struct ResolvedName<'s> {
 pub enum ImportedItemKind {
   Type,
   Function,
-  /// A Rust enum, imported as an opaque sealed Vale interface (`KindT::Interface`). Opaque for now:
-  /// no variants are represented, so it can be received/passed/dropped and have its inherent methods
-  /// called, but not matched or constructed. See §8.10 of the interop architecture.
   Enum,
-  /// A Rust trait, imported as a Vale interface a Vale struct can implement so Rust can call back in.
-  /// Unlike `Enum`, its abstract methods are projected into the interface so `impl Trait for Struct`
-  /// resolves through the ordinary override machinery.
   Trait,
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum IEnvironmentT<'s, 't>
 where
@@ -242,7 +225,6 @@ where
   }
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum IInDenizenEnvironmentT<'s, 't>
 where
@@ -403,14 +385,12 @@ where
     }
   }
 }
-/// Miscellaneous (see @TFITCX)
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ILookupContext {
   TemplataLookupContext,
   ExpressionLookupContext,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct GlobalEnvironmentT<'s, 't>
 where
@@ -421,14 +401,6 @@ where
   pub builtins: &'t TemplatasStoreT<'s, 't>,
 }
 
-/// Resolves a **path** — the last segment, looked up in whatever the earlier ones select.
-///
-/// Narrowing by an empty prefix is the identity, so a one-segment path is an ordinary ambient
-/// lookup and a longer one is the same lookup in a narrower place.
-///
-/// A free function rather than a method on `IEnvironmentT` because it reaches nothing private — it
-/// is a composition of two public operations, and putting it on the enum would widen the interface
-/// of the compiler's most central type without adding a capability to it.
 pub fn lookup_nearest_with_path<'s, 't>(
   env: IEnvironmentT<'s, 't>,
   parts: &[IImpreciseNameS<'s>],
@@ -439,11 +411,7 @@ where
   's: 't,
 {
   let (item_name, prefix) = parts.split_last()?;
-  // VCOORD: This branch is the flat table showing through, not a special case worth keeping. Prefixes must
-  // be matched whole, because `name_to_top_level_environment` holds only fully-qualified
-  // coordinates and no store answers to `rust` alone — and matching nothing against nothing selects
-  // no store rather than every store. Once that table is a tree the identity falls out structurally
-  // and this becomes `prefix.iter().try_fold(env, descend)?`, where zero segments is zero work.
+  // VCOORD: this branch is the flat table showing through
   let env = if prefix.is_empty() {
     env
   } else {
@@ -598,20 +566,6 @@ pub fn get_imprecise_name<'s, 't>(
         }
     }
     INameT::AnonymousSubstruct(a) => get_imprecise_name(scout_arena, INameT::AnonymousSubstructTemplate(a.template)),
-    // `INameT::ExternFunction` deliberately falls through to the panic below.
-    //
-    // It had an arm, added for a Rust-interop design that registered finished *prototypes* in
-    // environment stores. That design is gone: an extern function — whether a hand-written
-    // `extern func` or a synthesized Rust one — is registered as an ordinary
-    // `IEnvEntryT::Function` keyed by its `FunctionTemplate` name, and the `ExternFunction` name is
-    // built only for the prototype (`function_compiler_core.rs:337`), which never enters a store.
-    // So nothing asks this function for an extern function's imprecise name.
-    //
-    // Verified by replacing the arm with a panic and re-running both configurations: unchanged, and
-    // never reached. Deleted rather than parked because a dead-but-correct arm is what lets the
-    // prototype-store shape come back by accident — with the arm gone, registering one fails loudly
-    // here instead of quietly working. What would bring it back: a design that puts prototypes in
-    // stores again, which two implementations have now abandoned.
     _ => {
         panic!("Unimplemented: get_imprecise_name for {:?}", name_t);
         // vimpl(other.toString)
@@ -620,14 +574,9 @@ pub fn get_imprecise_name<'s, 't>(
 }
 
 impl<'s, 't> IVarNameT<'s, 't> {
-  /// The imprecise (spelling) name a use-site resolves this variable by, if it has one. Every
-  /// variant that has one already stores it, so this returns the stored reference without
-  /// interning (hence no arena). The result is not canonicalized: compare it by value (`==`),
-  /// never by `ptr_eq`.
   pub fn imprecise_name(self) -> Option<IImpreciseNameS<'s>> {
     match self {
       IVarNameT::Local(n) => Some(IImpreciseNameS::CodeName(n.imprecise_name)),
-      // A member name derives to the same imprecise `CodeName` (its spelling) as a local does.
       IVarNameT::Member(n) => Some(IImpreciseNameS::CodeName(n.imprecise_name)),
       IVarNameT::ClosureParam(n) => Some(IImpreciseNameS::ClosureParamImpreciseName(n.imprecise_name)),
       IVarNameT::ConstructingMember(n) => {
@@ -638,7 +587,6 @@ impl<'s, 't> IVarNameT<'s, 't> {
       IVarNameT::Iterable(n) => Some(IImpreciseNameS::IterableName(n.imprecise_name)),
       IVarNameT::Iterator(n) => Some(IImpreciseNameS::IteratorName(n.imprecise_name)),
       IVarNameT::IterationOption(n) => Some(IImpreciseNameS::IterationOptionName(n.imprecise_name)),
-      // The rest are compiler-synthesized (block/function-result and temporary vars) or life-only
       _ => None,
     }
   }
@@ -654,14 +602,12 @@ pub fn code_locations_match<'s>(
   // lineS == line2 && charS == char2
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct TemplatasStoreT<'s, 't>
 where
   's: 't,
 {
   pub templatas_store_name: &'t IdT<'s, 't>,
-  // Per @IIIOZ, env lookup tables are ArenaIndexMap so iteration order is insertion-deterministic across runs.
   pub name_to_entry: ArenaIndexMap<'t, INameT<'s, 't>, IEnvEntryT<'s, 't>>,
   pub imprecise_to_entries: ArenaIndexMap<'t, IImpreciseNameS<'s>, &'t [IEnvEntryT<'s, 't>]>,
 }
@@ -684,14 +630,13 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct TemplatasStoreBuilder<'s, 't>
 where
   's: 't,
 {
   pub templatas_store_name: &'t IdT<'s, 't>,
   pub name_to_entry: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
-  // Per @IIIOZ: IndexMap so build_in() iteration preserves insertion order (deterministic across runs).
   pub imprecise_to_entries: IndexMap<IImpreciseNameS<'s>, Vec<IEnvEntryT<'s, 't>>>,
 }
 
@@ -890,15 +835,12 @@ where
     scout_arena: &ScoutArena<'s>,
     new_entries_list: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
   ) -> TemplatasStoreT<'s, 't> {
-    // Per @IIIOZ: IndexMap so iteration at line ~1007 preserves new_entries_list source order (deterministic).
     let new_entries: IndexMap<INameT<'s, 't>, IEnvEntryT<'s, 't>> =
       new_entries_list.iter().cloned().collect();
     assert!(new_entries.len() == new_entries_list.len());
 
-    // combinedEntries = oldEntries ++ newEntries
     let mut combined_entries: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> =
       self.name_to_entry.iter().map(|(k, v)| (*k, *v)).collect();
-    // Intersection assertion
     for (key, _) in self.name_to_entry.iter() {
       if let Some(new_val) = new_entries.get(key) {
         assert!(self.name_to_entry.get(key) == Some(new_val));
@@ -910,7 +852,6 @@ where
       }
     }
 
-    // newEntriesByNameS
     let new_entries_by_name_s: Vec<(IImpreciseNameS<'s>, IEnvEntryT<'s, 't>)> = new_entries
       .iter()
       .flat_map(|(key, value)| {
@@ -1004,30 +945,19 @@ where
       .collect();
 
     // Group by imprecise name
-    // Per @IIIOZ: IndexMap so downstream iteration preserves new_entries_by_name_s source order.
     let mut grouped: IndexMap<IImpreciseNameS<'s>, Vec<IEnvEntryT<'s, 't>>> = IndexMap::default();
     for (name, entry) in &new_entries_by_name_s {
       grouped.entry(*name).or_insert_with(Vec::new).push(*entry);
     }
 
-    // combinedEntriesByNameS =
-    //   entriesByImpreciseNameS ++
-    //   newEntriesByNameS ++
-    //   entriesByImpreciseNameS.keySet.intersect(newEntriesByNameS.keySet)
-    //     .map(key => (key -> (entriesByImpreciseNameS(key) ++ newEntriesByNameS(key)))).toMap
-    // Per @IIIOZ: IndexMap so the alloc_index_map_from_iter freeze at line ~1072 inherits deterministic order
-    // from upstream self.imprecise_to_entries (IndexMap) and grouped (IndexMap).
     let mut combined_by_name_s: IndexMap<IImpreciseNameS<'s>, Vec<IEnvEntryT<'s, 't>>> =
       IndexMap::default();
-    // Step 1: entriesByImpreciseNameS
     for (name, entries) in self.imprecise_to_entries.iter() {
       combined_by_name_s.insert(*name, entries.to_vec());
     }
-    // Step 2: ++ newEntriesByNameS (overwrite for matching keys, add for new keys)
     for (name, entries) in &grouped {
       combined_by_name_s.insert(*name, entries.clone());
     }
-    // Step 3: ++ intersection-merged (for keys in both old and new, replace with old ++ new)
     for name in self.imprecise_to_entries.keys() {
       if let Some(new_entries_for_key) = grouped.get(name) {
         let old_entries_for_key = self.imprecise_to_entries.get(name).unwrap();
@@ -1037,7 +967,6 @@ where
       }
     }
 
-    // Build the final store
     let name_to_entry = interner.alloc_index_map_from_iter(combined_entries);
     let imprecise_to_entries =
       interner.alloc_index_map_from_iter(combined_by_name_s.into_iter().map(|(name, entries)| {
@@ -1101,7 +1030,6 @@ pub fn make_top_level_environment<'s, 't>(
   interner.alloc(PackageEnvironmentT { global_env, id: namespace_name, global_namespaces })
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct PackageEnvironmentT<'s, 't>
 where
@@ -1182,10 +1110,6 @@ where
   }
 }
 
-// Id-based Hash/PartialEq — documented exception to @IEOIBZ. Compared via
-// `self.id == other.id` (where `id: IdT` is sealed/canonical, so this is
-// itself ptr-eq) instead of `std::ptr::eq(self, other)`. Comparisons via
-// `IEnvironmentT` go through that enum's ptr-eq impl directly.
 impl<'s, 't> PartialEq for PackageEnvironmentT<'s, 't>
 where
   's: 't,
@@ -1203,7 +1127,6 @@ where
     self.id.hash(state);
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct CitizenEnvironmentT<'s, 't>
 where
@@ -1346,7 +1269,6 @@ where
   })
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ExportEnvironmentT<'s, 't>
 where
@@ -1434,7 +1356,6 @@ where
     self.id.hash(state);
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ExternEnvironmentT<'s, 't>
 where
@@ -1507,7 +1428,6 @@ where
     self.id.hash(state);
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct GeneralEnvironmentT<'s, 't>
 where
@@ -1586,7 +1506,6 @@ where
   }
 }
 
-// Concrete → IEnvironmentT
 impl<'s, 't> From<&'t PackageEnvironmentT<'s, 't>> for IEnvironmentT<'s, 't> {
   fn from(e: &'t PackageEnvironmentT<'s, 't>) -> Self {
     IEnvironmentT::Package(e)
@@ -1635,7 +1554,6 @@ impl<'s, 't> From<&'t ExternEnvironmentT<'s, 't>> for IEnvironmentT<'s, 't> {
   }
 }
 
-// Concrete → IInDenizenEnvironmentT (8 variants; no Package)
 impl<'s, 't> From<&'t CitizenEnvironmentT<'s, 't>> for IInDenizenEnvironmentT<'s, 't> {
   fn from(e: &'t CitizenEnvironmentT<'s, 't>) -> Self {
     IInDenizenEnvironmentT::Citizen(e)
@@ -1681,7 +1599,6 @@ impl<'s, 't> From<&'t ExternEnvironmentT<'s, 't>> for IInDenizenEnvironmentT<'s,
   }
 }
 
-// Widening: IInDenizenEnvironmentT → IEnvironmentT (always succeeds)
 impl<'s, 't> From<IInDenizenEnvironmentT<'s, 't>> for IEnvironmentT<'s, 't> {
   fn from(e: IInDenizenEnvironmentT<'s, 't>) -> Self {
     match e {
@@ -1699,7 +1616,6 @@ impl<'s, 't> From<IInDenizenEnvironmentT<'s, 't>> for IEnvironmentT<'s, 't> {
   }
 }
 
-// Narrowing: IEnvironmentT → IInDenizenEnvironmentT (errors only on Package)
 impl<'s, 't> TryFrom<IEnvironmentT<'s, 't>> for IInDenizenEnvironmentT<'s, 't> {
   type Error = IEnvironmentT<'s, 't>;
   fn try_from(e: IEnvironmentT<'s, 't>) -> Result<Self, Self::Error> {
@@ -1721,13 +1637,6 @@ impl<'s, 't> TryFrom<IEnvironmentT<'s, 't>> for IInDenizenEnvironmentT<'s, 't> {
   }
 }
 
-// ============================================================================
-// Builders — one per env kind. Each owns heap Vec/HashMap for incrementally
-// built fields (templatas + slices), then freezes via build_in(interner) into
-// an arena-allocated &'t FooEnvironmentT.
-// ============================================================================
-
-/// Temporary state (see @TFITCX)
 pub struct PackageEnvironmentBuilder<'s, 't>
 where
   's: 't,
@@ -1751,7 +1660,7 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct CitizenEnvironmentBuilder<'s, 't>
 where
   's: 't,
@@ -1779,7 +1688,7 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct ExportEnvironmentBuilder<'s, 't>
 where
   's: 't,
@@ -1807,7 +1716,7 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct ExternEnvironmentBuilder<'s, 't>
 where
   's: 't,
@@ -1835,7 +1744,7 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct GeneralEnvironmentBuilder<'s, 't>
 where
   's: 't,

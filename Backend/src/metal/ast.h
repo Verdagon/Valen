@@ -61,13 +61,8 @@ public:
   std::unordered_map<std::string, Prototype*> externNameToFunction;
   std::unordered_map<std::string, Kind*> externNameToKind;
   // VCOORD: see if we can key not by name
-  // Imported extern-struct layouts, keyed by the struct's fullName->name (like structs / externNameToKind).
-  // General source-agnostic metadata, empty unless a producer (the interop provider) filled it;
-  // Unsafe::defineStruct reads it to size an opaque struct instead of building from members.
   std::unordered_map<std::string, OpaqueStructLayout> structLayouts;
   // VCOORD: see if we can key not by name
-  // Per-extern ABI descriptors, keyed by the extern symbol (like externNameToFunction). Empty for
-  // descriptor-less C externs; buildCallOrSideCall reads it to coerce each crossing.
   std::unordered_map<std::string, ExternAbi> externAbis;
   std::unordered_map<std::string, std::vector<bool>> paramNoaliasByName;
   // These are inverses of the above maps

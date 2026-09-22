@@ -33,8 +33,6 @@ pub struct UncheckedDefiningConclusions<'s, 't> {
   pub conclusions: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>>,
 }
 
-// deleted: delegate trait removed per god-struct refactor (Compiler now holds all methods directly)
-
 pub enum IResolveOutcome<'s, 't, T> {
   ResolveSuccess(ResolveSuccess<'s, 't, T>),
   ResolveFailure(ResolveFailure<'s, 't, T>),
@@ -44,7 +42,6 @@ fn resolve_outcome_expect<'s, 't, T>(
   this: IResolveOutcome<'s, 't, T>,
 ) -> ResolveSuccess<'s, 't, T> {
   panic!("Unimplemented: expect");
-  // abstract method — see ResolveSuccess.expect / ResolveFailure.expect
 }
 
 pub struct ResolveSuccess<'s, 't, T> {
@@ -94,8 +91,6 @@ where
     )
   }
 
-  /// The (local name, template id) for one of a citizen's internal methods, derived from the
-  /// citizen's own template id.
   pub fn internal_method_template_id(
     &self,
     parent_template_id: &'t IdT<'s, 't>,
@@ -138,11 +133,6 @@ where
       .filter(|(id, _)| **id == *sibling_key)
       .flat_map(|(_, ts)| ts.name_to_entry.iter().map(|(n, e)| (*n, *e)))
       .collect();
-    // A Rust-backed type's methods and associated functions live in THIS outer env, added as id-only
-    // entries that synthesize lazily on first call (the citizen-compile loop skips them, so they are
-    // not force-compiled here). Under the feature only; a Vale struct adds nothing here. Costs one
-    // oracle.methods() query (no fn_sig) per imported type. (A Rust type's drop stays a top-level
-    // eager entry: it needs no fn_sig, and its receiver sig is manufactured at import.)
     #[cfg_attr(not(feature = "rust_interop"), allow(unused_mut))]
     let mut all_outer_entries: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> =
       internal_method_entries.into_iter().chain(sibling_entries.into_iter()).collect();
@@ -334,16 +324,9 @@ where
     struct_tt: StructTT<'s, 't>,
     _bound_arguments_source: IBoundArgumentsSource<'s, 't>,
   ) -> SharednessT {
-    // Sharedness is parse-time-known and not template-parametric, so no substitution needed.
     coutputs.lookup_struct(*struct_tt.id, self).sharedness
   }
 
-  /// Each of the citizen's own `where func` bounds, evaluated with its generic runes bound DIRECTLY
-  /// to `substituting_args` (the citizen instance's template args, already in the caller's terms), so
-  /// the produced name + return are already in the caller's terms — no citizen placeholders are ever
-  /// conjured. Anchor-free: it hands back each bound's identity name and return type, keyed by the
-  /// bound's result rune; `import_function_bound` anchors and registers it into a denizen. Derived
-  /// purely from the postparsed `func_bounds` (no compiled inner env); recomputed per call.
   pub fn resolve_citizen_bounds(
     &self,
     coutputs: &mut CompilerOutputs<'s, 't>,
@@ -357,8 +340,6 @@ where
       IRuneS<'s>,
       (&'s FunctionS<'s>, &'t FunctionBoundNameT<'s, 't>, KindT<'s, 't>),
     > = IndexMap::default();
-    // A citizen with no postparsed AHT reachable here — a lambda/anonymous closure struct, or an
-    // un-illuminated Rust citizen — declares no `where func` bounds, so it contributes none.
     let (generic_params, func_bounds): (
       &'s [&'s GenericParameterS<'s>],
       &'s [(RuneUsage<'s>, FunctionS<'s>)],
@@ -367,9 +348,6 @@ where
       Some(ICitizenDenizenS::TopLevelInterface(i)) => (i.generic_params, i.func_bounds),
       None => return out,
     };
-    // The citizen's generic runes bound directly to the use-site args (same positional order the
-    // resolve/instantiation machinery pairs them by). Its outer env is only for evaluate_templex's
-    // primitive Name lookups, never for a citizen placeholder.
     let env = IEnvironmentT::from(coutputs.get_outer_env_for_type(*citizen_template_id));
     let rune_to_substitution_templata: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>> = generic_params
         .iter()

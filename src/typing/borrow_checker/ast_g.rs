@@ -44,7 +44,6 @@ pub enum GroupStep<'s, 't> {
   // No `Union` variant, that just becomes multiple MutEffectPath.
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LocalVariableG<'s, 't, 'g>
 where
@@ -54,7 +53,6 @@ where
   pub tyype: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Copy, Clone, Debug)]
 pub enum ExpressionGE<'s, 't, 'g> {
   LetAndLend(&'g LetAndLendGE<'s, 't, 'g>),
@@ -108,7 +106,6 @@ pub enum ExpressionGE<'s, 't, 'g> {
   Deref(&'g DerefGE<'s, 't, 'g>),
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LetAndLendGE<'s, 't, 'g>
 where
@@ -125,7 +122,6 @@ where
   // VCOORD: _sealed here
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LockWeakGE<'s, 't, 'g>
 where
@@ -140,7 +136,6 @@ where
   pub none_impl_name: IdT<'s, 't>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BorrowToWeakGE<'s, 't, 'g>
 where
@@ -151,7 +146,6 @@ where
   pub result: &'g WeakRefGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LetNormalGE<'s, 't, 'g>
 where
@@ -163,7 +157,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct UnletGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
@@ -171,7 +164,6 @@ pub struct UnletGE<'s, 't, 'g> {
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DiscardGE<'s, 't, 'g>
 where
@@ -182,7 +174,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct IfGE<'s, 't, 'g>
 where
@@ -196,7 +187,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct WhileGE<'s, 't, 'g>
 where
@@ -209,7 +199,6 @@ where
   pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct MutateGE<'s, 't, 'g>
 where
@@ -223,7 +212,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct RestackifyGE<'s, 't, 'g>
 where
@@ -235,7 +223,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ReturnGE<'s, 't, 'g>
 where
@@ -246,14 +233,12 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BreakGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BlockGE<'s, 't, 'g>
 where
@@ -264,7 +249,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConsecutorGE<'s, 't, 'g>
 where
@@ -275,7 +259,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct StaticArrayFromValuesGE<'s, 't, 'g>
 where
@@ -287,7 +270,6 @@ where
   pub array_type: &'g StaticSizedArrayGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ArraySizeGE<'s, 't, 'g>
 where
@@ -298,7 +280,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct IsSameInstanceGE<'s, 't, 'g>
 where
@@ -310,7 +291,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct AsSubtypeGE<'s, 't, 'g>
 where
@@ -327,14 +307,12 @@ where
   pub err_impl_name: IdT<'s, 't>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct VoidLiteralGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantIntGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
@@ -343,7 +321,6 @@ pub struct ConstantIntGE<'s, 't, 'g> {
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantBoolGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
@@ -351,7 +328,6 @@ pub struct ConstantBoolGE<'s, 't, 'g> {
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantStrGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
@@ -360,7 +336,6 @@ pub struct ConstantStrGE<'s, 't, 'g> {
   pub result: &'g ShareRefGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantFloatGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
@@ -368,7 +343,6 @@ pub struct ConstantFloatGE<'s, 't, 'g> {
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LocalLookupGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
@@ -378,7 +352,6 @@ pub struct LocalLookupGE<'s, 't, 'g> {
   pub result: &'g BorrowRefGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ArgLookupGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
@@ -387,7 +360,6 @@ pub struct ArgLookupGE<'s, 't, 'g> {
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct StaticSizedArrayLookupGE<'s, 't, 'g>
 where
@@ -402,7 +374,6 @@ where
   pub result: &'g BorrowRefGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct RuntimeSizedArrayLookupGE<'s, 't, 'g>
 where
@@ -417,7 +388,6 @@ where
   pub result: &'g BorrowRefGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ArrayLengthGE<'s, 't, 'g>
 where
@@ -428,7 +398,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct MemberLookupGE<'s, 't, 'g>
 where
@@ -442,7 +411,6 @@ where
   pub result: &'g BorrowRefGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DerefGE<'s, 't, 'g>
 where
@@ -454,7 +422,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct InterfaceFunctionCallGE<'s, 't, 'g>
 where
@@ -468,8 +435,6 @@ where
   pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
 }
 
-/// Arena-allocated (see @TFITCX)
-/// A method call on placeholder, using the interface we know it implements.
 #[derive(Debug)]
 pub struct BoundFunctionCallGE<'s, 't, 'g>
 where
@@ -484,13 +449,12 @@ where
   pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct GenericParametersInheritance {
   pub num_inherited_generic_parameters: i32,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ExternFunctionCallGE<'s, 't, 'g>
 where
@@ -503,15 +467,12 @@ where
   pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct FunctionCallGE<'s, 't, 'g>
 where
     's: 't,
 {
   pub loct: LocT<'t>,
-  /// The call's source range(s), for diagnostics that point at the call itself (e.g. the borrow
-  /// checker locating a held-register use whose reference is this call's unnamed result).
   pub range: &'t [RangeS<'s>],
   pub callable: &'t PrototypeT<'s, 't>,
   pub args: &'g [ExpressionGE<'s, 't, 'g>],
@@ -520,7 +481,6 @@ where
   pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ReinterpretGE<'s, 't, 'g>
 where
@@ -531,17 +491,14 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct CopyPrimGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
-  /// This load's location, so the borrow checker can name it as a restrict-region access site.
   pub loct: LocT<'t>,
   pub inner: ExpressionGE<'s, 't, 'g>,
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstructGE<'s, 't, 'g>
 where
@@ -553,7 +510,6 @@ where
   pub args: &'g [ExpressionGE<'s, 't, 'g>],
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct NewRuntimeSizedArrayGE<'s, 't, 'g>
 where
@@ -565,7 +521,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct StaticArrayFromCallableGE<'s, 't, 'g>
 where
@@ -578,7 +533,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyStaticSizedArrayIntoFunctionGE<'s, 't, 'g>
 where
@@ -592,7 +546,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyStaticSizedArrayIntoLocalsGE<'s, 't, 'g>
 where
@@ -605,7 +558,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyRuntimeSizedArrayGE<'s, 't, 'g>
 where
@@ -616,7 +568,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct RuntimeSizedArrayCapacityGE<'s, 't, 'g>
 where
@@ -627,7 +578,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct PushRuntimeSizedArrayGE<'s, 't, 'g>
 where
@@ -639,7 +589,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct PopRuntimeSizedArrayGE<'s, 't, 'g>
 where
@@ -650,7 +599,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct InterfaceToInterfaceUpcastGE<'s, 't, 'g>
 where
@@ -662,7 +610,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct UpcastInterfaceGE<'s, 't, 'g>
 where
@@ -675,9 +622,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
-/// An upcast of a placeholder to one of the interfaces that it implements.
-/// The instantiator should make this evaporate.
 #[derive(Debug)]
 pub struct UpcastGenericGE<'s, 't, 'g>
 where
@@ -690,7 +634,6 @@ where
   pub result: KindGT<'s, 't, 'g>,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyGE<'s, 't, 'g>
 where

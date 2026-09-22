@@ -5,8 +5,6 @@ use crate::parse_arena::ParseArena;
 use crate::utils::code_hierarchy::{FileCoordinateMap, PackageCoordinate};
 use crate::utils::fx::HashMap;
 
-/// One row per builtin `.vale` file: (module_name, filename, contents).
-/// Contents are embedded at compile time via `include_str!`.
 pub const ENTRIES: &[(&str, &str, &str)] = &[
   ("arith", "arith.vale", include_str!("resources/arith.vale")),
   ("logic", "logic.vale", include_str!("resources/logic.vale")),
@@ -33,8 +31,6 @@ pub const ENTRIES: &[(&str, &str, &str)] = &[
   //("weak",                           "weak.vale",                           include_str!("resources/weak.vale")),
 ];
 
-/// Build a `FileCoordinateMap` for the one builtin module named `name`, keyed at
-/// `("v", ["builtins", name])`. Used by `Source::builtin_module`.
 pub fn builtin_module_code_map<'a>(
   parse_arena: &ParseArena<'a>,
   keywords: &Keywords<'a>,
@@ -53,19 +49,10 @@ pub fn builtin_module_code_map<'a>(
   result
 }
 
-/// A `Source::Fn` fallback that answers `Some(empty)` for any coord matching
-/// `("v", ["builtins", _])`. Callers place this at the end of a test's CodeSource
-/// vec so `lex_and_explore` can walk transitive `import v.builtins.<X>.*;` chains
-/// even when the test doesn't need the actual content of every module — the empty
-/// hashmap satisfies resolution without providing any exports.
 pub fn empty_v_builtins_stub<'a>(coord: &PackageCoordinate<'a>) -> Option<HashMap<String, String>> {
   if coord.is_builtin() { Some(HashMap::default()) } else { None }
 }
 
-/// Build a single `Source::CodeMap` covering multiple builtin modules — one hashmap
-/// entry per module, all wrapped in one Source. Cheaper at the call site than N
-/// `Source::builtin_module` calls when a test's imports transitively pull in a fixed
-/// cluster (e.g. `panicutils` always drags `panic`+`print`+`str`).
 pub fn builtin_source_bundle<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
@@ -89,9 +76,6 @@ where
   Source::from_code_map(&result)
 }
 
-/// Cluster helper: `panicutils` and its transitive real-content deps (`panic`,
-/// `print`, `str`). Anything that pulls in `panicutils.*` needs the full chain
-/// for compilation — the individual modules are never used independently.
 pub fn builtin_source_for_panicutils<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
@@ -102,8 +86,6 @@ where
   builtin_source_bundle(parse_arena, keywords, &["panicutils", "panic", "print", "str"])
 }
 
-/// Cluster helper: `arith` and `implicit_clone`. Any test loading arith needs
-/// implicit_clone real-content for the `&int → int` borrow-passing semantics.
 pub fn builtin_source_for_arith<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
@@ -114,9 +96,6 @@ where
   builtin_source_bundle(parse_arena, keywords, &["arith", "implicit_clone"])
 }
 
-/// Cluster helper: `arrays` and its transitive real-content deps (`arith`,
-/// `drop`, `implicit_clone`). The array subsystem's various extern decls and
-/// higher-level `Array<E, G>` constructor all live inside `arrays.vale` now.
 pub fn builtin_source_for_arrays<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
@@ -127,9 +106,6 @@ where
   builtin_source_bundle(parse_arena, keywords, &["arrays", "arith", "drop", "implicit_clone"])
 }
 
-/// Cluster helper: `opt` and everything it transitively needs — its own
-/// `func drop` overload requires `drop`+`implicit_clone`, and its `panic("...")`
-/// calls drag in the whole `panicutils` chain.
 pub fn builtin_source_for_opt<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
@@ -144,8 +120,6 @@ where
   )
 }
 
-/// Cluster helper: `weak` and its full chain — `weak.vale`'s single export
-/// `lock<T>(...) Opt<&T>` needs everything the `opt` cluster needs.
 pub fn builtin_source_for_weak<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
@@ -160,9 +134,6 @@ where
   )
 }
 
-/// Cluster helper: `as` and its full chain — `as.vale`'s `Result<...>` return
-/// type drags in `result`, and typing the borrow overloads adds
-/// `logic`+`drop`+`implicit_clone`+`arith` plus the `panicutils` chain.
 pub fn builtin_source_for_as<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
@@ -188,14 +159,6 @@ where
   )
 }
 
-// Modulized is a made up word, it means we're pretending the builtins are in different modules.
-// This lets tests import only certain kinds of builtins.
-// The more basic foundational tests will choose not to import any builtins, so they can test the
-// bare minimum. For example, the most basic test is `func main() int { return 42; }`, and we don't want it
-// to fail just because the builtin-yet-unused `func as<T, X>(x X) Opt<T> { ... }` doesn't want to
-// work right now.
-// This gives us a FileCoordinateMap where each file is its own module, so that we can
-// pull in only files modules a certain test needs.
 pub fn get_embedded_modulized_code_map<'a>(
   parse_arena: &ParseArena<'a>,
   keywords: &Keywords<'a>,

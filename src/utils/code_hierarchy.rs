@@ -48,7 +48,6 @@ impl<'a> PackageCoordinate<'a> {
     self.module == TEST_MODULE && self.packages.is_empty()
   }
 
-  /// A builtin module: `("v", ["builtins", <name>])`.
   pub fn is_builtin(&self) -> bool {
     self.module == "v" && matches!(self.packages.as_slice(), [StrI("builtins"), _])
   }
@@ -108,8 +107,6 @@ const TEST_MODULE: &str = "test";
 #[derive(Clone, Debug)]
 pub struct FileCoordinateMap<'a, Contents> {
   pub package_coord_to_file_coords: HashMap<&'a PackageCoordinate<'a>, Vec<&'a FileCoordinate<'a>>>,
-  // Per @IIIOZ, the typing pass iterates this to seed its environment, so it is an IndexMap:
-  // insertion-ordered iteration keeps the resulting denizen order stable across runs.
   pub file_coord_to_contents: IndexMap<&'a FileCoordinate<'a>, Contents>,
 }
 impl<'a, Contents: Clone> FileCoordinateMap<'a, Contents> {

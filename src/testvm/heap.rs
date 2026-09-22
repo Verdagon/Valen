@@ -38,7 +38,7 @@ use std::io::Write;
 
 
 
-/// Temporary state
+
 pub struct AdapterForExternsV<'a, 'v, 'i, 's>
 where 's: 'i, 'i: 'v, 'v: 'a,
 {
@@ -90,8 +90,6 @@ fn allocation_map_add_impl<'v, 'i, 's>(
     if let KindV::Void(_) = kind {
         assert_eq!(id, STARTING_ID);
     }
-    // A fresh allocation's kind is always bare (`KindV::tyype` never yields a wrap), so both stored
-    // kinds are already stripped; the ownership tag carries borrow/weak/owned.
     let reference = ReferenceV::new(
         kind.tyype(interner),
         kind.tyype(interner),
@@ -104,7 +102,7 @@ fn allocation_map_add_impl<'v, 'i, 's>(
 }
 
 
-/// Temporary state
+
 pub struct AllocationMapV<'v, 'i, 's> {
     pub objects_by_id: HashMap<AllocationIdV<'v, 'i, 's>, AllocationV<'v, 'i, 's>>,
     pub next_id: i32,
@@ -192,7 +190,7 @@ impl<'v, 'i, 's> AllocationMapV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 pub struct HeapV<'v, 'i, 's> {
     pub vivem_dout: &'v mut PrintStream,
     pub vivem_bump: &'v bumpalo::Bump,
@@ -342,18 +340,14 @@ impl<'v, 'i, 's> HeapV<'v, 'i, 's> {
             KindV::StructInstance(si) => si,
             _ => panic!("overwrite_struct_in_place: source_ref not a StructInstance"),
         };
-        // Copy both slices up front so the per-field `set_reference_member` (which rebuilds `old`'s
-        // member slice) can't disturb the references we're iterating over.
         let old_fields: &'v [ReferenceV<'v, 'i, 's>] =
             self.vivem_bump.alloc_slice_copy(si_old.members.get().expect("overwrite_struct_in_place: old has no members"));
         let new_fields: &'v [ReferenceV<'v, 'i, 's>] =
             self.vivem_bump.alloc_slice_copy(si_source.members.get().expect("overwrite_struct_in_place: source has no members"));
-        // P takes the old field refs (each gains a Member(P,k) referrer via new_struct); P is owned.
         let p_ref = self.new_struct(interner, si_old.struct_h, struct_kind, old_fields);
         let old_alloc_id = old_ref.alloc_id();
         for k in 0..old_fields.len() as i32 {
             let member_addr = MemberAddressV { struct_id: old_alloc_id, field_index: k };
-            // Move field k: old ref leaves A_old (now held only by P), new ref enters A_old's slot.
             self.decrement_reference_ref_count(IObjectReferrerV::MemberToObjectReferrer(MemberToObjectReferrerV { member_addr }), old_fields[k as usize]);
             si_old.set_reference_member(self.vivem_bump, k, new_fields[k as usize]);
             self.increment_reference_ref_count(IObjectReferrerV::MemberToObjectReferrer(MemberToObjectReferrerV { member_addr }), new_fields[k as usize]);
@@ -869,17 +863,12 @@ impl<'v, 'i, 's> HeapV<'v, 'i, 's> {
         }
         let expected = RRKindV { hamut: expected_type, _phantom: PhantomData };
         let expected_bare = expected.strip_outer_references().hamut;
-        // VCOORD: revisit this if it survives
-        // Per bare-clone-borrow-move-design.md vivem caveat: for primitive-kind allocations,
-        // ownership flavors may differ between expected and actual (since e.g. a borrow of an Int
-        // and an owned Int both refer to the same primitive AllocationV). Only the kind must match.
         let kind_is_primitive = expected_bare.is_primitive();
         if !kind_is_primitive {
             if actual_reference.ownership != expected.outer_ownership() {
                 panic!("Expected {:?} but was {:?}", expected_type, actual_reference.ownership);
             }
         }
-        // /VCOORD
         if actual_reference.seen_as_kind.hamut != expected_bare {
             panic!("Expected {:?} but was {:?}", expected_bare, actual_reference.seen_as_kind.hamut);
         }
@@ -923,9 +912,6 @@ impl<'v, 'i, 's> HeapV<'v, 'i, 's> {
                 }
             }
             (KindV::StructInstance(struct_instance), KindIT::InterfaceIT(interface_it)) => {
-                // Struct-implements-interface check. Pre-onion the struct carried its own `edges`
-                // (`struct_h.edges.any(|e| e.interface == wanted)`); under the onion the edges live in
-                // HinputsI, keyed interface -> sub-citizen, so we look the pair up there instead.
                 let struct_id = struct_instance.struct_h.instantiated_citizen.id;
                 let implements = program_h
                     .interface_to_sub_citizen_to_edge
@@ -1032,7 +1018,7 @@ impl<'v, 'i, 's> HeapV<'v, 'i, 's> {
                     members: von_members,
                 })
             }
-            KindV::Opaque(_) => panic!("to_von: Opaque — pilot doesn't exercise"),
+            KindV::Opaque(_) => panic!("to_von: Opaque"),
         }
     }
 }

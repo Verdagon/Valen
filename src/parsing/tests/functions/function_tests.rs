@@ -1,4 +1,3 @@
-// cargo test --manifest-path Cargo.toml --lib parsing::tests::functions::function_tests
 
 use crate::cast;
 use crate::interner::StrI;
@@ -227,8 +226,6 @@ fn simple_function_with_identifying_rune() {
 
 #[test]
 fn simple_function_with_unannotated_identifying_rune() {
-  // An unannotated rune carries no explicit type; postparse defaults it to Kind
-  // (post_parser.rs, `None => KindTemplataType`), so `A Kind` has no spelling of its own.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -321,8 +318,6 @@ fn readonly_region() {
 
 #[test]
 fn typed_group_param() {
-  // `<r': Entity>` is a group param `r` typed by its element type `Entity`. The tick marks it a
-  // region/group param (as `<r'>` already does); the `: Entity` bound is stored on the param.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -395,7 +390,6 @@ fn effect_clause_multiple_groups_in_one_clause_is_rejected() {
   assert!(matches!(err, ParseError::MultipleGroupsInEffectClause(_)), "got {:?}", err);
 }
 
-// The same single-group rule holds for `not(mut(...))`, which shares the parenthesized-group parser.
 #[test]
 fn effect_clause_not_mut_multiple_groups_is_rejected() {
   let parse_bump = Bump::new();
@@ -405,8 +399,6 @@ fn effect_clause_not_mut_multiple_groups_is_rejected() {
   assert!(matches!(err, ParseError::MultipleGroupsInEffectClause(_)), "got {:?}", err);
 }
 
-// Two mutated regions are spelled as two separate clauses; this parses to two `Mut` effects (the
-// supported form the rejection above steers toward).
 #[test]
 fn effect_clause_two_separate_mut_clauses_parse() {
   let parse_bump = Bump::new();
@@ -433,7 +425,6 @@ fn effect_clause_two_separate_mut_clauses_parse() {
 
 #[test]
 fn attack_signature_parses() {
-  // The whole `attack` header parses: a typed group param, two `&Entity in r` params, and `mut(r)`.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -552,8 +543,6 @@ fn param() {
   assert_templex_name(pattern.templex.as_ref().unwrap(), "F");
 }
 
-// A `mut` after a param's type is a placeholder for a future per-parameter borrow-checker modifier.
-// The parser accepts it and drops it: the param is exactly `self &Win`, nothing records the `mut`.
 #[test]
 fn param_trailing_mut_is_ignored() {
   let parse_bump = Bump::new();
@@ -597,7 +586,6 @@ fn param_trailing_mut_is_ignored() {
   }
 }
 
-// `mut` is allowed on a generic type and on a non-final param; the comma split is unaffected.
 #[test]
 fn several_params_with_trailing_mut_parse() {
   let parse_bump = Bump::new();
@@ -689,7 +677,6 @@ fn several_params_with_trailing_mut_parse() {
   }
 }
 
-// Only one trailing `mut` is recognized; a second one is still junk after the type.
 #[test]
 fn param_double_trailing_mut_is_rejected() {
   let parse_bump = Bump::new();
@@ -757,8 +744,6 @@ fn func_with_func_bound() {
   }
 }
 
-// A bound prototype's params used to accept any trailing junk and silently drop it, because the
-// tuple parse never checked its element iterators were exhausted. Junk is now a parse error.
 #[test]
 fn func_bound_param_with_trailing_junk_is_rejected() {
   let parse_bump = Bump::new();
@@ -772,8 +757,6 @@ fn func_bound_param_with_trailing_junk_is_rejected() {
   }
 }
 
-// The one thing allowed after a bound param's type is the `mut` placeholder, which is dropped: the
-// bound is exactly `func moo(&T)void`.
 #[test]
 fn func_bound_param_trailing_mut_is_ignored() {
   let parse_bump = Bump::new();
@@ -885,8 +868,6 @@ fn short_self() {
 
 #[test]
 fn function_with_param_destructure() {
-  // The parser accepts a destructuring param `T[a, b]`: one param with type `T` and a
-  // destructure of two named sub-patterns a and b.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -1057,8 +1038,6 @@ fn function_with_ignore_in_param_destructure() {
 
 #[test]
 fn function_with_empty_param_destructure() {
-  // The parser accepts an empty destructuring param `T[]`: one param with type `T` and an
-  // empty destructure.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);

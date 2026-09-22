@@ -1,4 +1,3 @@
-// Run with: cargo test --manifest-path Cargo.toml --lib postparsing::test::post_parser_tests
 
 use crate::cast;
 use crate::collect_only_snode;
@@ -59,7 +58,6 @@ where
 
   let keywords_p = Keywords::new_for_parse(parse_arena);
   let only_file = compile_file(parse_arena, &keywords_p, code).unwrap();
-  // Re-intern FileCoordinate from 'p into 's
   let file_coord_s = scout_arena.intern_file_coordinate(
     scout_arena.intern_package_coordinate(
       scout_arena.intern_str(only_file.file_coord.package_coord.module.as_str()),
@@ -96,7 +94,6 @@ where
 
   let keywords_p = Keywords::new_for_parse(parse_arena);
   let only_file = compile_file(parse_arena, &keywords_p, code).unwrap();
-  // Re-intern FileCoordinate from 'p into 's
   let file_coord_s = scout_arena.intern_file_coordinate(
     scout_arena.intern_package_coordinate(
       scout_arena.intern_str(only_file.file_coord.package_coord.module.as_str()),
@@ -158,8 +155,6 @@ fn test_struct() {
   assert_eq!(imoo.sharedness, SharednessP::Single);
 
   let only_member = expect_1(&imoo.members);
-  // `int` (a bare type-name) lowers to Lookup(int) + Call([]); the member's type is the
-  // Call's result rune, not the raw Lookup rune.
   collect_only_snode!(
     NodeRefS::Struct(imoo),
     NodeRefS::LookupRule(
@@ -178,7 +173,6 @@ fn test_struct() {
   let normal_member = cast!(only_member, IStructMemberS::NormalStructMember);
   assert_eq!(normal_member.name.as_str(), "x");
 
-  // A value-position concrete name lowers to a zero-arg Call of its Name (@TNLTZACZ).
   match normal_member.tyype {
     ITypeST::Call(call) => {
       assert!(call.args.is_empty(), "expected a zero-arg Call; got args {:?}", call.args);
@@ -306,8 +300,6 @@ fn impl_() {
   let program = compile(&scout_arena, &keywords, &parse_arena, "impl IMoo for Moo;");
   let impl_ = expect_1(program.impls);
 
-  // Each of `Moo` / `IMoo` (bare type-names) lowers to Lookup(name) + Call([]); the kind runes
-  // are the Call results, not the raw Lookup runes.
   collect_only_snode!(
     NodeRefS::Impl(impl_),
     NodeRefS::LookupRule(LookupSR {
@@ -333,7 +325,6 @@ fn impl_() {
       if result_rune.rune == impl_.interface_kind_rune.rune && args.is_empty() => Some(())
   );
 
-  // Value-position concrete names lower to zero-arg Calls of their Names (@TNLTZACZ).
   match impl_.sub_citizen_type {
     ITypeST::Call(call) => {
       assert!(call.args.is_empty(), "expected a zero-arg Call; got args {:?}", call.args);
@@ -441,8 +432,6 @@ fn moving_method_call() {
 
 #[test]
 fn function_with_magic_lambda_and_regular_lambda() {
-  // Lambda params get the right ParameterS: a magic-param lambda's 2nd param is a MagicParamName
-  // with a MagicParamRune; a regular lambda's named 2nd param `a` is a CodeVarName with an implicit rune.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -493,8 +482,6 @@ fn function_with_magic_lambda_and_regular_lambda() {
   }
 }
 
-// Each lambda gets its own unique LID within the enclosing top-level function, so two sibling
-// lambdas' declarations never share a LID (today they both restart at empty and collide).
 #[test]
 fn sibling_lambdas_get_distinct_lids() {
   let parse_bump = Bump::new();
@@ -537,10 +524,7 @@ fn sibling_lambdas_get_distinct_lids() {
     other => panic!("expected second lambda param `b`, got {:?}", other),
   };
 
-  assert_ne!(
-    a_lid, b_lid,
-    "sibling lambdas' params share a LID — each lambda's LID space isn't nested within main"
-  );
+  assert_ne!(a_lid, b_lid);
 }
 
 #[test]
@@ -1348,7 +1332,6 @@ fn destruct_expression() {
   );
   let main = program.lookup_function("main");
   let _code_body = cast!(&main.body, IBodyS::CodeBody);
-  // Just ensure scout completed without panicking.
 }
 
 #[test]
@@ -1392,13 +1375,9 @@ fn str_interpolate_expression() {
     compile(&scout_arena, &keywords, &parse_arena, "exported func main() str { return \"\"; }");
   let main = program.lookup_function("main");
   let _code_body = cast!(&main.body, IBodyS::CodeBody);
-  // Just ensure scout completed without panicking.
 }
 #[test]
 fn test_named_param_keeps_its_name_at_postparse() {
-  // A user-named param keeps its real name as `ParameterS.name` (no desugaring): `foo(x int)`
-  // -> CodeVarName("x"). A synthetic DesugaredParamName is only minted for an anonymous or
-  // ignored param, and no body-head LetSE is synthesized when there's no destructure.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1418,9 +1397,6 @@ use crate::postparsing::rules::types::{BorrowRefST, CallST, EffectS, GroupS, ITy
 
 #[test]
 fn test_param_no_outer_wrap_routing() {
-  // A param routes its rules to its own slices, not the shared FunctionS.rules. For `x int`
-  // (no wraps): type_outer_ref_rules is empty, value_type_rules is [Lookup(int)], and the int
-  // Lookup didn't leak into FunctionS.rules (just [Lookup(void)] for the void return).
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1428,8 +1404,6 @@ fn test_param_no_outer_wrap_routing() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let program = compile(&scout_arena, &keywords, &parse_arena, "exported func foo(x int) void { }");
   let foo = program.lookup_function("foo");
-  // Per @TNLTZACZ `int` lowers to Lookup(int) + Call([]), as does the explicit `void` return, so
-  // value_type_rune is the Call's result rune.
   match (foo.params, foo.header_rules) {
     ([ParameterS {
         type_outer_ref_rules: [],
@@ -1449,12 +1423,6 @@ fn test_param_no_outer_wrap_routing() {
 
 #[test]
 fn test_template_part_in_call_stays_a_template() {
-  // Ensures an applied generic takes its template straight from the name's Lookup.
-  //
-  // `Opt` in `Opt<int>` must not get the zero-arg Call that a bare name gets, per @TNLTZACZ.
-  // Applying a template to no arguments collapses it to its own return type, so the outer
-  // application would be handed a finished kind with nothing left to apply `int` to. The argument
-  // `int` does take the full bare-name lowering — only the template position skips it.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1484,8 +1452,6 @@ fn test_template_part_in_call_stays_a_template() {
 
 #[test]
 fn test_param_single_ref_wrap_routing() {
-  // One param `x &int`: value_type_rules is [Lookup(int)] and type_outer_ref_rules is exactly one
-  // BorrowRef whose result is full_type_rune and whose inner is value_type_rune (so full != value).
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1519,8 +1485,6 @@ fn test_param_single_ref_wrap_routing() {
 
 #[test]
 fn test_param_held_ref_wrap_routing() {
-  // One param `x held int`: value_type_rules is [Lookup(int)] and type_outer_ref_rules is exactly
-  // one BorrowRef with region Held, whose result is full_type_rune and inner is value_type_rune.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1563,8 +1527,6 @@ exported func foo(x held int) int { return 0; }
 
 #[test]
 fn test_param_own_ref_wrap_routing() {
-  // One param `x own int`: value_type_rules is [Lookup(int)] and type_outer_ref_rules is exactly
-  // one OwnRef whose result is full_type_rune and inner is value_type_rune.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1604,8 +1566,6 @@ exported func foo(x own int) int { return 0; }
 
 #[test]
 fn test_param_nested_ref_wrap_routing() {
-  // One param `x &&int`: type_outer_ref_rules is two chained BorrowRefs. It's built during a
-  // post-order recursion, so index 0 is the innermost wrap and index 1 the outer.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1631,9 +1591,6 @@ fn test_param_nested_ref_wrap_routing() {
 
 #[test]
 fn test_function_rules_no_longer_contains_param_rules() {
-  // Param type rules live on their params, not on FunctionS.rules: for `foo(x int, y bool) void`,
-  // FunctionS.rules is exactly the void return type's rules — Lookup(void) + Call([]), per
-  // @TNLTZACZ — with no int or bool rules leaking in.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1653,8 +1610,6 @@ fn test_function_rules_no_longer_contains_param_rules() {
 
 #[test]
 fn test_function_where_implements_becomes_an_impl_bound() {
-  // `where implements(T, IShip)` is a declared bound, not a rule: it never deduces anything, so it
-  // is recorded on the denizen for the post-solve pass rather than pushed into FunctionS.rules.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1669,8 +1624,6 @@ fn test_function_where_implements_becomes_an_impl_bound() {
   let launch = program.lookup_function("launch");
   let bound = expect_1(launch.impl_bounds);
 
-  // The sub side is the declared generic param. The super side is a bare name, so it resolves to
-  // a fresh rune that a Lookup rule constrains — the bound points at that rune, not at the name.
   match bound {
     ImplBoundS {
       sub_rune: RuneUsage { rune: IRuneS::CodeRune(CodeRuneS { name: StrI("T"), .. }), .. },
@@ -1689,10 +1642,6 @@ fn test_function_where_implements_becomes_an_impl_bound() {
 
 #[test]
 fn test_function_where_func_bound_carries_an_itypest() {
-  // A `where func foo(&T)bool` bound records its parameter and return types as a read-only
-  // ITypeST on the Resolve rule, per plan-phased-calls §P. A later phase reads the rune mentions in
-  // there, so the tree must know that `&T`'s inner is the generic `T` (a Rune) while the concrete
-  // return `bool` is a Name.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1714,7 +1663,6 @@ fn test_function_where_func_bound_carries_an_itypest() {
     })
     .expect("expected a Resolve rule from `where func foo(&T)bool`");
 
-  // params_types is `[&T]`: one BorrowRef whose inner is the generic rune `T`.
   match expect_1(resolve.params_types) {
     ITypeST::BorrowRef(br) => match br.inner {
       ITypeST::Rune(ru) => match ru.rune.rune {
@@ -1726,8 +1674,6 @@ fn test_function_where_func_bound_carries_an_itypest() {
     other => panic!("expected params_types to be [BorrowRef(Rune(T))]; got {:?}", other),
   }
 
-  // return_type is the concrete `bool`: a value-position name, so a zero-arg Call of its Name (rather
-  // than a Rune) per @TNLTZACZ.
   match resolve.return_type {
     ITypeST::Call(call) => {
       assert!(call.args.is_empty(), "expected a zero-arg Call; got args {:?}", call.args);
@@ -1743,8 +1689,6 @@ fn test_function_where_func_bound_carries_an_itypest() {
   }
 }
 
-// A `where func foo(&T)bool` bound is also captured as a synthesized abstract-function `FunctionS`
-// in `func_bounds` (in addition to its rules) — a bound is an abstract-function declaration.
 #[test]
 fn test_function_where_func_bound_becomes_a_func_bound() {
   let parse_bump = Bump::new();
@@ -1778,7 +1722,6 @@ fn test_function_where_func_bound_becomes_a_func_bound() {
   }
 }
 
-// An anonymous `where func(&F, &T)void` bound is captured too, under the `__call` spelling.
 #[test]
 fn test_function_where_anonymous_func_bound_becomes_a_func_bound() {
   let parse_bump = Bump::new();
@@ -1816,7 +1759,6 @@ fn test_function_where_anonymous_func_bound_becomes_a_func_bound() {
   }
 }
 
-// A struct's `where func drop(T)void` bound lands in the struct's `func_bounds`.
 #[test]
 fn test_struct_where_func_bound_becomes_a_func_bound() {
   let parse_bump = Bump::new();
@@ -1849,7 +1791,6 @@ struct MyStruct<T> where func drop(T)void {
   }
 }
 
-// An interface's `where func drop(T)void` bound lands in the interface's `func_bounds`.
 #[test]
 fn test_interface_where_func_bound_becomes_a_func_bound() {
   let parse_bump = Bump::new();
@@ -1880,10 +1821,6 @@ fn test_interface_where_func_bound_becomes_a_func_bound() {
 
 #[test]
 fn test_generic_default_carries_an_itypest() {
-  // A generic parameter default records its written type as a read-only ITypeST on the
-  // GenericParameterDefaultS, from which its rules are derived (§P). Only Int/Region/RefList runes
-  // can carry a default (parse_rune_type accepts no Kind annotation), so this uses an Int rune with
-  // an Int-literal default; its ITypeST is an Int node.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1901,9 +1838,6 @@ fn test_generic_default_carries_an_itypest() {
 
 #[test]
 fn test_export_carries_an_itypest() {
-  // An `export Moo as Bork` records the exported type as a read-only ITypeST on the ExportAsS, from
-  // which its rules are derived (§P). `Moo` is a value-position concrete type-name, so a zero-arg Call
-  // of its Name (@TNLTZACZ).
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1928,9 +1862,6 @@ fn test_export_carries_an_itypest() {
 
 #[test]
 fn test_variadic_member_carries_an_itypest() {
-  // A variadic struct member `_ ..T` records its written type as a read-only ITypeST on the
-  // VariadicStructMemberS, from which its rules are derived (§P). `T` is the struct's generic, so a
-  // Rune rather than a Name.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1952,8 +1883,6 @@ fn test_variadic_member_carries_an_itypest() {
 
 #[test]
 fn test_param_group_resolves_to_rune() {
-  // A param `x &int in g`, where `g` is a declared group param `<g'>`, carries on its ITypeST a
-  // BorrowRef whose region is a Group naming the rune g.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1987,8 +1916,6 @@ exported func foo<g'>(x &int in g) int { return 0; }
 
 #[test]
 fn test_param_group_resolves_to_local() {
-  // Without a declaring `<g'>`, the group name in `x &int in g` is an undeclared identifier, so it
-  // resolves to a Local, not a Rune.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2043,8 +1970,6 @@ exported func foo<g'>() int mut(g) { return 0; }
 
 #[test]
 fn test_attack_signature_scouts() {
-  // The whole `attack` signature scouts coherently: both `&Entity in r` params carry the group r on
-  // their ITypeST, both resolving to the same declared rune, and `mut(r)` scouts to the effect.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2118,7 +2043,6 @@ fn test_struct_where_implements_becomes_an_impl_bound() {
     } => {}
     other => panic!("expected implements(T, <lookup>) on the struct; got {:?}", other),
   }
-  // A struct's where-clause rules land in header_rules, so that is where IShip's lookup goes.
   assert_rune_resolves_to(fleet.header_rules, bound.super_rune.rune, "IShip");
   assert_rune_absent_from_rules(fleet.header_rules, bound.result_rune.rune);
 }
@@ -2185,9 +2109,6 @@ impl<T> IFleet for Fleet<T> where implements(T, IShip);"#,
 
 #[test]
 fn test_bare_param_keeps_name_and_gets_no_body_let() {
-  // A body-head LetSE is synthesized only for a param that destructures. A bare param keeps its
-  // real name and needs no let: the name IS the binding. `let [a, b] = <param>` is emitted for
-  // `Pair[a, b]`, but nothing is emitted for `x int`.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2195,13 +2116,10 @@ fn test_bare_param_keeps_name_and_gets_no_body_let() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let program = compile(&scout_arena, &keywords, &parse_arena, "exported func foo(x int) void { }");
   let foo = program.lookup_function("foo");
-  // The bare param keeps its real name; no synthetic DesugaredParamName.
   match foo.params {
     [ParameterS { name: IVarDeclarationNameS::CodeVarName(CodeVarNameS { imprecise_name: CodeNameS { name: StrI("x"), .. }, .. }), .. }] => {}
     other => panic!("expected one param named x, got {:?}", other),
   }
-  // A bare param produces no body-head let, so the empty body is left untouched: its head
-  // is the plain Void of `{ }`, not a ConsecutorSE prepending a param LetSE.
   match expect_code_body_expr(&foo.body) {
     IExpressionSE::Void(_) => {}
     other => panic!("expected an untouched Void body head (no param let), got {:?}", other),
@@ -2251,9 +2169,6 @@ fn test_destructure_param_desugars_to_let_with_destructure() {
 
 #[test]
 fn test_named_destructure_param_keeps_name_and_gets_let() {
-  // A named destructuring param `p Pair[a, b]` keeps its real name `p` on the ParameterS AND
-  // gets a body-head `let [a, b] = load(p)`, so p, a, and b are all available. The let's top
-  // pattern is nameless (the name is the param, not re-bound in the let).
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2295,7 +2210,6 @@ fn test_named_destructure_param_keeps_name_and_gets_let() {
   }
 }
 
-// Ensures the synthesized LetSE preserves destructure edge cases: nesting, ignore, empty.
 
 #[test]
 fn test_nested_destructure_preserved() {
@@ -2348,8 +2262,6 @@ fn test_nested_destructure_preserved() {
 
 #[test]
 fn test_destructure_ignore() {
-  // An ignore slot in a destructure gets no name capture: `Pair[_, b]` desugars to `let [_, b]`
-  // where the `_` slot has name None (destructure translation drops IgnoredLocalNameDeclaration).
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2384,8 +2296,6 @@ fn test_destructure_ignore() {
 
 #[test]
 fn test_empty_destructure() {
-  // An empty destructure is preserved: `int[]` desugars to `let [] = load(<param>)`, a nameless
-  // top pattern with an empty destructure.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2407,8 +2317,6 @@ fn test_empty_destructure() {
 
 #[test]
 fn test_extern_param_destructure_rejected() {
-  // An extern/abstract/generated body has no block to prepend a LetSE into, so a param destructure
-  // is rejected at postparse with ParamDestructureRequiresBody.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2424,8 +2332,6 @@ fn test_extern_param_destructure_rejected() {
 
 #[test]
 fn test_extern_bare_param_ok() {
-  // An extern func with a bare param (no destructure) postparses fine: the param keeps its real
-  // name and the body stays an ExternBody.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2469,7 +2375,6 @@ fn exported_function_keeps_export_and_is_user_function() {
   let program =
     compile(&scout_arena, &keywords, &parse_arena, "exported func main() int { return 3; }");
   let main = program.lookup_function("main");
-  // The source-written Export attribute survives, and UserFunction is stamped alongside it.
   assert!(
     main.attributes.iter().any(|a| matches!(a, IFunctionAttributeS::Export(_))),
     "expected the source-written Export attribute to survive, got {:?}",
@@ -2484,9 +2389,6 @@ fn exported_function_keeps_export_and_is_user_function() {
 
 #[test]
 fn test_return_position_group_captured() {
-  // `func foo<g'>(a &int in g) &int in g`: the written return type is captured as a group-annotated
-  // `ITypeST` on `FunctionS.maybe_return_type`, its borrow carrying group `g` — where the borrow
-  // checker reads a returned reference's group. A group on a return used to panic the scout.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2509,8 +2411,6 @@ fn test_return_position_group_captured() {
 
 #[test]
 fn test_return_element_group_captured() {
-  // `... &int in g[]`: the return's group is an element path (`Elements` over `g`), captured on
-  // `maybe_return_type` — so a returned element reference's child group is visible to the checker.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2536,8 +2436,6 @@ fn test_return_element_group_captured() {
 
 #[test]
 fn test_return_descendant_group_captured() {
-  // `... &int in g...`: the return's group is an ellipsis path (`Ellipsis` over `g`), captured on
-  // `maybe_return_type` — a returned reference pointing somewhere within g's territory.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2563,10 +2461,6 @@ fn test_return_descendant_group_captured() {
 
 #[test]
 fn test_omitted_return_on_named_function_is_written_void() {
-  // A named function with no written return type returns `void`, and the scout writes that down:
-  // `func foo() { }` gets `maybe_return_type` spelled exactly as a written `void` is — the zero-arg
-  // Call of the `void` name — so every non-lambda carries a written return type the borrow checker
-  // can read. Only a lambda may leave it unwritten.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2586,8 +2480,6 @@ fn test_omitted_return_on_named_function_is_written_void() {
 
 #[test]
 fn test_omitted_return_on_generic_named_function_is_written_void() {
-  // The same for a generic helper with borrow parameters — the shape the borrow-checker suite leans
-  // on (`func use2<T>(a &T, b int) { }`): its return is written as `void` too.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -2607,7 +2499,6 @@ fn test_omitted_return_on_generic_named_function_is_written_void() {
 
 #[test]
 fn test_effect_ellipsis_scouts_to_mut() {
-  // `mut(g...)` scouts its effect clause onto FunctionS.effects as a `Mut` over an `Ellipsis` group.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);

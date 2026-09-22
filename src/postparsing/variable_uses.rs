@@ -45,8 +45,6 @@ impl<'s> VariableDeclarations<'s> {
           _ => None,
         })
       }
-      // A `self.x` reference resolves to the constructing member the Let-pattern already declared,
-      // by spelling (members are unique by spelling within a constructor).
       IImpreciseNameS::ConstructingMemberImpreciseName(needle_name) => {
         self.vars.iter().find_map(|decl| match &decl.name {
           IVarDeclarationNameS::ConstructingMemberName(haystack)

@@ -1,4 +1,3 @@
-// Run with: cargo test --manifest-path Cargo.toml --lib parsing::tests::patterns::destructure_parser_tests
 
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;

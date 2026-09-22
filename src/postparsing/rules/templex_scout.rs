@@ -1,6 +1,3 @@
-// Per @DSAUIMZ, all borrow_val() calls in this file borrow from a stack-local
-// LocationInDenizenBuilder instead of arena-allocating. The slice is promoted
-// to permanent arena storage only inside intern_rune on a miss.
 
 use crate::interner::StrI;
 use crate::keywords::Keywords;
@@ -91,12 +88,6 @@ fn add_lookup_rule<'s>(
   rune_s
 }
 
-// VCOORD: revisit this
-// Emit a zero-arg template application: mint a fresh result rune, push a Call of `template_rune`
-// over no args, and return the result rune. This is the bare-name lowering of @TNLTZACZ.
-// The ITemplexPT::Call arm builds its own Call instead of calling this: it mints its result rune
-// *before* translating the template and args, and that ordering feeds the rune's
-// LocationInDenizen path, so sharing this helper would change every applied template's rune.
 fn add_zero_arg_call_rule<'s>(
   scout_arena: &ScoutArena<'s>,
   lidb: &mut LocationInDenizenBuilder,
@@ -104,6 +95,8 @@ fn add_zero_arg_call_rule<'s>(
   range_s: RangeS<'s>,
   template_rune: RuneUsage<'s>,
 ) -> RuneUsage<'s> {
+  // VCOORD: revisit this whole zero-call thing
+  
   let mut child_lidb = lidb.child();
   let result_rune_s = RuneUsage {
     range: range_s.clone(),
@@ -136,10 +129,6 @@ pub fn translate_value_templex<'s, 'p>(
   }
 }
 
-// Each of these builds one reference layer: mint a fresh result rune, push the layer's rule
-// into `builder`, return the result rune. The caller has already translated the inner type
-// (and, for a borrow, the region) into runes. Both the normal walk and the signature-position
-// split use these. They differ only in which builder they hand over.
 
 fn translate_borrow_ref_templex<'s>(
   scout_arena: &ScoutArena<'s>,
@@ -200,16 +189,6 @@ fn translate_own_ref_templex<'s>(
   result_rune
 }
 
-// Translates a type expression into rules and returns its rune. Every rule goes into
-// `rule_builder`. To split the outer reference wrapping (&/weak) from the named
-// type it wraps (as a function parameter needs), call translate_signature_templex instead.
-/// Translates the template half of an application — the `Opt` of `Opt<int>`.
-///
-/// A name here yields the `Lookup` alone, never the bare-name lowering that @TNLTZACZ describes.
-/// That lowering applies the template to no arguments, which collapses it to its own return type;
-/// do it here and the outer application receives a finished kind, with its arguments left nothing
-/// to apply to. Every other templex already yields the right rune — a rune name resolves to itself
-/// or to a parent-env lookup, and neither applies anything.
 fn translate_template_position_templex<'s, 'p>(
   scout_arena: &ScoutArena<'s>,
   keywords: &Keywords<'s>,
@@ -242,16 +221,6 @@ fn translate_template_position_templex<'s, 'p>(
   translate_templex(scout_arena, keywords, env, lidb, rule_builder, context_region, templex)
 }
 
-/// Builds the read-only ITypeST mirror of a written type, alongside the rules translate_templex
-/// emits. Per plan-phased-calls §P, later phases read this tree to find each rune mention: a bound
-/// like `where exists drop(D)void` searches the *value* D resolves to rather than the parameter
-/// type, so it needs the tree to know that `D` is a rune.
-///
-/// NameOrRune splits into Name (a concrete type like `int`) or Rune (a declared generic like `D`).
-/// Ref wraps nest. This mirrors the rules' lowering (@TNLTZACZ): a value-position bare name lowers to
-/// a zero-arg `Call` of its `Name`, so evaluating/substituting it yields a general `ITemplataT` (a
-/// citizen gets instantiated), matching what the rules produce. Only a `Call`'s `template` child stays
-/// a bare `Name` (template position), via `translate_templex_template_position_into_type_st`.
 pub fn translate_templex_into_type_st<'s, 'p>(
   scout_arena: &ScoutArena<'s>,
   env: IEnvironmentS<'s>,
@@ -276,13 +245,10 @@ pub fn translate_templex_into_type_st<'s, 'p>(
       scout_arena.alloc(StringST { range: range_s, str: scout_arena.intern_str(str.as_str()) }),
     ),
 
-    // A bare name, e.g. `int` (a concrete type) or `D` (a declared generic). The env decides which.
     ITemplexPT::NameOrRune(NameOrRunePT { name: name_or_rune, .. }) => {
       let name_str = scout_arena.intern_str(name_or_rune.str().as_str());
       match translate_name(scout_arena, &env, range_s, name_str) {
         rune @ ITypeST::Rune(_) => rune,
-        // A value-position concrete name lowers to a zero-arg Call of its Name (@TNLTZACZ), so
-        // evaluating it instantiates the citizen rather than yielding an un-applied template.
         name => ITypeST::Call(scout_arena.alloc(CallST {
           range: range_s,
           template: scout_arena.alloc(name),
@@ -379,7 +345,6 @@ pub fn translate_templex_into_type_st<'s, 'p>(
       ITypeST::RuntimeSizedArray(scout_arena.alloc(RuntimeSizedArrayST { range: range_s, element }))
     }
 
-    // translate_templex itself does not lower these yet, so the ITypeST mirror does not either.
     ITemplexPT::Function(_) => panic!("POSTPARSER_TYPE_ST_FUNCTION_NOT_YET_IMPLEMENTED"),
     ITemplexPT::Func(_) => panic!("POSTPARSER_TYPE_ST_FUNC_NOT_YET_IMPLEMENTED"),
     ITemplexPT::RegionRune(_) => panic!("POSTPARSER_TYPE_ST_REGION_RUNE_IS_NOT_A_TYPE"),
@@ -387,7 +352,6 @@ pub fn translate_templex_into_type_st<'s, 'p>(
   }
 }
 
-/// Resolves a bare `NameOrRune` to a declared `Rune` or a value `Name`.
 fn translate_name<'s>(
   scout_arena: &ScoutArena<'s>,
   env: &IEnvironmentS<'s>,
@@ -412,17 +376,6 @@ fn translate_name<'s>(
   }
 }
 
-/// The inverse of `translate_templex_into_type_st`: walks a read-only ITypeST and emits the same
-/// rules `translate_templex` would for the equivalent source, returning the value rune. This is the
-/// plan-phased-calls Post-cleanup direction, where rules are derived from the ITypeST rather than
-/// produced alongside it, so a caller can hold one tree as the single source of truth and get its
-/// rules on demand.
-///
-/// It reuses translate_templex's own rule helpers, so the emitted rules match it arm-for-arm. The
-/// minted structural runes are fresh (their identity follows the lidb path, not the source), so the
-/// rules are structurally equivalent to translate_templex's rather than rune-for-rune identical.
-/// Bare names split by position per @TNLTZACZ: a value-position name lowers to Lookup plus a zero-arg
-/// Call, a template-position name (the template of a Call) to the Lookup alone.
 pub fn translate_type_st_into_rune<'s>(
   scout_arena: &ScoutArena<'s>,
   keywords: &Keywords<'s>,
@@ -477,7 +430,6 @@ pub fn translate_type_st_into_rune<'s>(
       if env.local_declared_runes().contains(&r.rune.rune) {
         RuneUsage { range: range_s, rune: r.rune.rune }
       } else {
-        // From a parent env, e.g. a lambda's `__call` mentioning its parent's `T`.
         let mut child_lidb = lidb.child();
         add_rune_parent_env_lookup_rule(
           scout_arena,
@@ -490,8 +442,6 @@ pub fn translate_type_st_into_rune<'s>(
     }
 
     ITypeST::Name(n) => {
-      // A value-position bare name like `int`. Per @TNLTZACZ it is a zero-arg application: the
-      // name's Lookup, then a Call([]) whose result is the value rune.
       let mut child_lidb = lidb.child();
       let template_rune = add_lookup_rule(
         scout_arena,
@@ -591,7 +541,6 @@ pub fn translate_type_st_into_rune<'s>(
         name: keywords.tuple_human_name[tuple.elements.len()],
       }));
       if tuple.elements.is_empty() {
-        // Zero-arg tuple `()`: lowers like any bare type-name, per @TNLTZACZ.
         let mut child_lidb = lidb.child();
         let template_rune_s = RuneUsage {
           range: range_s,
@@ -680,15 +629,11 @@ pub fn translate_type_st_into_rune<'s>(
       result_rune_s
     }
 
-    // translate_templex itself does not lower these, so its ITypeST twin does not either.
     ITypeST::Pack(_) => panic!("POSTPARSER_TYPE_ST_INTO_RUNE_PACK_NOT_YET_IMPLEMENTED"),
     ITypeST::Function(_) => panic!("POSTPARSER_TYPE_ST_INTO_RUNE_FUNCTION_NOT_YET_IMPLEMENTED"),
   }
 }
 
-// The template half of an application yields the name's Lookup alone, never the value-position
-// zero-arg Call (@TNLTZACZ). The tree encodes template position structurally: only a CallST's
-// `template` reaches here. Everything but a bare Name lowers normally.
 fn translate_type_st_template_position_into_rune<'s>(
   scout_arena: &ScoutArena<'s>,
   keywords: &Keywords<'s>,
@@ -721,15 +666,6 @@ fn translate_type_st_template_position_into_rune<'s>(
   }
 }
 
-// The one way to lower an ITypeST for a slot that needs the @PFVSZ split (params, members): returns the
-// full-type and value-type runes plus the outer ref-wrap rules and the value-type rules, separated.
-// Callers needing the split (params) use both lists; callers wanting a single type concat them and take
-// full_rune. The ITypeST twin of translate_signature_templex.
-//
-// The outer function owns both lists. The inner value translator, translate_type_st_into_rune, only
-// ever sees value_rules; it never touches outer_ref_rules. A wrap-less type produces an empty
-// outer_ref_rules with full_rune == value_rune, so it lowers byte-identically to a plain
-// translate_type_st_into_rune call.
 pub fn translate_signature_type_st<'s>(
   scout_arena: &ScoutArena<'s>,
   keywords: &Keywords<'s>,
@@ -753,11 +689,6 @@ pub fn translate_signature_type_st<'s>(
   (full_rune, value_rune, outer_ref_rules, value_rules)
 }
 
-// The recursive outer-wrap peeler. Each ref layer recurses to peel the next, then emits its wrap rule
-// into outer_ref_builder (and its region into value_builder, matching the flat core). The value root
-// found at the bottom goes through translate_type_st_into_rune into value_builder — the only place the
-// inner value translator runs, and it only ever sees value_builder. Build order is forced: a wrap needs
-// its inner rune, so the value (the innermost rune) is built first, then the wraps outward.
 fn split_type_st_into<'s>(
   scout_arena: &ScoutArena<'s>,
   keywords: &Keywords<'s>,
@@ -828,8 +759,6 @@ fn split_type_st_into<'s>(
         translate_own_ref_templex(scout_arena, lidb, outer_ref_builder, range_s, inner_full);
       (full, value)
     }
-    // The value root, past the outer wraps: translate it flat into the value list (nested wraps, e.g.
-    // the `&` inside `Opt<&Spaceship>`, correctly stay in value position). full == value here.
     _ => {
       let value = translate_type_st_into_rune(
         scout_arena,
@@ -845,11 +774,6 @@ fn split_type_st_into<'s>(
   }
 }
 
-/// Lowers a parse-side group expression (`GroupP`) into the symbolic scout-side `GroupS`. A bare
-/// group name resolves to `GroupS::Rune` when it is a declared group/region rune, else
-/// `GroupS::Local`, using the same name-vs-rune test the NameOrRune type arm uses. `x.items` becomes
-/// a `Member` step and `x.items[]` an `Elements` step, recursing on the base. Reused by borrow
-/// regions and effect clauses. Union group expressions are deferred.
 fn translate_group_p_into_group_s<'s, 'p>(
   scout_arena: &ScoutArena<'s>,
   env: &IEnvironmentS<'s>,
@@ -887,9 +811,6 @@ fn translate_group_p_into_group_s<'s, 'p>(
   }
 }
 
-/// Lowers a function's parse-side effect clauses (`EffectP`) into the symbolic scout-side `EffectS`,
-/// resolving each group via `translate_group_p_into_group_s`. These land (borrowed from `'s`) in the
-/// per-`FunctionT` side table later; the durable `FunctionHeaderT` never carries them.
 pub(crate) fn translate_effects_p_into_effects_s<'s, 'p>(
   scout_arena: &ScoutArena<'s>,
   env: &IEnvironmentS<'s>,
@@ -908,9 +829,6 @@ pub(crate) fn translate_effects_p_into_effects_s<'s, 'p>(
     .collect()
 }
 
-// Lowers a borrow's region (the ITypeST RegionS) into the rule-side RegionSR, resolving a named
-// region rune the way a value rune resolves: local runes pass straight through, a parent-env rune
-// gets a RuneParentEnvLookup rule.
 fn region_s_into_region_sr<'s>(
   scout_arena: &ScoutArena<'s>,
   env: IEnvironmentS<'s>,
@@ -925,10 +843,6 @@ fn region_s_into_region_sr<'s>(
   }
 }
 
-/// Rewrites every rune an ITypeST mentions through `func`, returning a fresh tree. This is the
-/// ITypeST twin of the rune-remapping the anonymous-interface macro does over rules: when that macro
-/// renames a denizen's runes, the ITypeST it carries must be renamed the same way, or its rune
-/// mentions go stale against the remapped rules. Leaves that name no rune pass through unchanged.
 pub fn map_runes_in_type_st<'s, F>(
   scout_arena: &ScoutArena<'s>,
   func: &F,
@@ -1012,15 +926,10 @@ where
       )
     }
 
-    // The builder never produces a Function node, so its remap is unneeded until it does.
     ITypeST::Function(_) => panic!("POSTPARSER_MAP_RUNES_IN_TYPE_ST_FUNCTION_NOT_YET_IMPLEMENTED"),
   }
 }
 
-// Lowers a `func NAME(TYPES)RET` templex — a where-clause function bound — into its rule stream
-// (CallSiteFunc/DefinitionFunc/Resolve, unchanged from before). When `maybe_func_bounds` is Some
-// (only the top-level where-clause path passes it; a nested func-typed param passes None), it also
-// captures the bound as a synthesized abstract-function `FunctionS`.
 pub fn translate_func_templex<'s, 'p>(
   scout_arena: &ScoutArena<'s>,
   keywords: &Keywords<'s>,
@@ -1042,8 +951,6 @@ pub fn translate_func_templex<'s, 'p>(
   }
   let return_type = translate_templex_into_type_st(scout_arena, env.clone(), func.return_type);
 
-  // Retain each param's @PFVSZ rune split + type (all Copy) so the synthesized bound `FunctionS` can
-  // build a `ParameterS` from the same data; the rule stream produced below is unchanged.
   let mut retained_params: Vec<(
     RuneUsage<'s>,
     RuneUsage<'s>,
@@ -1088,8 +995,6 @@ pub fn translate_func_templex<'s, 'p>(
     context_region.clone(),
     &return_type,
   );
-  // The return-type rules become the synthesized bound's own header_rules (param-type rules live on
-  // its ParameterS, per @PFVSZ). Copy them out before they are moved into the outer rule stream.
   let mut bound_header_rules_vec: Vec<IRulexSR<'s>> = Vec::new();
   bound_header_rules_vec.extend(rt_value_vec.iter().copied());
   bound_header_rules_vec.extend(rt_outer_vec.iter().copied());
@@ -1129,9 +1034,6 @@ pub fn translate_func_templex<'s, 'p>(
     return_type,
   }));
 
-  // A function bound is an abstract-function declaration; when collecting bounds, capture one.
-  // Done last, so the implicit-rune LIDs consumed by the rules above are unchanged. Nameless bound
-  // params get a synthetic DesugaredParamName; an anonymous bound flows through as `__call`.
   if let Some(func_bounds) = maybe_func_bounds {
     let params_vec: Vec<ParameterS<'s>> = retained_params
       .iter()
@@ -1275,8 +1177,6 @@ pub fn translate_templex<'s, 'p>(
             )
           }
         } else {
-          // e.g. "int", or a citizen like "Moo". Per @TNLTZACZ, a bare type-name is a zero-arg
-          // application: the name's Lookup, then a Call([]) whose result is the rune we return.
           let name = scout_arena.intern_imprecise_name(CodeName(CodeNameValS {
             name: scout_arena.intern_str(name_or_rune.str().as_str()),
           }));
@@ -1309,10 +1209,6 @@ pub fn translate_templex<'s, 'p>(
         let region = match borrow_ref.region {
           RegionP::Unspecified => RegionSR::Unspecified,
           RegionP::Held => RegionSR::Held,
-          // The rules/solver side carries no group (`RegionSR` is `Unspecified`/`Held`/`Rune` only);
-          // the borrow checker reads a written `in g` off the `ITypeST`, not off the rules. So a group
-          // annotation here becomes `Unspecified` for the solve, exactly as the `ITypeST`→`RegionSR`
-          // conversion does elsewhere in this file.
           RegionP::Group(_group_p) => RegionSR::Unspecified,
         };
         translate_borrow_ref_templex(scout_arena, lidb, rule_builder, range_s, inner_rune, region)
@@ -1449,7 +1345,6 @@ pub fn translate_templex<'s, 'p>(
           name: keywords.tuple_human_name[tuple.elements.len()],
         }));
         if tuple.elements.is_empty() {
-          // Zero-arg tuple `()`: lowers like any bare type-name, per @TNLTZACZ.
           let mut child_lidb = lidb.child();
           let template_rune_s = RuneUsage {
             range: range_s.clone(),

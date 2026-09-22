@@ -322,7 +322,6 @@ fn test_single_parameter_function() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: imm → share (post-kind-mutability-cut keyword)
   let code = r"
 struct Functor1<F Prot = func(P1)R> share { }
 
@@ -616,11 +615,6 @@ fn humanize_errors() {
   let implicit_rune = scout_arena
     .intern_rune(IRuneValS::ImplicitRune(ImplicitRuneValS::new(lid_builder.borrow_val())));
 
-  // A composite-type rule carrying three rune usages at chosen source columns, so the humanizer
-  // draws a caret for each: result rune `I` at col 6, and members `A` at col 11 and the implicit
-  // rune (spanning the bracketed `[that has An error]`) at cols 33-52. The Coord-era
-  // CoordComponents/KindComponents rules this replaced are gone under onion typing; any rule whose
-  // rune_usages() land at these ranges reproduces the same carets.
   let unsolved_rules: Vec<IRulexSR> = vec![IRulexSR::KindList(KindListSR {
     range: make_range(0, code_str.len() as i32),
     result_rune: RuneUsage { range: make_range(6, 7), rune: rune_i },
@@ -631,8 +625,6 @@ fn humanize_errors() {
   })];
 
   let step1 = {
-    // Conclude rune `A` (deliberately absent from unsolved_runes below), so the humanizer renders
-    // its concluded value rather than "(unknown)" — exercising the solved-rune label branch.
     let mut conclusions = HashMap::default();
     conclusions.insert(
       rune_a,
@@ -778,11 +770,6 @@ exported func main() int where N Int = 3, M Int = N {
   );
 }
 
-// `prototype_rule_call_via_rune` was deleted with the `T Prot` rune-type annotation it needed to
-// declare its `mooFunc` rune — `840e2014a` made `T Prot` a parse error alongside `T Ownership` and
-// `T Ref`. Calling through a prototype rune may well come back (PrototypeTemplataType was
-// resurrected in `fa2516834`), but it has no surface spelling to be declared with, so the test
-// cannot be written. `prototype_rule_call_directly` below still covers the direct form.
 
 #[test]
 fn prototype_rule_call_directly() {
@@ -1062,10 +1049,6 @@ exported func main() {
     .expect("expected FunctionCallTE moo(UpcastTE(_, IShip<int>, _))");
 }
 
-// VCOORD: enable this. A where-clause rune like `N Int` is now placeholdered as a generic param, so
-// this program no longer produces a top-level SolveIncomplete; its empty body vs `int` return fails
-// first. The only live incomplete-solve today is an un-inferable call (`foo<T>()` called as `foo()`),
-// which surfaces wrapped inside CouldntFindFunctionToCallT. Retarget before re-enabling.
 #[test]
 #[ignore]
 fn reports_incomplete_solve() {
@@ -1170,7 +1153,6 @@ exported func main() {
   compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn pointer_becomes_share_if_kind_is_immutable() {
   let parse_bump = Bump::new();
@@ -1180,7 +1162,6 @@ fn pointer_becomes_share_if_kind_is_immutable() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: imm → share; x.i is &int
   let code = r"
 struct SomeStruct share { i int; }
 
@@ -1203,9 +1184,6 @@ exported func main() int {
     &code_source,
   );
   let coutputs = compile.expect_compiler_outputs();
-  // Ensures that `&T` on a share-flavored kind stays a distinct BorrowRef layer
-  // rather than collapsing to `ShareRef T`, e.g. `&SomeStruct` here where SomeStruct
-  // is share-flavored.
   assert!(matches!(
     coutputs.lookup_function_by_str("bork").header.params[0].tyype,
     KindT::BorrowRef(_)

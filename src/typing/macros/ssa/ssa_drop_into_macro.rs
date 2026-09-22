@@ -40,7 +40,6 @@ where
       self.typing_interner.alloc(header.to_signature()),
       header.return_type,
     );
-    // This is a compiler-generated builtin body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70080);
     let arr_arg = ExpressionTE::ArgLookup(
       self.typing_interner.alloc(ArgLookupTE::new(synth_range, loct.add(self.typing_interner, 0), 0, param_coords[0].tyype)),

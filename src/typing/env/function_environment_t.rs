@@ -19,7 +19,6 @@ use std::hash::Hasher;
 use std::ptr::eq;
 use std::ptr::hash;
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BuildingFunctionEnvironmentWithClosuredsT<'s, 't>
 where
@@ -120,7 +119,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BuildingFunctionEnvironmentWithClosuredsAndTemplateArgsT<'s, 't>
 where
@@ -215,7 +213,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct NodeEnvironmentT<'s, 't>
 where
@@ -549,7 +546,7 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct NodeEnvironmentBox<'s, 't>
 where
   's: 't,
@@ -672,11 +669,7 @@ where
     }
   }
 
-  // AFTERM: remove the needless snapshot — transcribe the inner's `def getVariable`
-  // body directly off the Box's fields (declared_locals / parent_node_env /
-  // parent_function_env.closured_locals), drop the interner parameter, and update
-  // call sites. `get_all_locals` / `get_all_unstackified_locals` below show the
-  // same shape.
+  // AFTERM: remove the needless snapshot
   pub fn get_variable(
     &self,
     name: IImpreciseNameS<'s>,
@@ -812,7 +805,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct FunctionEnvironmentT<'s, 't>
 where
@@ -952,7 +944,7 @@ where
     // locals from the parent function.
     let (declared_locals, unstackified_locals, restackified_locals) = match &self.parent_env {
       IEnvironmentT::Node(_node_env) => {
-        panic!("implement: make_child_node_environment — NodeEnvironmentT parent");
+        panic!("implement: make_child_node_environment");
         // (declaredLocals, unstackifiedLocals, restackifiedLocals)
       }
       _ => (Vec::new(), Vec::new(), Vec::new()),
@@ -975,7 +967,7 @@ where
   }
 }
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum IVariableT<'s, 't>
 where
@@ -1001,7 +993,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LocalVariable<'s, 't>
 where
@@ -1011,7 +1002,6 @@ where
   pub tyype: KindT<'s, 't>,
 }
 
-// Identity equality per @IEOIBZ — `LocalVariable` is arena-allocated.
 impl<'s, 't> PartialEq for LocalVariable<'s, 't>
 where
   's: 't,
@@ -1030,7 +1020,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct CapturedVariableT<'s, 't>
 where
@@ -1041,7 +1030,6 @@ where
   pub kind: KindT<'s, 't>,
 }
 
-// Identity equality per @IEOIBZ — `CapturedVariableT` is arena-allocated.
 impl<'s, 't> PartialEq for CapturedVariableT<'s, 't>
 where
   's: 't,
@@ -1129,10 +1117,8 @@ where
   }
 }
 
-// Builders — see environment.rs for the Package/Citizen/Export/Extern/General
-// builders; these 4 finish out the set for the function-env family.
 
-/// Temporary state (see @TFITCX)
+
 pub struct BuildingFunctionEnvironmentWithClosuredsBuilder<'s, 't>
 where
   's: 't,
@@ -1168,7 +1154,7 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct BuildingFunctionEnvironmentWithClosuredsAndTemplateArgsBuilder<'s, 't>
 where
   's: 't,
@@ -1209,7 +1195,7 @@ where
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct FunctionEnvironmentBuilder<'s, 't>
 where
   's: 't,
@@ -1247,7 +1233,3 @@ where
     })
   }
 }
-
-// VCOORD: rename FunctionTemplata to FunctionDefinitionTemplata
-// VCOORD: while we're at it, rename templata
-// VCOORD: why does externFunction have its own templata ExternFunctionTemplataT?

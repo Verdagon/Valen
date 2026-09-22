@@ -6,7 +6,7 @@ use crate::testvm::values::{
 
 
 
-/// Temporary state
+
 pub struct CallV<'v, 'i, 's> {
   pub call_id: CallIdV<'v, 'i, 's>,
   pub in_args: &'v [ReferenceV<'v, 'i, 's>],
@@ -20,8 +20,6 @@ impl<'v, 'i, 's> CallV<'v, 'i, 's> {
     assert_eq!(var_addr.call_id, self.call_id);
     let locals = &mut self.locals;
     assert!(!locals.contains_key(&var_addr));
-    // A local's identity is its (per-function-unique) name, so this catches re-adding the same
-    // underlying local under any address.
     assert!(!locals.iter().any(|(addr, _)| addr.name == var_addr.name));
     locals.insert(var_addr, VariableV {
       id: var_addr,

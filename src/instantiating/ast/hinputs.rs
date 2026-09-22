@@ -1,4 +1,4 @@
-// VISTODO: rename Hinputs everywhere
+
 use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::postparsing::names::IRuneS;
 use crate::instantiating::ast::types::{StructIT, StaticSizedArrayIT, RuntimeSizedArrayIT};
@@ -15,7 +15,7 @@ use crate::utils::fx::IndexMap;
 
 
 
-/// Temporary state (see @TFITCX)
+
 pub struct InstantiationBoundArgumentsI<'s, 'i> where 's: 'i {
     pub rune_to_function_bound_arg: ArenaIndexMap<'i, IRuneS<'s>, &'i PrototypeI<'s, 'i>>,
     pub caller_rune_to_callee_rune_to_reachable_func:
@@ -26,29 +26,22 @@ pub struct InstantiationBoundArgumentsI<'s, 'i> where 's: 'i {
 
 
 
-/// The borrow checker's aliasing info for one instantiated function — the I-side mirror of
 #[derive(Debug)]
 pub struct FunctionAliasingInfoI<'i> {
-    /// One entry per parameter, in signature order: true where the parameter is the sole reference into
-    /// a group no other parameter aliases, so the backend may emit `noalias`.
+    // For each parameter, true if it's the only reference into the region it's pointing into.
+    // Useful for the backend to emit noalias.
     pub param_index_to_noalias: &'i [bool],
     pub group_count: u32,
     pub instruction_loc_to_accessed_groups: ArenaIndexMap<'i, &'i [i32], &'i [u32]>,
 }
 
-/// Temporary state (see @TFITCX) — top-level container for instantiated output.
 pub struct HinputsI<'s, 'i> where 's: 'i {
     pub interfaces: &'i [InterfaceDefinitionI<'s, 'i>],
     pub structs: &'i [&'i StructDefinitionI<'s, 'i>],
-    // The distinct array kinds used in the program. An array kind is self-describing
-    // (element type, and size for SSA, live in its id), so the backend derives each
-    // array's definition from these to declare its region.
     pub static_sized_arrays: &'i [&'i StaticSizedArrayIT<'s, 'i>],
     pub runtime_sized_arrays: &'i [&'i RuntimeSizedArrayIT<'s, 'i>],
     pub functions: &'i [&'i FunctionDefinitionI<'s, 'i>],
-    // The borrow checker's aliasing info per function, keyed by the instantiated id (the same key the
-    // backend humanizes when lowering). Presence means the function was analyzed; absence (generated,
-    // extern, or checker disabled) means the backend marks nothing for it.
+    // VCOORD: doublecheck that we're always filling this, and it's only empty if borrow checking is disabled
     pub id_to_aliasing_info: IndexMap<IdI<'s, 'i>, &'i FunctionAliasingInfoI<'i>>,
     pub interface_to_edge_blueprints:
         ArenaIndexMap<'i, IdI<'s, 'i>, InterfaceEdgeBlueprintI<'s, 'i>>,
@@ -64,7 +57,6 @@ pub struct HinputsI<'s, 'i> where 's: 'i {
 impl<'s, 'i> HinputsI<'s, 'i> where 's: 'i {
     pub fn to_string(&self) -> String {
         panic!("Unimplemented: to_string")
-        // "HinputsI#()"
     }
 
     pub fn lookup_function_by_str(&self, human_name: &str) -> &'i FunctionDefinitionI<'s, 'i> {
@@ -242,7 +234,6 @@ impl<'s, 'i> HinputsI<'s, 'i> where 's: 'i {
         &self,
     ) -> Vec<&'i FunctionDefinitionI<'s, 'i>> {
         panic!("Unimplemented: get_all_non_extern_functions")
-        // functions.filter(!_.header.isExtern)
     }
 
 
@@ -250,6 +241,5 @@ impl<'s, 'i> HinputsI<'s, 'i> where 's: 'i {
         &self,
     ) -> Vec<&'i FunctionDefinitionI<'s, 'i>> {
         panic!("Unimplemented: get_all_user_functions")
-        // functions.filter(_.header.isUserFunction)
     }
 }

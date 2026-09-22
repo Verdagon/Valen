@@ -27,7 +27,6 @@ fn main() {
         }
         Err(e) => {
             eprintln!("highlighting failed for lang '{lang}': {e}");
-            // Fall back to escaped plaintext so the build doesn't die on a bad snippet.
             let _ = io::stdout().write_all(html_escape(&source).as_bytes());
             std::process::exit(1);
         }

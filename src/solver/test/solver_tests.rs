@@ -18,8 +18,6 @@ fn test_simple_and_optimized() {
   panic!("Unimplemented: test_simple_and_optimized");
 }
 
-// Local advance helper, inlined from the former generic Solver.advance.
-// Returns true if there's more to be done, false if we've gotten as far as we can.
 fn advance(
   solver_state: &mut SimpleSolverState<TestRule, i64, String>,
   solve_rule: &super::test_rule_solver::TestRuleSolver,

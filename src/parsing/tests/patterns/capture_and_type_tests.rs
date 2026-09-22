@@ -64,7 +64,7 @@ fn capture_with_borrow_tame() {
       inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("R")), .. }),
       ..
     }) => {}
-    other => panic!("expected `&R` → BorrowRef(Unspecified, R), got {:?}", other),
+    other => panic!("expected `&R` -> BorrowRef(Unspecified, R)"),
   }
   assert!(pattern.destructure.is_none());
 }
@@ -80,7 +80,7 @@ fn capture_with_self_in_front() {
     INameDeclarationP::ConstructingMemberNameDeclaration(member_name) => {
       assert_eq!(member_name.as_str(), "arr");
     }
-    other => panic!("expected `self.arr` → ConstructingMemberNameDeclaration, got {:?}", other),
+    other => panic!("expected `self.arr` -> ConstructingMemberNameDeclaration"),
   }
   assert!(destination.mutate.is_none());
   match pattern.templex.as_ref().unwrap() {
@@ -95,7 +95,7 @@ fn capture_with_self_in_front() {
       ..
     }) => {}
     other => {
-      panic!("expected `&&R` → BorrowRef(Unspecified, BorrowRef(Unspecified, R)), got {:?}", other)
+      panic!("expected `&&R` -> BorrowRef(Unspecified, BorrowRef(Unspecified, R))")
     }
   }
   assert!(pattern.destructure.is_none());

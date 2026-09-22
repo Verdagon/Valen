@@ -37,7 +37,6 @@ where
 
   let keywords_p = Keywords::new_for_parse(parse_arena);
   let only_file = compile_file(parse_arena, &keywords_p, code).unwrap();
-  // Re-intern FileCoordinate from 'p into 's
   let file_coord_s = scout_arena.intern_file_coordinate(
     scout_arena.intern_package_coordinate(
       scout_arena.intern_str(only_file.file_coord.package_coord.module.as_str()),
@@ -77,7 +76,6 @@ where
 
   let keywords_p = Keywords::new_for_parse(parse_arena);
   let only_file = compile_file(parse_arena, &keywords_p, code).unwrap();
-  // Re-intern FileCoordinate from 'p into 's
   let file_coord_s = scout_arena.intern_file_coordinate(
     scout_arena.intern_package_coordinate(
       scout_arena.intern_str(only_file.file_coord.package_coord.module.as_str()),

@@ -1,12 +1,3 @@
-//! Tests that drive the typing pass to a known failure and assert on
-//! `compiler_error_humanizer::humanize` output byte-for-byte. Mirrors the
-//! pattern used by `higher_typing/tests/error_tests.rs`, but for typing-pass
-//! errors instead of higher-typing ones.
-//!
-//! Re-homed from `pass_manager/end_to_end_test.rs` (which previously drove the
-//! error through `pass_manager::build`). Asserting against the typing pass
-//! directly makes the test scope-tight and lifetime-independent of the
-//! backend/clang path.
 use crate::code_source::{CodeSource, Source};
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;

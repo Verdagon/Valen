@@ -65,9 +65,6 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     )
 }
 
-/// Like `test`, but prepends the `v.builtins.arrays` bundle (arrays + arith + drop + implicit_clone)
-/// so array-constructing fixtures resolve `Array`/`[]T`. Mirrors the typing pass's array-test setup
-/// (`builtin_source_for_arrays` + `empty_v_builtins_stub`). The default `test` harness omits builtins.
 pub fn test_with_array_builtins<'s, 'ctx, 't, 'i, 'p>(
     compilation_bump: &'ctx bumpalo::Bump,
     typing_interner: &'ctx TypingInterner<'s, 't>,
@@ -112,7 +109,7 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     )
 }
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash)]
 pub struct InstantiatedTests<'s, 't> {
   pub _marker: PhantomData<(&'s (), &'t ())>,
@@ -144,9 +141,6 @@ exported func main() {
     compile.get_monouts();
 }
 
-/// A local lookup yields a borrow of the local's storage: reading `&a` (an int local) instantiates
-/// to a LocalLookupIE whose result is `BorrowRefIT<int>` — proving the onion storage-read invariant
-/// and int as a bare primitive.
 #[test]
 fn local_lookup_yields_borrow_of_storage() {
     let parse_bump = Bump::new();
@@ -178,8 +172,6 @@ exported func main() int {
     );
 }
 
-/// An owned value carries zero wraps: the generated `Ship` constructor's ConstructIE result is a
-/// bare `StructIT` (not `OwnRefIT`/`BorrowRefIT` of a struct) — proving ownership maps to no wrap.
 #[test]
 fn owned_construct_is_bare_kind() {
     let parse_bump = Bump::new();
@@ -212,8 +204,6 @@ exported func main() {
     );
 }
 
-/// A borrow-reference parameter's coord is `BorrowRefIT<StructIT>`: `&Ship` instantiates to a
-/// borrow wrap around the citizen kind.
 #[test]
 fn borrow_param_is_borrow_wrapped() {
     let parse_bump = Bump::new();
@@ -248,8 +238,6 @@ exported func main() {
     }
 }
 
-/// A string constant is share-wrapped: `"hello"` instantiates to a ConstantStrIE whose result is
-/// `ShareRefIT<StrIT>` — proving the immutable/shared wrap.
 #[test]
 fn string_constant_is_share_wrapped() {
     let parse_bump = Bump::new();
@@ -279,8 +267,6 @@ exported func main() str {
     );
 }
 
-/// A struct member read yields a borrow of the member's storage: `s.fuel` (s a `&Ship`)
-/// instantiates to a MemberLookupIE whose result is `BorrowRefIT<int>`.
 #[test]
 fn struct_member_read_yields_borrow_of_member() {
     let parse_bump = Bump::new();
@@ -315,10 +301,6 @@ exported func main() {
     );
 }
 
-/// A DerefIE peels exactly one reference wrap. Looking up the `&Ship` local `s` yields a borrow of
-/// its storage — `BorrowRefIT<BorrowRefIT<Ship>>` — and the Deref peels the outer borrow to expose
-/// the stored `BorrowRefIT<Ship>`. (A primitive member value like `s.fuel` peels via CopyPrim, not
-/// Deref — a separate node.)
 #[test]
 fn deref_peels_one_wrap() {
     let parse_bump = Bump::new();
@@ -357,8 +339,6 @@ exported func main() {
     );
 }
 
-/// Monomorphization substitutes the concrete kind for the type parameter: `bork<T>` called with
-/// `int` instantiates to a `bork` whose param is a bare `IntIT` — no placeholder survives.
 #[test]
 fn generic_function_monomorphizes_type_param() {
     let parse_bump = Bump::new();
@@ -391,8 +371,6 @@ exported func main() {
     }
 }
 
-/// An `if` instantiates to an IfIE and the walker reaches all three arms: the ConstantBool
-/// condition, the ConstantInt in the then-branch, and the ConstantInt in the else-branch.
 #[test]
 fn if_reaches_all_three_branches() {
     let parse_bump = Bump::new();
@@ -431,9 +409,6 @@ exported func main() int {
     );
 }
 
-/// A `while` instantiates to a WhileIE and the walker descends into its body — a distinctive
-/// constant declared inside the loop body is reachable. (The loop lowering emits more than one
-/// `break`, so a break count would not pin body-descent; a unique in-body constant does.)
 #[test]
 fn while_body_reachable() {
     let parse_bump = Bump::new();
@@ -467,9 +442,6 @@ exported func main() {
     );
 }
 
-/// A direct call carries a monomorphized prototype: calling generic `count<T>` with `int`
-/// instantiates to a FunctionCallIE whose callable is `count` with its `T` parameter substituted to
-/// a concrete `int` — proving the callee prototype is monomorphized, not a placeholder.
 #[test]
 fn function_call_carries_monomorphized_prototype() {
     let parse_bump = Bump::new();
@@ -511,10 +483,6 @@ exported func main() int {
     );
 }
 
-/// Virtual dispatch is generated: the instantiator emits exactly one InterfaceFunctionCallIE
-/// (in the abstract `doCivicDance(Car)` dispatcher), carrying the virtual parameter's index. The
-/// call site itself lowers to a plain FunctionCall to that abstract function — the dispatch node
-/// lives in the dispatcher, not at the call site.
 #[test]
 fn interface_call_is_virtual_dispatch() {
     let parse_bump = Bump::new();
@@ -562,8 +530,6 @@ exported func main() int {
     assert_eq!(virtual_dispatches.len(), 1, "expected exactly one virtual dispatch (the abstract doCivicDance dispatcher)");
 }
 
-/// Assigning a concrete struct to an interface-typed local instantiates to an UpcastIE: the
-/// concrete `Toyota` construction is upcast to an interface result.
 #[test]
 fn upcast_to_interface() {
     let parse_bump = Bump::new();
@@ -620,9 +586,6 @@ exported func main() int {
     );
 }
 
-/// An array element read yields a borrow of the element's storage: `a.3` on a `[]int`
-/// instantiates to a RuntimeSizedArrayLookupIE whose result is `BorrowRefIT<int>` — the same
-/// lookup-yields-borrow invariant as locals and members, on arrays.
 #[test]
 fn array_element_read_yields_borrow() {
     let parse_bump = Bump::new();
@@ -661,7 +624,7 @@ exported func main() int {
 }
 
 #[test]
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn nested_anonymous_substruct_captures_outer() {
     let parse_bump = Bump::new();
     let scout_bump = Bump::new();

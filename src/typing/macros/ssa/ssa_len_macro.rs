@@ -45,7 +45,6 @@ where
       KindT::StaticSizedArray(ssa) => ssa.size(),
       other => panic!("SSALenMacro received non-SSA param: {:?}", other),
     };
-    // This is a compiler-generated builtin body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70090);
     let discard_te =
       ExpressionTE::Discard(self.typing_interner.alloc(DiscardTE::new(synth_range, ExpressionTE::ArgLookup(

@@ -1,5 +1,3 @@
-// FFI bridge to the C++ Backend (statically linked via build.rs).
-
 pub mod backend_inputs;
 pub mod metal_cache;
 pub mod metal_lowerer;
@@ -13,15 +11,12 @@ use self::backend_inputs::{
     SourceFilePathFFIRaw, BACKEND_MODE_INTEROP, BACKEND_MODE_STANDALONE,
 };
 
-// Optimization level, matches BACKEND_OPT_LEVEL_* in Backend/src/backend_options_ffi.h.
 pub const BACKEND_OPT_LEVEL_O0: i32 = 0;
 pub const BACKEND_OPT_LEVEL_O1: i32 = 1;
 pub const BACKEND_OPT_LEVEL_O2: i32 = 2;
 pub const BACKEND_OPT_LEVEL_O2I: i32 = 3;
 pub const BACKEND_OPT_LEVEL_O3: i32 = 4;
 
-/// C-repr mirror of BackendCompileOptionsFFI in
-/// Backend/src/backend_options_ffi.h. Field order and types must match.
 #[repr(C)]
 pub(crate) struct BackendCompileOptionsFFIRaw {
     output_dir: *const c_char,
@@ -42,20 +37,14 @@ pub(crate) struct BackendCompileOptionsFFIRaw {
 }
 
 extern "C" {
-    // The single Rust-facing backend compile entry. Takes one BackendInputsFFI and, inside
-    // the backend, dispatches to the standalone or borrowed-mode compile by `mode`. Caller
-    // retains ownership of cache/program (and, in interop mode, the borrowed context/module);
-    // nothing is freed here.
     fn backend_compile(inputs: *const BackendInputsFFIRaw) -> i32;
 }
 
-/// Rust-owned build of the FFI options. `output_dir` is required; all
-/// other fields have sensible defaults matching Backend/valeopts.h.
 pub struct BackendCompileOptions {
     pub output_dir: String,
     pub triple: String,
     pub cpu: String,
-    pub opt_level: i32,
+    pub opt_level: i32, // VCOORD: let's get rid of this soon
     pub pic: bool,
     pub verify: bool,
     pub print_asm: bool,
@@ -65,12 +54,7 @@ pub struct BackendCompileOptions {
     pub include_bounds_checks: bool,
     pub use_atomic_rc: bool,
     pub print_mem_overhead: bool,
-    /// Emit DWARF debug info (`--debug`). The backend emits per-function/statement/local DWARF when
-    /// set.
     pub debug: bool,
-    /// Test-only lever: suppress every aliasing optimization hint (the `!alias.scope`/`!noalias`
-    /// metadata and the parameter-level `noalias` attribute), keeping `nounwind`. Lets a test compile the
-    /// same program with and without the hints and compare the optimizer's output. Never set in a real build.
     pub suppress_alias_metadata: bool,
 }
 
@@ -96,11 +80,6 @@ impl Default for BackendCompileOptions {
     }
 }
 
-/// Compile a program through the backend's single entry (`backend_compile`). Marshals
-/// `BackendInputs` into the C-POD payload with caller-owned strings and dispatches by mode.
-///
-/// In interop mode, `inputs.mode`'s `context`/`module` must be live LLVM handles rustc lent
-/// for the duration of this call (see `InteropInputs`); they are not disposed here.
 pub fn compile(inputs: BackendInputs) -> i32 {
     let opts = &inputs.options;
     let output_dir_c = CString::new(opts.output_dir.as_str()).expect("output_dir contains NUL");
@@ -125,8 +104,6 @@ pub fn compile(inputs: BackendInputs) -> i32 {
         suppress_alias_metadata: opts.suppress_alias_metadata as u8,
     };
 
-    // Per-mode fields. The entry-symbol CString must outlive the FFI call, so bind it here
-    // for both arms (standalone ignores it).
     let (mode, context, module, entry_symbol_c) = match &inputs.mode {
         BackendMode::Standalone(_) => (
             BACKEND_MODE_STANDALONE,
@@ -142,8 +119,6 @@ pub fn compile(inputs: BackendInputs) -> i32 {
         ),
     };
 
-    // The callback wrappers' symbol/name strings must outlive the FFI call, so bind the CStrings
-    // here (and the raw array pointing at them, below). Empty for standalone / no callbacks.
     let callback_cstrings: Vec<(CString, CString)> = match &inputs.mode {
         BackendMode::Interop(interop) => interop
             .callbacks
@@ -165,8 +140,6 @@ pub fn compile(inputs: BackendInputs) -> i32 {
         })
         .collect();
 
-    // Source-file (basename, abspath) pairs. The CStrings must outlive the FFI call, so bind them
-    // here before the raw array that points at them.
     let source_path_cstrings: Vec<(CString, CString)> = inputs
         .absolute_source_paths
         .iter()

@@ -28,8 +28,6 @@ use crate::utils::fx::IndexMap;
 use crate::utils::range::RangeS;
 use std::marker::PhantomData;
 
-// deleted: delegate trait removed per god-struct refactor (Compiler now holds all methods directly)
-
 pub enum IEvaluateFunctionResult<'s, 't> {
   EvaluateFunctionSuccess(EvaluateFunctionSuccess<'s, 't>),
   EvaluateFunctionFailure(EvaluateFunctionFailure<'s, 't>),
@@ -102,11 +100,9 @@ where
   ) -> Result<&'t FunctionHeaderT<'s, 't>, ICompileErrorT<'s, 't>> {
     let env: IEnvironmentT<'s,'t> = match &function_id.init_non_package_id(self.typing_interner) {
       Some(containing_type_id) => {
-        // method/assoc-fn → citizen outer env
         coutputs.get_outer_env_for_type(*containing_type_id).into()
       },
       None => {
-        // free fn → calculate the package env
         let parent_id = function_id.init_id(self.typing_interner);
         IEnvironmentT::Package(
           make_top_level_environment(global_env, parent_id, self.typing_interner))
@@ -182,7 +178,6 @@ where
         Some(ITemplataT::Kind(KindTemplataT { kind: KindT::Struct(s) })) => *s,
         _ => {
           panic!("Unimplemented: evaluateTemplatedFunctionFromCallForPrototype lookup failed");
-          // vassertSome(...) — pattern that would vfail on absence
         }
       };
 

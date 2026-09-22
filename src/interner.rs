@@ -5,14 +5,9 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::slice::Iter;
 
-/// Interned string: a by-value wrapper around arena-backed `&'a str`.
-/// Never arena-allocated; just holds a reference to canonical storage.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct StrI<'a>(pub &'a str);
 
-/// Placeholder `Interner` type. Not actually used for interning (arenas
-/// replace it); only kept as a type alias so stubs that mention
-/// `&'ctx Interner<'s>` continue to compile.
 pub struct Interner<'s>(pub PhantomData<&'s ()>);
 
 impl<'a> StrI<'a> {

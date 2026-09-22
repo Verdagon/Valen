@@ -66,7 +66,6 @@ where
 
     let array_tt = self.resolve_runtime_sized_array(element_type, RegionT::Default);
 
-    // This is a compiler-generated builtin body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70050);
     let body = ExpressionTE::Block(self.typing_interner.alloc(BlockTE::new(synth_range, ExpressionTE::Return(
       self.typing_interner.alloc(ReturnTE::new(synth_range, ExpressionTE::NewRuntimeSizedArray(

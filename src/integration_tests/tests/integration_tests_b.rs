@@ -106,8 +106,7 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn test_int_generic() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -190,10 +189,9 @@ fn tests_upcasting_from_if() {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn tests_lambda() {
-    unimplemented!(); // ZONION-deferred+reasoned: needs deleted harness method
+    unimplemented!();
     /*
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -209,7 +207,7 @@ fn tests_lambda() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: a captured by lambda — Own int needs copy
+        // TSUGAR: a captured by lambda
         r"
 exported func main() int {
   a = 7;
@@ -237,7 +235,6 @@ fn tests_generic_with_a_lambda() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: genFunc(7) → genFunc(&7) (wants &T); wrap result in __copy_prim for int return
         r"
 func genFunc<T>(a &T) &T {
   return { a }();
@@ -263,10 +260,6 @@ fn tests_generic_s_lambda_calling_parent_function_s_bound() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    // The onion harness loads no builtins, so a user `foo` stands in for the original `print`
-    // bound and the program stands on its own. Still the LCCPGB shape: `genFunc<T>` declares a
-    // `where func foo(&T)int` bound, and a nested lambda calls that imported bound. Returning 7
-    // proves the bound was resolved and called through instantiation.
     let mut compile = test_no_builtins_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
@@ -305,7 +298,6 @@ fn tests_generic_with_a_polymorphic_lambda() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: genFunc(7) → genFunc(&7); wrap result with __copy_prim
         r"
 func genFunc<T>(a &T) &T {
   return (x => a)(true);
@@ -335,7 +327,6 @@ fn tests_generic_with_a_polymorphic_lambda_invoked_twice() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: genFunc(7) → genFunc(&7); wrap result with __copy_prim
         r#"
 func genFunc<T>(a &T) &T {
   lam = (x => a);
@@ -473,7 +464,7 @@ fn tests_making_a_variable_with_a_pattern() {
     }
 }
 
-#[ignore = "imm/share citizens not supported yet (all-share linked list)"]
+#[ignore]
 #[test]
 fn tests_a_linked_list() {
     let compilation_bump = bumpalo::Bump::new();
@@ -496,7 +487,7 @@ fn tests_a_linked_list() {
     let _ = compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn tests_a_templated_linked_list() {
     let compilation_bump = bumpalo::Bump::new();
@@ -570,7 +561,7 @@ fn template_overrides_are_stamped() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn tests_a_foreach_for_a_linked_list() {
     let compilation_bump = bumpalo::Bump::new();
@@ -619,8 +610,7 @@ fn tests_recursion() {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn tests_generic_recursion() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -636,7 +626,6 @@ fn tests_generic_recursion() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: isZero(x int) → isZero(x &int) — where-clause says isZero(&T)bool, so &int matches
         r"
 func factorial<T>(one T, x T) T
 where func isZero(&T)bool, func *(&T, &T)T, func -(&T, &T)T, func drop(T)void {

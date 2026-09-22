@@ -29,8 +29,6 @@ fn parse<'p, 'ctx>(
     .unwrap_or_else(|e| panic!("Failed to parse sample '{}': {:?}", path, e));
 }
 
-// For testing the parser, we dont want it to fetch things with import statements —
-// return an empty file so the parser sees a valid package and moves on.
 fn empty_package_fallback(_c: &PackageCoordinate) -> Option<HashMap<String, String>> {
   Some(HashMap::from_iter([("".to_string(), "".to_string())]))
 }

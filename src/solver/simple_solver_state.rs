@@ -67,7 +67,6 @@ where
       added_rules: new_rules.clone(),
       conclusions: conclusions.clone().into_iter().collect(),
     };
-    // Append step before checking for conflicts (audit trail captures conflicting step)
     self.steps.push(step);
     // Check and apply conclusions
     for (rune, new_conclusion) in &conclusions {

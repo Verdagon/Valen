@@ -10,7 +10,7 @@ use crate::testvm::von::VonInt;
 
 pub struct FloatTests;
 
-#[ignore = "R3 runtime twin: VM transmute asserts Share<->Share, tripped by @str->&str share-peel (heap.rs:577)"]
+#[ignore]
 #[test]
 fn print_float() {
     let compilation_bump = bumpalo::Bump::new();
@@ -89,7 +89,7 @@ fn float_equals() {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn concat_string_and_float() {
     let compilation_bump = bumpalo::Bump::new();

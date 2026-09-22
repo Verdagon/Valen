@@ -126,8 +126,6 @@ where
               .collect();
             if !isa_failures.is_empty() {
               let (sub, suuper, _) = isa_failures[0].clone();
-              // The error carries whole rejection reasons, so the solve failures we
-              // sifted out above go back into their IResolvingError shape.
               let candidates: Vec<IResolvingError<'s, 't>> = isa_failures
                 .into_iter()
                 .map(|(_, _, fs)| IResolvingError::ResolvingSolveFailedOrIncomplete(fs))
@@ -340,7 +338,7 @@ where
     range: &[RangeS<'s>],
     call_location: LocationInDenizen<'s>,
     context_region: RegionT,
-    _kind: KindT<'s, 't>, // VCOORD: remove?
+    _kind: KindT<'s, 't>,
     explicit_template_arg_rules_s: &[IRulexSR<'s>],
     explicit_template_arg_runes_s: &[IRuneS<'s>],
     receiving_rune_to_explicit_template_arg_rune: &[(RuneUsage<'s>, RuneUsage<'s>)],
@@ -374,7 +372,6 @@ where
     let env = nenv.snapshot(self.typing_interner);
 
     let args_types_2: Vec<KindT<'s, 't>> = given_args_exprs_2.iter().map(|e| e.result()).collect();
-    // The `__call` function takes the callable the same way we're holding it.
     let closure_param_type = given_callable_borrow_expr_2.result();
     let mut param_filters = vec![closure_param_type];
     param_filters.extend_from_slice(&args_types_2);
@@ -477,7 +474,6 @@ where
       } else {
         if !exact {
           panic!("implement: checkTypes non-exact isTypeConvertible");
-          // val isConvertible = templataCompiler.isTypeConvertible(...) — handle false branch
         } else {
           match args_head {
             KindT::Never(_) => {

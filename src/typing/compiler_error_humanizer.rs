@@ -246,7 +246,6 @@ fn humanize_ref<'s, 't>(
         humanize_templata(scout_arena, typing_interner, code_map, ITemplataT::Kind(KindTemplataT { kind: *c }))
       ).collect::<Vec<_>>().join(", ");
       format!("Array's elements have different types: {}", types_str)
-      // "Array's elements have different types: " + types.mkString(", ")
     }
     ICompileErrorT::ExportedFunctionDependedOnNonExportedKind { range: _, paackage, signature, non_exported_kind } => {
       format!(r"Exported function:
@@ -1065,9 +1064,6 @@ pub fn humanize_candidate<'s, 't>(
   }
 }
 
-/// Best-effort source location for a function-template id's local name. Returns None for the
-/// kinds that carry no location (extern, bound, predicted, override-dispatcher, anon-substruct
-/// constructor); callers degrade gracefully rather than assume one exists.
 fn function_template_code_location<'s, 't>(
   local_name: INameT<'s, 't>,
 ) -> Option<CodeLocationS<'s>> {

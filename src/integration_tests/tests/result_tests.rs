@@ -11,7 +11,7 @@ use crate::testvm::von::VonInt;
 use crate::testvm::von::VonStr;
 pub struct ResultTests;
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn test_borrow_is_ok_and_expect_for_ok() {
     let compilation_bump = bumpalo::Bump::new();
@@ -48,7 +48,7 @@ exported func main() int {
 
 
 
-#[ignore = "str share-peel in Result Err constructor (R3 family)"]
+#[ignore]
 #[test]
 fn test_is_err_and_borrow_expect_err_for_err() {
     let compilation_bump = bumpalo::Bump::new();
@@ -118,7 +118,7 @@ exported func main() int {
 
 
 
-#[ignore = "str share-peel in Result Err constructor (R3 family)"]
+#[ignore]
 #[test]
 fn test_owning_expect_err() {
     let compilation_bump = bumpalo::Bump::new();
@@ -153,7 +153,7 @@ exported func main() str {
 
 
 
-#[ignore = "str share-peel in Result Err constructor (R3 family)"]
+#[ignore]
 #[test]
 fn test_expect_panics_for_err() {
     let compilation_bump = bumpalo::Bump::new();
@@ -189,7 +189,7 @@ exported func main() int {
 
 
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn test_expect_err_panics_for_ok() {
     let compilation_bump = bumpalo::Bump::new();

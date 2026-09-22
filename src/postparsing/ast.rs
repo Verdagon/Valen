@@ -26,7 +26,7 @@ pub struct ProgramS<'s> {
   pub structs: &'s [&'s StructS<'s>],
   pub interfaces: &'s [&'s InterfaceS<'s>],
   pub impls: &'s [&'s ImplS<'s>],
-  // VCOORD: why is this called implemented_functions?
+  // VCOORD: better name at some point
   pub implemented_functions: &'s [&'s FunctionS<'s>],
   pub exports: &'s [&'s ExportAsS<'s>],
   pub imports: &'s [&'s ImportS<'s>],
@@ -92,8 +92,6 @@ pub struct SealedS;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct BuiltinS<'s> {
-  // AFTERM: can we give everything a lifetime into an arena so we can
-  // all have references instead of using Arc everywhere?
   pub generator_name: StrI<'s>,
 }
 
@@ -153,9 +151,7 @@ pub struct StructS<'s> {
   pub member_rules: &'s [IRulexSR<'s>],
   pub members: &'s [IStructMemberS<'s>],
   pub internal_methods: &'s [&'s FunctionS<'s>],
-  /// `where implements(Sub, Super)` clauses; see ImplBoundS.
   pub impl_bounds: &'s [ImplBoundS<'s>],
-  /// `where func foo(..)..` bounds, each captured as a synthesized abstract-function `FunctionS`.
   pub func_bounds: &'s [(RuneUsage<'s>, FunctionS<'s>)],
   _sealed: (),
 }
@@ -223,13 +219,9 @@ impl<'s> IStructMemberS<'s> {
 pub struct NormalStructMemberS<'s> {
   pub range: RangeS<'s>,
   pub name: StrI<'s>,
-  /// The member declaration's structural location, so the typing pass can give the member name a
-  /// Loc (like a local) instead of a bare spelling — see typing-design.md P1.
   pub lid: LocationInDenizen<'s>,
   pub type_rune: RuneUsage<'s>, // VCOORD: remove this in favor of the ITypeST
   pub tyype: ITypeST<'s>,
-  // Per @PFVSZ, the member's type split into its outer ref wraps and the value they enclose, so a
-  // constructor param built from this member is byte-identical to a user-written param.
   pub value_type_rune: RuneUsage<'s>,
   pub type_outer_ref_rules: &'s [IRulexSR<'s>],
   pub value_type_rules: &'s [IRulexSR<'s>],
@@ -252,9 +244,7 @@ pub struct InterfaceS<'s> {
   pub tyype: TemplateTemplataType<'s>,
   pub rules: &'s [IRulexSR<'s>],
   pub internal_methods: &'s [&'s FunctionS<'s>],
-  /// `where implements(Sub, Super)` clauses; see ImplBoundS.
   pub impl_bounds: &'s [ImplBoundS<'s>],
-  /// `where func foo(..)..` bounds, each captured as a synthesized abstract-function `FunctionS`.
   pub func_bounds: &'s [(RuneUsage<'s>, FunctionS<'s>)],
   _sealed: (),
 }
@@ -310,7 +300,6 @@ pub struct ImplS<'s> {
   pub interface_kind_rune: RuneUsage<'s>, // VCOORD: remove this in favor of the ITypeST
   pub super_interface_imprecise_name: IImpreciseNameS<'s>,
   pub super_interface_type: ITypeST<'s>,
-  /// `where implements(Sub, Super)` clauses; see ImplBoundS.
   pub impl_bounds: &'s [ImplBoundS<'s>],
   _sealed: (),
 }
@@ -379,27 +368,11 @@ pub struct ParameterS<'s> {
   pub range: RangeS<'s>,
   pub virtuality: Option<AbstractSP<'s>>,
   pub pre_checked: bool,
-  /// The parameter's name:
-  /// - a user-written param keeps its real name (`p` -> CodeVarName, `&self` -> CodeVarName(self)).
-  /// - an anonymous or ignored param (`Pair[a, b]`, `_ Pair`) gets a synthetic DesugaredParamName.
-  /// A destructure's inner names live on a body-head LetSE that loads this name, synthesized only
-  /// when the param actually destructures.
   pub name: IVarDeclarationNameS<'s>,
-  /// The parameter's full type tree (plan §P). The borrow checker reads a param's `in g` group off
-  /// this (via the per-`FunctionT` side table), so it must survive scout rather than being discarded.
   pub tyype: ITypeST<'s>,
-  // Per @PFVSZ, the parameter's type is split into its outer ref wraps and the value they enclose.
-  /// Rune for the full type: the outer wraps plus the value type they enclose. Equal to
-  /// value_type_rune when type_outer_ref_rules is empty (the param has no outer wraps).
   pub full_type_rune: RuneUsage<'s>,
-  /// Rune for the value type: the named-type root, past the outer wraps.
   pub value_type_rune: RuneUsage<'s>,
-  /// The outer &/weak wraps that build the full type. Only BorrowRefSR /
-  /// WeakRefSR variants live here; they chain from
-  /// full_type_rune down to value_type_rune.
   pub type_outer_ref_rules: &'s [IRulexSR<'s>],
-  /// Rules that build the value type (Lookup/Call/etc., possibly with nested BorrowRefs
-  /// inside template args).
   pub value_type_rules: &'s [IRulexSR<'s>],
   _sealed: (),
 }
@@ -562,19 +535,10 @@ pub struct FunctionS<'s> {
   pub tyype: TemplateTemplataType<'s>,
   pub params: &'s [ParameterS<'s>],
   pub maybe_ret_kind_rune: Option<RuneUsage<'s>>,
-  /// The written return type as a group-annotated tree, when the return type is written. The borrow
-  /// checker reads a returned reference's `in g` group off this — symmetric with `ParameterS.tyype`.
   pub maybe_return_type: Option<ITypeST<'s>>,
-  /// Effect clauses (`mut(g)` / `not(mut(g))`). Symbolic (`EffectS` over `GroupS`); the typing pass
-  /// lands these (borrowed from `'s`) in the per-`FunctionT` side table, never on `FunctionHeaderT`.
   pub effects: &'s [EffectS<'s>],
-  // Called header rules because it doesn't include any of the rules from the parameters, those are
-  // in ParameterS.
   pub header_rules: &'s [IRulexSR<'s>],
-  /// `where implements(Sub, Super)` clauses. Kept out of `rules` because they are checked after
-  /// the solve rather than solved; see ImplBoundS.
   pub impl_bounds: &'s [ImplBoundS<'s>],
-  /// `where func foo(..)..` bounds, each captured as a synthesized abstract-function `FunctionS`.
   pub func_bounds: &'s [(RuneUsage<'s>, FunctionS<'s>)],
   pub body: &'s IBodyS<'s>,
   _sealed: (),
@@ -666,7 +630,6 @@ impl LocationInDenizenBuilder {
     LocationInDenizenBuilder::new(child_path)
   }
 
-  // Per @DSAUIMZ, this is for NON-interned uses only (expression AST nodes).
   pub fn consume_in<'x>(&mut self, arena: &'x bumpalo::Bump) -> LocationInDenizen<'x> {
     assert!(
       !self.consumed,
@@ -676,11 +639,6 @@ impl LocationInDenizenBuilder {
     LocationInDenizen { path: arena.alloc_slice_copy(&self.path) }
   }
 
-  // Per @DSAUIMZ, this is for NON-interned uses only (expression AST nodes).
-  // Takes a ScoutArena instead of raw Bump to avoid exposing the allocator.
-  // V: this feels weird. theres nothing guaranteeing that this LocationInDenizen will actually land anywhere,
-  // in which case we're just leaking those allocations. i think we need a LocationInDenizenVal.
-  // maybe LocationInDenizenVal can even be a stack-based linked list.
   pub fn consume_in_arena<'x>(&mut self, arena: &ScoutArena<'x>) -> LocationInDenizen<'x> {
     assert!(
       !self.consumed,
@@ -690,8 +648,6 @@ impl LocationInDenizenBuilder {
     LocationInDenizen { path: arena.alloc_slice_copy(&self.path) }
   }
 
-  // Per @DSAUIMZ, this is the only way to construct a LocationInDenizenVal.
-  // Borrows from the builder's Vec, so 'tmp is a stack lifetime, not 's.
   pub fn borrow_val(&mut self) -> LocationInDenizenVal<'_> {
     assert!(
       !self.consumed,
@@ -702,44 +658,25 @@ impl LocationInDenizenBuilder {
   }
 }
 
-/// A path identifying a specific location within a denizen (function, struct, etc.).
-/// Each element in the path is a child index, forming a tree address.
-///
-/// Parameterized on lifetime `'x` because LocationInDenizen lives in different
-/// arenas depending on its owner:
-/// - When inside rune structs (e.g. ImplicitRuneS), it's interned into the
-///   `'s` interner arena, so `'x = 's`.
-/// - When inside expression structs (e.g. FunctionSE), it's allocated
-///   in the `'s` scout arena, so `'x = 's`.
-///
-/// The path is an arena-allocated slice rather than a Vec so that the entire
-/// struct can live in an arena without heap pointers.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocationInDenizen<'x> {
   pub path: &'x [i32],
 }
 
-/// Borrowed view of a LocationInDenizen path, for use as an intern lookup key.
-/// Per @DSAUIMZ, fields are private to prevent pre-allocation.
-/// Only constructible via LocationInDenizenBuilder::borrow_val().
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocationInDenizenVal<'tmp> {
   path: &'tmp [i32],
 }
 
 impl<'tmp> LocationInDenizenVal<'tmp> {
-  /// Read access to path contents (for Hash/Eq/Debug implementations).
   pub fn path(&self) -> &[i32] {
     self.path
   }
 
-  /// Per @DSAUIMZ, only called inside intern methods on a miss.
   pub(crate) fn promote_in<'s>(&self, arena: &'s bumpalo::Bump) -> LocationInDenizen<'s> {
     LocationInDenizen { path: arena.alloc_slice_copy(self.path) }
   }
 
-  /// Per @DSAUIMZ, only used inside intern methods to construct stored HashMap keys
-  /// from a just-promoted LocationInDenizen.
   pub(crate) fn from_canonical<'s>(lid: &LocationInDenizen<'s>) -> LocationInDenizenVal<'s> {
     LocationInDenizenVal { path: lid.path }
   }

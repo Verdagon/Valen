@@ -38,7 +38,6 @@ fn tests_floats() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share
         r"
 struct Moo share {
   x float;
@@ -214,11 +213,10 @@ exported func main() {
             })
         )));
 
-    // helperFunc is reachable from main, so it survives shaking — look it up (panics if absent).
     hinputs.lookup_function_by_str("helperFunc");
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn test_overloading_between_borrow_and_weak() {
     let compilation_bump = bumpalo::Bump::new();
@@ -567,7 +565,6 @@ fn call_borrow_parameter_with_shared_reference() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: bork(6) → bork(&6); wrap result with __copy_prim
         r"
 func bork<T>(a &T) &T { return a; }
 

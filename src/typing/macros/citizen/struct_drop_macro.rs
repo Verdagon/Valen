@@ -88,13 +88,6 @@ where
       args: generic_param_runes_slice,
     }));
 
-    // VCOORD: revisit this, maybe write some arcana, plan what itll look like post phased calls.
-    // For each stored, kind-typed generic parameter, declare `where func drop(T)void` on the
-    // generated drop so its body can drop that member. This is the same bound a user writes by hand
-    // for a generic container; without it, `drop(T)` fails to resolve at the generic level. A
-    // parameter no member mentions (e.g. the `T` of an empty `None<T>`) gets no bound, so its
-    // instances stay droppable at any argument. Mirrors the `where func` bundle the scout builds in
-    // `templex_scout.rs`'s `ITemplexPT::Func` arm (KindList + DefinitionFunc + CallSiteFunc + Resolve).
     let mut member_mentioned_runes: Vec<IRuneS<'s>> = Vec::new();
     for member in struct_a.members {
       match member {
@@ -144,7 +137,6 @@ where
         }))),
         args: self.scout_arena.alloc_slice_from_vec(Vec::new()),
       }));
-      // Only appears in definition; filtered out when solving the call site.
       rules.push(IRulexSR::DefinitionFunc(DefinitionFuncSR {
         range: range(-1672149),
         result_rune: prototype_rune,
@@ -152,7 +144,6 @@ where
         params_list_rune,
         return_rune: void_return_rune,
       }));
-      // Only appears in call site; filtered out when solving the definition.
       rules.push(IRulexSR::CallSiteFunc(CallSiteFuncSR {
         range: range(-1672149),
         prototype_rune,
@@ -170,7 +161,6 @@ where
         return_type,
       }));
     }
-    // /VCOORD
 
     // Use the same generic parameters as the struct
     let function_generic_parameters = struct_a.generic_params;
@@ -208,8 +198,6 @@ where
         self.scout_arena.alloc_slice_from_vec::<IRulexSR<'s>>(Vec::new()),
       )]),
       Some(use_(-64002, void_kind_rune_s)),
-      // The written return, `void`, spelled as a written `void` is: the zero-arg Call of its Name
-      // (@TNLTZACZ). Every non-lambda carries a written return type.
       Some(ITypeST::Call(self.scout_arena.alloc(CallST {
         range: struct_a.range,
         template: self.scout_arena.alloc(ITypeST::Name(self.scout_arena.alloc(NameST {
@@ -220,7 +208,6 @@ where
         }))),
         args: self.scout_arena.alloc_slice_from_vec(Vec::new()),
       }))),
-      // A synthesized drop carries no effect clause.
       &[],
       rules_slice,
       &[],
@@ -314,8 +301,6 @@ where
       },
       params,
       maybe_ret_coord_rune,
-      // The written return, `void`, spelled as a written `void` is: the zero-arg Call of its Name
-      // (@TNLTZACZ). Every non-lambda carries a written return type.
       Some(ITypeST::Call(self.scout_arena.alloc(CallST {
         range: struct_range,
         template: self
@@ -323,7 +308,6 @@ where
           .alloc(ITypeST::Name(self.scout_arena.alloc(NameST { range: struct_range, name: void_name_s }))),
         args: self.scout_arena.alloc_slice_from_vec(Vec::new()),
       }))),
-      // A synthesized drop/free carries no effect clause.
       &[],
       rules,
       &[],
@@ -353,7 +337,6 @@ where
       _ => panic!("struct drop: first param is not a struct"),
     };
     let struct_def = coutputs.lookup_struct(*struct_tt.id, self);
-    // A share citizen is only ever held ShareRef-wrapped; a single one is held bare.
     let struct_type = match struct_def.sharedness {
       SharednessT::Single => KindT::Struct(struct_tt),
       SharednessT::Shared => {
@@ -377,7 +360,6 @@ where
       header.return_type,
     );
 
-    // This is a compiler-generated drop body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70120);
     let is_extern =
       struct_def.attributes.iter().any(|a| matches!(a, ICitizenAttributeT::Extern(_)));

@@ -218,7 +218,6 @@ fn mutates_from_inside_a_closure() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: x is reused after addressible-promotion → wrap with __copy_prim
         r"
 exported func main() int {
   x = 4;
@@ -309,7 +308,7 @@ fn read_from_inside_a_closure_inside_a_closure() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: x captured by nested closure — Own primitive, copy
+        // TSUGAR: x captured by nested closure
         r"
 exported func main() int {
   x = 42;

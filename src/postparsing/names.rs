@@ -9,7 +9,6 @@ use std::hash::Hasher;
 use std::ptr::eq;
 use IRuneValS::*;
 
-/// Canonical interned name. Storage uses arena-backed refs; use `ptr_eq` for identity.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum INameS<'s> {
   FunctionDeclaration(&'s IFunctionDeclarationNameS<'s>),
@@ -30,7 +29,6 @@ pub enum INameS<'s> {
 }
 
 impl<'s> INameS<'s> {
-  /// Pointer to the canonical interned payload.
   pub fn canonical_ptr(&self) -> *const () {
     match self {
       INameS::FunctionDeclaration(r) => *r as *const _ as *const (),
@@ -51,7 +49,6 @@ impl<'s> INameS<'s> {
     }
   }
 
-  /// Returns true iff both refer to the same canonical interned value.
   #[inline(always)]
   pub fn ptr_eq(&self, other: &INameS<'s>) -> bool {
     eq(self.canonical_ptr(), other.canonical_ptr())
@@ -70,12 +67,8 @@ impl<'s> INameS<'s> {
   }
 }
 
-/// Value/key form for interner lookups. Shallow Val structs reference canonical INameS/IFunctionDeclarationNameS/etc.
-/// Per @DSAUIMZ, if a variant gains a slice field, add a 'tmp lifetime and use a transient ValS struct.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum INameValS<'s> {
-  // FunctionDeclaration is NOT here: function declaration names are identity (not interned),
-  // built directly and wrapped in `INameS::FunctionDeclaration` (like `INameS::VarName`).
   ImplDeclaration(ImplDeclarationNameS<'s>),
   AnonymousSubstructImplDeclaration(AnonymousSubstructImplDeclarationNameValS<'s>),
   ExportAsName(ExportAsNameS<'s>),
@@ -91,13 +84,11 @@ pub enum INameValS<'s> {
   ArbitraryName(ArbitraryNameValS),
 }
 
-/// Shallow: inner already canonical.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnonymousSubstructImplDeclarationNameValS<'s> {
   pub interface: &'s TopLevelInterfaceDeclarationNameS<'s>,
 }
 
-/// Shallow: interface_name already canonical.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnonymousSubstructTemplateNameValS<'s> {
   pub interface_name: &'s TopLevelInterfaceDeclarationNameS<'s>,
@@ -105,7 +96,6 @@ pub struct AnonymousSubstructTemplateNameValS<'s> {
 
 // AFTERM: Add arcana for how these sometimes contain INameS even though
 // INameS arent interned. Should be fine, but worth looking out for.
-/// Interned (see @TFITCX)
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IImpreciseNameS<'s> {
   CodeName(&'s CodeNameS<'s>),
@@ -135,7 +125,6 @@ pub enum IImpreciseNameS<'s> {
 }
 
 impl<'s> IImpreciseNameS<'s> {
-  /// Pointer to the canonical interned payload. Use `std::ptr::eq(a.canonical_ptr(), b.canonical_ptr())` for identity comparison.
   pub fn canonical_ptr(&self) -> *const () {
     match self {
       IImpreciseNameS::CodeName(r) => *r as *const _ as *const (),
@@ -165,58 +154,48 @@ impl<'s> IImpreciseNameS<'s> {
     }
   }
 
-  /// Returns true iff both refer to the same canonical interned value.
   #[inline(always)]
   pub fn ptr_eq(&self, other: &IImpreciseNameS<'s>) -> bool {
     eq(self.canonical_ptr(), other.canonical_ptr())
   }
 }
 
-/// Value-struct for LambdaStructImpreciseNameS key. Shallow: references canonical child.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LambdaStructImpreciseNameValS<'s> {
   pub lambda_name: IImpreciseNameS<'s>,
 }
 
-/// Value-struct for AnonymousSubstructTemplateImpreciseNameS key. Shallow: references canonical child.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnonymousSubstructTemplateImpreciseNameValS<'s> {
   pub interface_imprecise_name: IImpreciseNameS<'s>,
 }
 
-/// Value-struct for AnonymousSubstructConstructorTemplateImpreciseNameS key. Shallow: references canonical child.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnonymousSubstructConstructorTemplateImpreciseNameValS<'s> {
   pub interface_imprecise_name: IImpreciseNameS<'s>,
 }
 
-/// Value-struct for ImplImpreciseNameS key. Shallow: references canonical children.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplImpreciseNameValS<'s> {
   pub sub_citizen_imprecise_name: IImpreciseNameS<'s>,
   pub super_interface_imprecise_name: IImpreciseNameS<'s>,
 }
 
-/// Value-struct for ImplSubCitizenImpreciseNameS key. Shallow: references canonical child.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplSubCitizenImpreciseNameValS<'s> {
   pub sub_citizen_imprecise_name: IImpreciseNameS<'s>,
 }
 
-/// Value-struct for ImplSuperInterfaceImpreciseNameS key. Shallow: references canonical child.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplSuperInterfaceImpreciseNameValS<'s> {
   pub super_interface_imprecise_name: IImpreciseNameS<'s>,
 }
 
-/// Value-struct for RuneNameS key. Shallow: references canonical child rune.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RuneNameValS<'s> {
   pub rune: IRuneS<'s>,
 }
 
-/// Value/key form of imprecise name for interner lookups. Storage uses canonical `IImpreciseNameS<'s>`.
-/// Per @DSAUIMZ, if a variant gains a slice field, add a 'tmp lifetime and use a transient ValS struct.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IImpreciseNameValS<'s> {
   CodeName(CodeNameValS<'s>),
@@ -245,8 +224,6 @@ pub enum IImpreciseNameValS<'s> {
   DesugaredParamName(DesugaredParamNameValS<'s>),
 }
 
-/// Value-type (see @TFITCX). Identity-bearing — each names one declaration — so never interned
-/// per @WVSBIZ; the per-variant disambiguator (lid/location/range) makes structural eq be identity.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IVarDeclarationNameS<'s> {
   CodeVarName(CodeVarNameS<'s>),
@@ -259,19 +236,10 @@ pub enum IVarDeclarationNameS<'s> {
   WhileCondResultName(WhileCondResultNameDeclarationS<'s>),
   SelfName(SelfNameDeclarationS<'s>),
   AnonymousSubstructMemberName(AnonymousSubstructMemberNameDeclarationS<'s>),
-  /// Synthetic ABI-slot identifier for a function parameter that has no user-written name
-  /// (an anonymous destructure like `Pair[a, b]`, or an ignored `_ Pair`). Named params
-  /// keep their real name instead.
   DesugaredParamName(DesugaredParamNameDeclarationS<'s>),
 }
 
 impl<'s> IVarDeclarationNameS<'s> {
-  /// The imprecise (source) name a use-site uses to resolve this variable by its source
-  /// spelling. Total: every declaration-name variant maps to a corresponding imprecise
-  /// variant, so this never fails.
-  /// The declaration's imprecise (source) name. A declaration stores its imprecise name as an
-  /// already-interned `&'s` ref (typing-design "Names"), so this just wraps that canonical ref in the
-  /// matching `IImpreciseNameS` variant — no re-interning needed.
   pub fn imprecise_name(self, _scout_arena: &ScoutArena<'s>) -> IImpreciseNameS<'s> {
     match self {
       IVarDeclarationNameS::CodeVarName(n) => IImpreciseNameS::CodeName(n.imprecise_name),
@@ -301,10 +269,6 @@ impl<'s> IVarDeclarationNameS<'s> {
   }
 }
 
-/// Identity-bearing (each names one declaration — carries a `lid`), so **not interned**, mirroring
-/// `IVarDeclarationNameS` (@WVSBIZ). Built directly and wrapped in `INameS::FunctionDeclaration`
-/// (like `INameS::VarName` wraps `IVarDeclarationNameS`). Each variant embeds its interned imprecise
-/// name; `imprecise_name()` hands back the matching `IFunctionImpreciseNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IFunctionDeclarationNameS<'s> {
   FunctionName(FunctionNameS<'s>),
@@ -313,7 +277,6 @@ pub enum IFunctionDeclarationNameS<'s> {
   ConstructorName(&'s ConstructorNameS<'s>),
 }
 
-/// Shallow: inner already canonical.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ForwarderFunctionDeclarationNameValS<'s> {
   pub inner: IFunctionDeclarationNameS<'s>,
@@ -342,8 +305,6 @@ impl<'s> IFunctionDeclarationNameS<'s> {
     }
   }
 
-  /// The imprecise (spelling/lookup) name this declaration carries, wrapped in the matching
-  /// `IFunctionImpreciseNameS` variant — mirrors `IVarDeclarationNameS::imprecise_name`.
   pub fn imprecise_name(self) -> IFunctionImpreciseNameS<'s> {
     match self {
       IFunctionDeclarationNameS::FunctionName(x) => {
@@ -362,12 +323,6 @@ impl<'s> IFunctionDeclarationNameS<'s> {
   }
 }
 
-/// The imprecise (spelling/lookup) name of a function declaration — the counterpart to
-/// `IFunctionDeclarationNameS`, mirroring how `IImpreciseNameS` is the imprecise side of the
-/// variable declaration names. A Copy tagged-pointer enum whose payloads are interned (@SICZ).
-/// The two lookup-relevant variants reduce to a shared `CodeNameS` spelling (so env resolution
-/// stays on `IImpreciseNameS::CodeName`); the lambda reuses the empty marker (never looked up by
-/// name); only the forwarder needs a bespoke payload (it wraps its inner's imprecise name).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IFunctionImpreciseNameS<'s> {
   FunctionName(&'s CodeNameS<'s>),
@@ -376,7 +331,6 @@ pub enum IFunctionImpreciseNameS<'s> {
   ForwarderFunctionDeclarationName(&'s ForwarderFunctionImpreciseNameS<'s>),
 }
 
-/// Value/key form for interning `IFunctionImpreciseNameS` payloads.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IFunctionImpreciseNameValS<'s> {
   FunctionName(CodeNameValS<'s>),
@@ -385,15 +339,12 @@ pub enum IFunctionImpreciseNameValS<'s> {
   ForwarderFunctionDeclarationName(ForwarderFunctionImpreciseNameValS<'s>),
 }
 
-/// A forwarder's imprecise name wraps its inner function's imprecise name (see the closure/forwarder
-/// model). Interned (@SICZ) — carries the witness.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ForwarderFunctionImpreciseNameS<'s> {
   pub inner: IFunctionImpreciseNameS<'s>,
   pub index: i32,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `ForwarderFunctionImpreciseNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ForwarderFunctionImpreciseNameValS<'s> {
   pub inner: IFunctionImpreciseNameS<'s>,
@@ -417,8 +368,6 @@ impl<'s> IImplDeclarationNameS<'s> {
   }
 
   // VCOORD: see if we can get rid of this panic
-  // For sites that structurally can only encounter user-source impls (not
-  // macro-generated anonymous-substruct impls). Panics on the anon variant.
   pub fn expect_top_level(&self) -> &ImplDeclarationNameS<'s> {
     match self {
       IImplDeclarationNameS::ImplDeclarationName(n) => n,
@@ -488,9 +437,6 @@ impl<'s> IStructDeclarationNameS<'s> {
   }
 
   // VCOORD: see if we can get rid of this
-  // For sites that structurally can only encounter user-source structs (not
-  // macro-generated anonymous substructs) — e.g., name-based lookups, top-level
-  // citizen conversions. Panics if called on an anonymous substruct name.
   pub fn expect_top_level(&self) -> &TopLevelStructDeclarationNameS<'s> {
     match self {
       IStructDeclarationNameS::TopLevelStructDeclarationName(n) => n,
@@ -535,7 +481,6 @@ impl<'s> LambdaDeclarationNameS<'s> {
 pub struct LambdaImpreciseNameS {
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `LambdaImpreciseNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LambdaImpreciseNameValS {}
 
@@ -544,7 +489,6 @@ pub struct PlaceholderImpreciseNameS {
   pub index: i32,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `PlaceholderImpreciseNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PlaceholderImpreciseNameValS {
   pub index: i32,
@@ -693,7 +637,6 @@ pub struct ClosureParamNameS<'s> {
 pub struct ClosureParamImpreciseNameS {
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `ClosureParamImpreciseNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ClosureParamImpreciseNameValS {}
 
@@ -701,20 +644,15 @@ pub struct ClosureParamImpreciseNameValS {}
 pub struct PrototypeNameS {
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `PrototypeNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PrototypeNameValS {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MagicParamImpreciseNameS<'s> {
   pub code_location: CodeLocationS<'s>,
-  /// Stable identity (see Loc/LID design). Shared with the declaration's `lid`; the
-  /// already-arena-allocated slice means this needs no `'tmp` deferral (see @DSAUIMZ), unlike
-  /// a builder-borrowed lid — the imprecise name holds the canonical lid directly.
   pub lid: LocationInDenizen<'s>,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `MagicParamNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MagicParamNameValS<'s> {
   pub code_location: CodeLocationS<'s>,
@@ -726,7 +664,6 @@ pub struct DesugaredParamNameS<'s> {
   pub code_location: CodeLocationS<'s>,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `DesugaredParamNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DesugaredParamNameValS<'s> {
   pub code_location: CodeLocationS<'s>,
@@ -754,18 +691,14 @@ pub struct AnonymousSubstructMemberNameS {
   pub index: i32,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `AnonymousSubstructMemberNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnonymousSubstructMemberNameValS {
   pub index: i32,
 }
 
-/// Value-type (see @TFITCX)
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CodeVarNameS<'s> {
   pub imprecise_name: &'s CodeNameS<'s>,
-  /// Disambiguates same-named locals across scopes, so structural equality is identity
-  /// equality — which is why a declaration name is never interned (see @WVSBIZ).
   pub lid: LocationInDenizen<'s>,
 }
 
@@ -779,7 +712,6 @@ pub struct IterableNameS<'s> {
   pub range: RangeS<'s>,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `IterableNameS` (the Val side of the dual-enum).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IterableNameValS<'s> {
   pub range: RangeS<'s>,
@@ -790,7 +722,6 @@ pub struct IteratorNameS<'s> {
   pub range: RangeS<'s>,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `IteratorNameS` (the Val side of the dual-enum).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IteratorNameValS<'s> {
   pub range: RangeS<'s>,
@@ -801,7 +732,6 @@ pub struct IterationOptionNameS<'s> {
   pub range: RangeS<'s>,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `IterationOptionNameS` (the Val side of the dual-enum).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IterationOptionNameValS<'s> {
   pub range: RangeS<'s>,
@@ -812,16 +742,11 @@ pub struct WhileCondResultNameS<'s> {
   pub range: RangeS<'s>,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `WhileCondResultNameS` (the Val side of the dual-enum).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WhileCondResultNameValS<'s> {
   pub range: RangeS<'s>,
 }
 
-// Declaration-name payloads: each embeds its corresponding `*ImpreciseNameS` (the use-site
-// name a source spelling resolves through) plus the declaration's `lid` (its unique identity,
-// see @WVSBIZ). Built directly, never interned; the embedded imprecise name is a plain value
-// here and only gets interned when `imprecise_name()` hands out the canonical form.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ConstructingMemberNameDeclarationS<'s> {
@@ -960,7 +885,6 @@ pub enum IRuneS<'s> {
 }
 
 impl<'s> IRuneS<'s> {
-  /// Pointer to the canonical interned payload. Use `std::ptr::eq(a.canonical_ptr(), b.canonical_ptr())` for identity comparison.
   pub fn canonical_ptr(&self) -> *const () {
     match self {
       IRuneS::CodeRune(r) => *r as *const _ as *const (),
@@ -1020,27 +944,23 @@ impl<'s> IRuneS<'s> {
     }
   }
 
-  /// Returns true iff both refer to the same canonical interned value.
   #[inline(always)]
   pub fn ptr_eq(&self, other: &IRuneS<'s>) -> bool {
     eq(self.canonical_ptr(), other.canonical_ptr())
   }
 }
 
-/// Value-struct for ImplicitRegionRuneS key. Shallow: references canonical child rune.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplicitRegionRuneValS<'s> {
   pub original_rune: IRuneS<'s>,
 }
 
-/// Value-struct for ImplicitCoercionTemplateRuneS key. Shallow: references canonical child rune.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplicitCoercionTemplateRuneValS<'s> {
   pub range: RangeS<'s>,
   pub original_kind_rune: IRuneS<'s>,
 }
 
-/// Value-struct for AnonymousSubstructMethodInheritedRuneS key. Shallow: references canonical child rune.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnonymousSubstructMethodInheritedRuneValS<'s> {
   pub interface: TopLevelInterfaceDeclarationNameS<'s>,
@@ -1048,20 +968,16 @@ pub struct AnonymousSubstructMethodInheritedRuneValS<'s> {
   pub inner: IRuneS<'s>,
 }
 
-/// Value-struct for DispatcherRuneFromImplS key. Shallow: references canonical child rune.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DispatcherRuneFromImplValS<'s> {
   pub inner_rune: IRuneS<'s>,
 }
 
-/// Value-struct for CaseRuneFromImplS key. Shallow: references canonical child rune.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CaseRuneFromImplValS<'s> {
   pub inner_rune: IRuneS<'s>,
 }
 
-// Per @DSAUIMZ, these Val structs have private lid fields to prevent pre-allocation.
-// Only constructible via new() which takes a LocationInDenizenVal from borrow_val().
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplicitRuneValS<'tmp> {
@@ -1141,9 +1057,6 @@ impl<'tmp> LocalDefaultRegionRuneValS<'tmp> {
   }
 }
 
-/// Per @DSAUIMZ, 'tmp carries a temporary borrow to defer slice allocation.
-/// Value/key form of rune for interner lookups. Used when constructing runes before
-/// canonicalizing via `intern_rune`. Storage fields use canonical `IRuneS<'s>`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IRuneValS<'s, 'tmp> {
   CodeRune(CodeRuneS<'s>),
@@ -1204,21 +1117,6 @@ pub enum IRuneValS<'s, 'tmp> {
   CaseRuneFromImpl(CaseRuneFromImplValS<'s>),
 }
 
-/// Per @DSAUIMZ, wrapper enabling heterogeneous HashMap lookup.
-///
-/// The intern map stores `IRuneValS<'s, 's>` keys (both lifetimes = arena).
-/// But callers build `IRuneValS<'s, 'tmp>` where 'tmp borrows a stack-local
-/// builder (not the arena). We need to look up in the map using the 'tmp version.
-///
-/// We can't implement `Equivalent<IRuneValS<'s,'s>> for IRuneValS<'s,'tmp>` directly
-/// because when 'tmp = 's, the two types are identical, and Rust's blanket impl
-/// `Equivalent<K> for K` (from PartialEq) already covers that case. The orphan
-/// rules see a potential overlap and reject our impl.
-///
-/// This wrapper is a distinct type that breaks the overlap. It holds a reference
-/// to the query val and delegates Hash/Equivalent to the inner val's contents.
-/// The Hash output is identical for equal values regardless of lifetime, because
-/// both LocationInDenizenVal and LocationInDenizen hash by slice contents.
 pub struct RuneValQuery<'a, 's, 'tmp>(pub &'a IRuneValS<'s, 'tmp>);
 
 impl<'a, 's, 'tmp> Hash for RuneValQuery<'a, 's, 'tmp> {
@@ -1230,14 +1128,12 @@ impl<'a, 's, 'tmp> Hash for RuneValQuery<'a, 's, 'tmp> {
 impl<'a, 's, 'tmp> hashbrown::Equivalent<IRuneValS<'s, 's>> for RuneValQuery<'a, 's, 'tmp> {
   fn equivalent(&self, key: &IRuneValS<'s, 's>) -> bool {
     match (self.0, key) {
-      // 7 lid variants: compare path contents
       (ImplicitRune(a), ImplicitRune(b)) => a.lid().path() == b.lid().path(),
       (CallRegionRune(a), CallRegionRune(b)) => a.lid().path() == b.lid().path(),
       (CallPureMergeRegionRune(a), CallPureMergeRegionRune(b)) => a.lid().path() == b.lid().path(),
       (LetImplicitRune(a), LetImplicitRune(b)) => a.lid().path() == b.lid().path(),
       (MagicParamRune(a), MagicParamRune(b)) => a.lid().path() == b.lid().path(),
       (LocalDefaultRegionRune(a), LocalDefaultRegionRune(b)) => a.lid().path() == b.lid().path(),
-      // All other variants: same inner type on both sides, delegate to PartialEq
       (CodeRune(a), CodeRune(b)) => a == b,
       (ImplDropKindRune(a), ImplDropKindRune(b)) => a == b,
       (ImplDropVoidRune(a), ImplDropVoidRune(b)) => a == b,
@@ -1428,8 +1324,6 @@ pub struct SelfRuneS {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SelfKindRuneS {}
 
-/// Self's full type: the value type of `SelfKindRuneS` inside whatever reference
-/// wraps the abstract method's self parameter declared (see @PFVSZ).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SelfFullTypeRuneS {}
 
@@ -1447,38 +1341,28 @@ pub struct MacroSelfKindRuneS {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MacroSelfKindTemplateRuneS {}
 
-/// Interned imprecise name (sealed, @SICZ): obtainable only via `ScoutArena::intern_code_name` /
-/// `intern_imprecise_name`. The `_must_intern` witness makes the canonical `&'s CodeNameS`
-/// unforgeable. The freely-constructible lookup key is `CodeNameValS`.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct CodeNameS<'s> {
   pub name: StrI<'s>,
   pub _must_intern: ScoutInterned,
 }
 
-// Hide the `_must_intern` witness (see @SICZ) from Debug: it's an internal sealing token
-// with no information, and it otherwise leaks into every humanized name and error snapshot.
 impl<'s> Debug for CodeNameS<'s> {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     f.debug_struct("CodeNameS").field("name", &self.name).finish()
   }
 }
 
-// VCOORD: rename CodeNameValS to CodeNameKeyS or some other name to say its the interning key
-/// Freely-constructible lookup key for `CodeNameS` (the Val side of the dual-enum).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CodeNameValS<'s> {
   pub name: StrI<'s>,
 }
 
-/// Imprecise (use-site) name for a `self.x` constructing-member reference. Distinct from
-/// `CodeName` so a member access doesn't collide with a same-spelled local read.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ConstructingMemberImpreciseNameS<'s> {
   pub name: StrI<'s>,
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `ConstructingMemberImpreciseNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ConstructingMemberImpreciseNameValS<'s> {
   pub name: StrI<'s>,
@@ -1543,16 +1427,11 @@ pub struct AnonymousSubstructDropBoundParamsListRuneS<'s> {
   pub method: IFunctionDeclarationNameS<'s>,
 }
 
-/// The prototype rune of a struct's auto-generated drop's synthesized `where func drop(T)void`
-/// bound. Keyed on the struct's generic-parameter rune `T`, so each stored type parameter gets its
-/// own distinct bound within the drop.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StructDropBoundPrototypeRuneS<'s> {
   pub param_rune: IRuneS<'s>,
 }
 
-/// The params-list rune of a struct's auto-generated drop's synthesized `where func drop(T)void`
-/// bound (see `StructDropBoundPrototypeRuneS`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StructDropBoundParamsListRuneS<'s> {
   pub param_rune: IRuneS<'s>,
@@ -1605,7 +1484,6 @@ pub struct FunctorReturnRuneNameS {}
 pub struct SelfNameS {
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `SelfNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SelfNameValS {}
 
@@ -1613,7 +1491,6 @@ pub struct SelfNameValS {}
 pub struct ArbitraryNameS {
   pub _must_intern: ScoutInterned,
 }
-/// Freely-constructible lookup key for `ArbitraryNameS`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArbitraryNameValS {}
 

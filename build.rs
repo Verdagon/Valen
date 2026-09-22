@@ -74,7 +74,6 @@ fn main() {
   }
 
   if cfg!(target_os = "macos") {
-    // Homebrew installs libs like zstd outside the default search path.
     if std::path::Path::new("/opt/homebrew/lib").exists() {
       println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
     }
@@ -145,10 +144,6 @@ fn locate_llvm_config() -> PathBuf {
   if let Ok(path) = env::var("LLVM_CONFIG") {
     return PathBuf::from(path);
   }
-  // The Vale rustc fork builds its shared libLLVM as a sibling of the stage2 sysroot: sysroot
-  // is `.../<target>/stage2`, and llvm-config lives at `.../<target>/llvm/bin/llvm-config`.
-  // The `.exists()` guard means this hits only when the active toolchain IS the fork; a stock
-  // nightly has no such sibling and falls through to the standalone LLVM below.
   let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
   if let Ok(out) = Command::new(&rustc).args(["--print", "sysroot"]).output() {
     if out.status.success() {
@@ -159,9 +154,6 @@ fn locate_llvm_config() -> PathBuf {
       }
     }
   }
-  // Standalone LLVM 21 for a stock-nightly dev build. Probe Homebrew's keg-only `llvm@21`
-  // and version-suffixed names on PATH; accept only major version 21 so a stray llvm@20
-  // does not slip in and break the LLVM 21 C API the backend uses.
   let mut candidates: Vec<PathBuf> = Vec::new();
   if let Ok(out) = Command::new("brew").args(["--prefix", "llvm@21"]).output() {
     if out.status.success() {

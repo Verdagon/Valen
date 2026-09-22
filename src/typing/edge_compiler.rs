@@ -143,7 +143,6 @@ where
         }
       })
       .collect();
-
     // val x2 = x1.groupBy(_._1)
     // val x3 = x2.mapValues(_.map(_._2))
     // Per @IIIOZ: IndexMap so iteration at line 281 is deterministic across runs.
@@ -193,14 +192,12 @@ where
         (interface_template_id, ordered_methods)
       })
       .collect();
-
     // val abstractFunctionHeadersByInterfaceTemplateId = x4 ++ coutputs.getAllInterfaces().map(...)
     // Some interfaces would be empty and they wouldn't be in x4, so we add them here.
     let mut abstract_function_headers: IndexMap<IdT<'s, 't>, Vec<(PrototypeT<'s, 't>, usize)>> = x4;
     for interface_def in coutputs.get_all_interfaces().iter() {
       abstract_function_headers.entry(interface_def.template_name).or_insert_with(Vec::new);
     }
-
     // val interfaceEdgeBlueprints = abstractFunctionHeadersByInterfaceTemplateId.map(...).toVector
     abstract_function_headers
       .into_iter()
@@ -424,13 +421,6 @@ where
         expect_kind_templata(templata).kind
       })
       .collect();
-    // Any generic parameter of the abstract function that wasn't pinned by the impl's self-type
-    // gets a fresh dispatcher-owned placeholder inside evaluate_generic_virtual_dispatcher_function_for_prototype.
-    // Collect those so they appear in the dispatcher's templateArgs — the Instantiator's
-    // assemble_placeholder_map zips templateArgs with concrete args at monomorphization, so any
-    // placeholder that doesn't appear here can't be substituted and trips a vassertSome later.
-    // Example: map<T, R>(&Opt<T>, &IFunction1<mut,&T,R>) Opt<R> with impl<I> Opt<I> for Some<I> —
-    // T is mimicked from I, but R has no impl-side counterpart and is a fresh placeholder.
     let existing_dispatcher_placeholder_ids: HashSet<IdT<'s, 't>> =
       dispatcher_placeholders.iter().map(|p| Compiler::get_placeholder_templata_id(*p)).collect();
     let fresh_dispatcher_placeholders: Vec<ITemplataT<'s, 't>> = origin_func
@@ -717,10 +707,6 @@ where
       false,
     )?;
     let found_function = match potential_banner {
-      // No function on the sub-citizen overrides this abstract interface method — none by that name
-      // and matching parameters exists. Surface it as a compile error rather than panicking; the
-      // find-function failure carries what was searched for and why each candidate was rejected, and
-      // its humanizer is the same one the call-site "couldn't find function" error uses.
       Err(fff) => {
         return Err(ICompileErrorT::CouldntFindOverrideT {
           range: self.typing_interner.alloc_slice_from_vec(vec![range, impl_a.range]),

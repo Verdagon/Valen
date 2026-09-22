@@ -40,8 +40,6 @@ exported func main() int {
     );
 }
 
-// The chained set-swap exchanges the two locals' values: before it a.fuel=1/b.fuel=2, after it
-// a.fuel=2/b.fuel=1 (each `set` returns the old value, threaded across a and b).
 #[test]
 fn mutswaplocals() {
     assert_compile_and_run_dbg(&p("programs/mutswaplocals.vale"), 42, &[
@@ -56,7 +54,6 @@ fn mutswaplocals() {
     ]);
 }
 
-// A local is tracked across a move-out + restackify: fuel 35 -> 42.
 #[test]
 fn restackify() {
     assert_compile_and_run_dbg(&p("programs/restackify.vale"), 42, &[
@@ -69,7 +66,6 @@ fn restackify() {
     ]);
 }
 
-// A destructure that also restackifies leaves both locals live and inspectable.
 #[test]
 fn destructure_restackify() {
     assert_compile_and_run_dbg(&p("programs/destructure_restackify.vale"), 42, &[
@@ -80,7 +76,6 @@ fn destructure_restackify() {
     ]);
 }
 
-// Loop-carried mutation of both the counter and a struct field across iterations.
 #[test]
 fn loop_restackify() {
     assert_compile_and_run_dbg(&p("programs/loop_restackify.vale"), 42, &[
@@ -97,7 +92,6 @@ fn loop_restackify() {
     ]);
 }
 
-// Primitive mutation is observable: the sentinel before `set x = 42` sees 73, the one after sees 42.
 #[test]
 fn mutlocal() {
     assert_compile_and_run_dbg(&p("programs/mutlocal.vale"), 42, &[
@@ -110,7 +104,6 @@ fn mutlocal() {
     ]);
 }
 
-// A borrow-ref local's pointee struct walks its fields.
 #[test]
 fn constraintRef() {
     assert_compile_and_run_dbg(&p("programs/constraintRef.vale"), 8, &[
@@ -120,8 +113,6 @@ fn constraintRef() {
     ]);
 }
 
-// The reused local ID doesn't corrupt playerRow: the sentinel sits after `playerRow = 4`, so it's
-// live and reads 4 (if the Unstackify local-ID-reuse bug returned, this value would be wrong).
 #[test]
 fn unstackifyret() {
     assert_compile_and_run_dbg(&p("programs/unstackifyret.vale"), 42, &[
@@ -131,8 +122,6 @@ fn unstackifyret() {
     ]);
 }
 
-// The live `return 42` (breakpoint 1) is reached; the unreachable trailing `__vbi_panic`
-// (breakpoint 2) is never entered — continuing runs straight to exit 42.
 #[test]
 fn unreachablemoot() {
     assert_compile_and_run_dbg(&p("programs/unreachablemoot.vale"), 42, &[
@@ -143,8 +132,6 @@ fn unreachablemoot() {
     ]);
 }
 
-// The panic fires: execution stops at the panic call site (breakpoint 1), and continuing never
-// reaches the code after it (breakpoint 2) — the panic halts the program (exit 1, via run()).
 #[test]
 fn panic() {
     assert_compile_and_run_dbg(&p("programs/panic.vale"), 1, &[
@@ -155,8 +142,6 @@ fn panic() {
     ]);
 }
 
-// The guarded panic inside `if (false)` (breakpoint 2) never fires; execution reaches the return
-// (breakpoint 1) and continues to exit 42.
 #[test]
 fn panicnot() {
     assert_compile_and_run_dbg(&p("programs/panicnot.vale"), 42, &[
@@ -167,7 +152,6 @@ fn panicnot() {
     ]);
 }
 
-// From inside two nested blocks, outer- and enclosing-block locals are all in scope.
 #[test]
 fn nestedblocks() {
     assert_compile_and_run_dbg(&p("programs/nestedblocks.vale"), 42, &[

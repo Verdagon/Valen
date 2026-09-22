@@ -4,55 +4,55 @@ fn p(rel: &str) -> std::path::PathBuf {
     programs_dir().join(rel)
 }
 
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn stradd()   { assert_compile_and_run(&p("programs/strings/stradd.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn strneq()   { assert_compile_and_run(&p("programs/strings/strneq.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn strprint() { assert_compile_and_run(&p("programs/strings/strprint.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn inttostr() { assert_compile_and_run(&p("programs/strings/inttostr.vale"), 4); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn i64tostr() { assert_compile_and_run(&p("programs/strings/i64tostr.vale"), 4); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn floattostr()      { assert_compile_and_run(&p("programs/strings/floattostr.vale"), 9); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn strcmp()          { assert_compile_and_run(&p("programs/strings/strcmp.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn substring()       { assert_compile_and_run(&p("programs/strings/substring.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn strindexof()      { assert_compile_and_run(&p("programs/strings/strindexof.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn strtoascii()      { assert_compile_and_run(&p("programs/strings/strtoascii.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn strfromascii()    { assert_compile_and_run(&p("programs/strings/strfromascii.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn stradd_empty()    { assert_compile_and_run(&p("programs/strings/stradd_empty.vale"), 42); }
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn stradd_chained()  { assert_compile_and_run(&p("programs/strings/stradd_chained.vale"), 42); }

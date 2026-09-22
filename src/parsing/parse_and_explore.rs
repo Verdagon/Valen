@@ -9,13 +9,7 @@ use crate::parsing::Parser;
 use crate::utils::code_hierarchy::{FileCoordinate, PackageCoordinate};
 use crate::Keywords;
 
-// VCOORD: revisit this, probably shouldnt do this
-/// Unwraps a denizen parse, reporting the error itself rather than discarding it.
-///
-/// This closure's return type is the denizen, not a `Result`, so a parse failure can't be
-/// propagated from here without restructuring `lex_and_explore`'s callback contract. Until
-/// that happens the failure must still be loud — but it names the error, its position, and
-/// the offending line, so a caller can act on it.
+// VCOORD: handle errors better here
 fn expect_parsed<'p, T>(
   result: Result<T, ParseError>,
   denizen_kind: &str,

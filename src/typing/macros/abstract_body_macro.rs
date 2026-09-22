@@ -49,12 +49,6 @@ where
       }),
     };
 
-    // Find self, but instead of calling it like a regular function call, call it like an interface.
-    // We do this instead of grabbing the prototype out of the environment because we want to get its
-    // instantiation bounds too (well, we want them to be added to the coutputs).
-    // Per @DRSINI, this triggers overload resolution with 0 explicit template args and
-    // placeholder-typed self arg. Defaults must not be in the initial rules or they'd
-    // conflict with arg-inferred placeholders.
     let imprecise_name = get_imprecise_name(self.scout_arena, env.id.local_name)
       .expect("vassertSome: TemplatasStore.getImpreciseName env.id.localName");
     let param_types: Vec<KindT<'s, 't>> = params2.iter().map(|p| p.tyype).collect();
@@ -90,9 +84,6 @@ where
     })? {
       Ok(stamp) => stamp.prototype,
       Err(fff) => {
-        // Name the rejection kind per candidate rather than dumping the payload: an
-        // InferFailure carries a whole solve tree, which buries the one fact that
-        // distinguishes "no such override" from "the override exists and didn't solve".
         let reasons: Vec<String> = fff
           .rejected_callee_to_reason
           .iter()
@@ -145,7 +136,6 @@ where
 
     let virtual_index =
       header.get_virtual_index().expect("vassertSome: header.getVirtualIndex") as i32;
-    // This is a compiler-generated abstract-function body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70100);
     let args: Vec<ExpressionTE<'s, 't>> = prototype
       .param_types()

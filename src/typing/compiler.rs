@@ -115,10 +115,6 @@ where
   pub typing_interner: &'ctx TypingInterner<'s, 't>,
   pub keywords: &'ctx Keywords<'s>,
   pub opts: &'ctx TypingPassOptions,
-  // The Rust-interop oracle: a borrowed query service, alongside the other borrowed
-  // services above. Present only in the rustc-linked binary. It answers questions;
-  // it never accumulates anything, so it lives here and not on CompilerOutputs
-  // (which exists to be drained into HinputsT).
   pub oracles: Oracles<'ctx, 's, 't>,
 }
 
@@ -266,69 +262,6 @@ where
           placeholder_name
         );
       }
-    }
-  }
-
-  // VCOORD: doublecheck before re-enabling. Dead today (its only caller is commented out in
-  // compiler_solver.rs). The BorrowRef/OwnRef/ShareRef/WeakRef arms unimplemented!()-panic on
-  // any ref-wrapped kind; peel references first.
-  pub fn is_descendant_kind(
-    &self,
-    _envs: &InferEnv<'s, 't>,
-    _coutputs: &mut CompilerOutputs<'s, 't>,
-    kind: KindT<'s, 't>,
-  ) -> bool {
-    match kind {
-      KindT::KindPlaceholder(kp) => self.is_descendant(
-        _coutputs,
-        _envs.parent_ranges,
-        _envs.call_location,
-        _envs.original_calling_env,
-        ISubKindTT::KindPlaceholder(kp),
-      ),
-      KindT::RuntimeSizedArray(_) => false,
-      KindT::OverloadSet(_) => false,
-      KindT::Never(_) => true,
-      KindT::StaticSizedArray(_) => false,
-      KindT::Struct(s) => self.is_descendant(
-        _coutputs,
-        _envs.parent_ranges,
-        _envs.call_location,
-        _envs.original_calling_env,
-        ISubKindTT::Struct(s),
-      ),
-      KindT::Interface(i) => self.is_descendant(
-        _coutputs,
-        _envs.parent_ranges,
-        _envs.call_location,
-        _envs.original_calling_env,
-        ISubKindTT::Interface(i),
-      ),
-      KindT::Int(_)
-      | KindT::Bool(_)
-      | KindT::Float(_)
-      | KindT::USize(_)
-      | KindT::Str(_)
-      | KindT::Void(_) => false,
-      KindT::BorrowRef(_) => unimplemented!(),
-      KindT::OwnRef(_) => unimplemented!(),
-      KindT::ShareRef(_) => unimplemented!(),
-      KindT::WeakRef(_) => unimplemented!(),
-    }
-  }
-
-  // VCOORD: doublecheck before re-enabling. Dead today (its only caller is commented out in
-  // compiler_solver.rs). A BorrowRef(Interface) or KindPlaceholder falls to _ => false and
-  // silently drops an upcast candidate; peel references and handle placeholders first.
-  pub fn is_ancestor_kind(
-    &self,
-    _envs: &InferEnv<'s, 't>,
-    _coutputs: &mut CompilerOutputs<'s, 't>,
-    kind: KindT<'s, 't>,
-  ) -> bool {
-    match kind {
-      KindT::Interface(_) => true,
-      _ => false,
     }
   }
 
@@ -552,13 +485,6 @@ where
     //   fullEnv, coutputs, life, callRange, originFunction, paramCoords, maybeRetCoord)
   }
 
-  // Total accessor for a function's postparsed AST, keyed by its template id. Callers cannot observe
-  // whether it was already built: this always returns, or vfails on a compiler bug. A Rust function
-  // builds on its first lookup here (the #[cfg] create hook is wired in the lazy step); a Vale
-  // function is always already seeded at index time. This is the one seam through which every
-  // function read passes, so no read site ever touches the sealed table directly. See the sealing
-  // VCOORD in compiler_outputs.rs. Struct/interface/impl are always eager, so their reads stay on the
-  // total coutputs.get_postparsed_* accessors, which likewise never reveal existence.
   pub(in crate::typing) fn illuminate_function(
     &self,
     coutputs: &mut CompilerOutputs<'s, 't>,
@@ -570,10 +496,6 @@ where
     #[cfg(feature = "rust_interop")]
     {
       match create_postparsed_function(self, coutputs, template_id) {
-        // rust_interop only produces the FunctionS; core commits it. Register so re-entrant
-        // lookups memoize, then queue it for the deferred-compile drain (near end of typing) so
-        // `make_extern_function` runs on it — its wrapper + `function_extern`, exactly as a user
-        // `extern func` gets via the top-level loop. The drain derives its outer env from the id.
         Some(Ok(f)) => {
           coutputs.register_postparsed_function(template_id, f);
           coutputs.defer_evaluating_function(DeferredActionT::EvaluateFunction {
@@ -581,12 +503,7 @@ where
           });
           return Ok(f);
         }
-        // A called Rust function whose signature Vale cannot represent. The reason travels out; the
-        // one caller that can trigger this — overload resolution, which holds the call range — builds
-        // it into a `CouldNotPostparseFunction` compile error. Every other lookup site is a cache hit
-        // that cannot decline (the function was resolved first), so they `.expect` this never happens.
         Some(Err(reason)) => return Err(reason),
-        // Not a Rust-backed function template at all — a genuine bug, not a decline.
         None => {}
       }
     }
@@ -623,8 +540,6 @@ where
     let mut template_id_to_postparsed_impl: IndexMap<&'t IdT<'s, 't>, &'s ImplS<'s>> =
       IndexMap::default();
     let mut id_and_env_entry: Vec<(&'t IdT<'s, 't>, IEnvEntryT<'s, 't>)> = Vec::new();
-    // A package's denizens can be spread across several files; each is registered under its
-    // own file's package coord, so the same package is simply visited once per file.
     for (file_coord, program_a) in &file_to_program_s.file_coord_to_contents {
       let coord = file_coord.package_coord;
       let pkg_top_level_name =
@@ -782,10 +697,6 @@ where
     let pkg_top_level_for_group = INameT::PackageTopLevel(
       self.typing_interner.intern_package_top_level_name(PackageTopLevelNameT {}),
     );
-    // Per @IIIOZ: IndexMap so iteration at line ~1350 (into global_env.name_to_top_level_environment)
-    // preserves id_and_env_entry source order — otherwise the package env's `global_namespaces`
-    // slice ends up in random per-process HashMap order, and lookups that walk it nondeterministically
-    // pick a different "drop" overload per run.
     let mut namespace_name_to_entries: IndexMap<
       &'t IdT<'s, 't>,
       Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
@@ -884,20 +795,16 @@ where
       {
         panic!("Overlap, a Vale package claimed the reserved `rust` module: {id:?}");
       }
-      // Loop over all `import rust.whatever` imports, and turn each into an env entry (and eagerly postparse it
-      // if it's a type).
       let mut per_crate: IndexMap<
         &'s PackageCoordinate<'s>,
         Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
       > = IndexMap::default();
-      // Denizens generated by the anon macro (full template id, env entry); grouped by full nesting below.
       let mut anon_denizen_entries: Vec<(&'t IdT<'s, 't>, IEnvEntryT<'s, 't>)> = Vec::new();
       for program in file_to_program_s.file_coord_to_contents.values() {
         for import in program.imports {
           if import.module_name != self.keywords.rust {
             continue;
           }
-          // Oracle must be present if the user is doing any `import rust` things.
           let oracle = self
             .oracles
             .rust
@@ -921,29 +828,11 @@ where
               template_id_to_postparsed_struct.insert(id, s);
             }
             Some(RustImportSeed::Interface(id, i, anon_eligible)) => {
-              // Gate the macro on the first sighting: an N-file import reaches here N times, and a
-              // second firing mints a duplicate substruct (ambiguous constructor). (`insert` returns
-              // the prior value.)
               let first_sighting = template_id_to_postparsed_interface.insert(id, i).is_none();
-              // A synthesized interface (a Rust trait) carries abstract methods like a native one,
-              // but this seed path skips the internal-method registration the `program_a.interfaces`
-              // indexing loop above does. Register them here too so an `impl`'s override resolves
-              // them — a direct mirror of that loop.
               for internal_method in i.internal_methods.iter() {
                 let (_, method_template_id) = self.internal_method_template_id(id, internal_method);
                 template_id_to_postparsed_function.insert(method_template_id, internal_method);
               }
-              // Fire the anon-substruct macro on the imported trait (like the native
-              // `program_a.interfaces` loop), so `Callback((x) => {…})` needs no hand-written
-              // forwarder. Not `derive_interface_drop` too — the synthesized trait supplies its own
-              // drop.
-              //
-              // Problem: the macro packages each denizen from the interface id, but they must not be in
-              // the `rust` package — the function-compile loop skips `rust` (a forwarder there never
-              // compiles), and `citizen_def_id_and_args` needs the substruct as a local, non-`rust`
-              // type. So relocate the id into the reserved native `rust_trait_anon` package; only the
-              // package changes, so the impl still binds the real `Callback`. `anon_eligible`:
-              // `sig_is_anon_representable` at trait synthesis.
               if first_sighting && anon_eligible {
                 let anon_pkg_coord = self
                   .scout_arena
@@ -991,7 +880,6 @@ where
             Some(RustImportSeed::Struct(id, s)) => {
               template_id_to_postparsed_struct.insert(id, s);
             }
-            // A `Deref` target is normally a struct; an enum target seeds an interface the same way.
             Some(RustImportSeed::Interface(id, i, _)) => {
               template_id_to_postparsed_interface.insert(id, i);
             }
@@ -1014,10 +902,6 @@ where
       }
 
       // VCOORD: this probably shouldnt stay here long term.
-      // Group the generated denizens by full nesting (coord + init_steps), like the native loop above —
-      // never flattened to the package top level. The substruct's `drop` nests under
-      // `[AnonymousSubstructTemplate]`; flattening it makes drop-call resolution build a top-level
-      // `drop` id no nested `drop` matches (an instantiator `vassert_one` miss).
       let mut anon_ns_to_entries: IndexMap<
         &'t IdT<'s, 't>,
         Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
@@ -1134,7 +1018,6 @@ where
           _ => unordered_entries.push((*name, *entry)),
         }
       }
-      // orderedEntries = orderableEntries.sortBy(_._1.humanName.str)
       orderable_entries.sort_by(|(a, _), (b, _)| {
         CitizenTemplateNameT::try_from(*a)
           .unwrap()
@@ -1631,7 +1514,6 @@ where
               function_id,
             )?;
 
-            // coutputs.markDeferredFunctionCompiled(nextDeferredEvaluatingFunction.name)
             coutputs.mark_deferred_function_compiled(&name_val);
           }
           _ => panic!("vcurious: unexpected deferred action variant in function-compile loop"),
@@ -1676,7 +1558,6 @@ where
               instantiation_bound_params,
             )?;
 
-            // coutputs.markDeferredFunctionBodyCompiled(nextDeferredEvaluatingFunctionBody.prototypeT)
             coutputs.mark_deferred_function_body_compiled(prototype);
           }
           _ => panic!("implement: unexpected deferred action type"),
@@ -1736,8 +1617,6 @@ where
       assert!(ids.len() == distinct.len());
     }
 
-    // Retain `coutputs`: the pass-2 stub reads the abstract methods' `mut(g)` effects off the postparsed
-    // `FunctionS` to render `&mut` (the typed `KindT` drops borrow mutability, @BCHATZ).
     Ok((hinputs, coutputs))
   }
 
@@ -1864,8 +1743,6 @@ where
       &'t KindExportT<'s, 't>,
     )> =
       coutputs.get_kind_exports().iter().map(|ke| (ke.id.package_coord, ke.tyype, *ke)).collect();
-    // Per @IIIOZ: IndexMap so iteration at the package/kind loops below is deterministic.
-    // Upstream kind_export_triples is from coutputs.get_kind_exports() (Vec, deterministic).
     let mut grouped_by_package: IndexMap<
       &'s PackageCoordinate<'s>,
       Vec<(KindT<'s, 't>, &'t KindExportT<'s, 't>)>,
@@ -1958,19 +1835,13 @@ where
         .collect();
       for param_type in all_types {
         if !self.is_primitive(param_type) && !exported_kind_to_export.contains_key(&param_type) {
-          // Method-own and container-inherited template params surface here as
-          // placeholders at definition time (e.g. `extern func bar<C>(c C)` inside
-          // `extern struct Foo<A>` has C and A as KindPlaceholderTs in the wrapper
-          // prototype). Placeholders are substitution slots, not concrete types; the
-          // actual concrete kind for each monomorphization is what matters for ABI,
-          // and gets checked at instantiation.
           let kind_is_fine_in_extern_func = match param_type {
             KindT::Struct(s) => coutputs
               .lookup_struct(*s.id, self)
               .attributes
               .iter()
               .any(|a| matches!(a, ICitizenAttributeT::Extern(_))),
-            // VCOORD: test for this case please
+            // VCOORD: add a test for this case
             KindT::Interface(i) => coutputs
                 .lookup_interface(*i.id, self)
                 .attributes
@@ -2054,14 +1925,8 @@ where
               });
             }
           }
-          // VCOORD: an exported interface's dependencies are checked nowhere. Structs and
-          // both array kinds walk their contents above; this arm walks nothing, so an
-          // interface whose method signatures mention a non-exported kind exports clean.
-          // Whether that is right turns on what an exported interface *is*: upstream ruled
-          // that design-2's class-tier `interface` gets no Rust projection at all and
-          // crosses as an opaque handle, which would need no check — but our interfaces are
-          // ~86.5% struct-tier, and the struct tier does project. Decide the tier question
-          // before filling this in.
+
+          // VCOORD: an exported interface's dependencies are checked nowhere
           KindT::Interface(_) => {}
           KindT::KindPlaceholder(_)
           | KindT::OverloadSet(_)
@@ -2192,8 +2057,7 @@ where
     if let Some(c) = coutputs.peek_postparsed_type(template_id) { return c; }
     #[cfg(feature = "rust_interop")]
     {
-      // VLAZY: on-demand rust-interop citizen illumination is not implemented yet —
-      // create_postparsed_citizen / register_illuminated_citizen are still TODO.
+      // VLAZY: lazy rust-interop citizen illumination not implemented yet
       panic!("Unimplemented: lazy rust-interop citizen illumination for {:?}", template_id);
     }
     #[cfg(not(feature = "rust_interop"))]

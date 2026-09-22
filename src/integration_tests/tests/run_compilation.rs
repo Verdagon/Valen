@@ -1,7 +1,3 @@
-//! Dark-box integration harness on the onion path. `test`/`test_no_builtins` compile a real `.vale`
-//! program through `InstantiatedCompilation` to a `HinputsI`; `RunCompilation` then runs `main` in
-//! the TestVM and returns the computed VON. Replaces the deleted Hammer/`ProgramH` path (mirrors
-//! `testvm::test::vivem_tests::run_vale`).
 
 use std::cell::RefCell;
 use std::io::stdout;
@@ -44,9 +40,6 @@ fn instantiator_options() -> InstantiatorCompilationOptions {
     InstantiatorCompilationOptions { debug_out: Arc::new(|x: &str| println!("{}", x)) }
 }
 
-/// Compile `code` with the builtins available in the root package — the "old way", where
-/// the program can use `+`, `/`, `drop`, etc. without importing them. Mirrors the pre-onion
-/// `test(...)` harness that the onion re-link deleted.
 pub fn test<'s, 'ctx, 't, 'i, 'p>(
     compilation_bump: &'ctx Bump,
     typing_interner: &'ctx TypingInterner<'s, 't>,
@@ -65,9 +58,6 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     )
 }
 
-/// Like `test` (builtins loaded), but with the group borrow checker disabled — for a test whose
-/// program hits a not-yet-supported onion borrow-checker case (the borrow-group annotation gap) and
-/// needs to reach the later passes it actually exercises.
 /// VCOORD: delete this once the onion borrow checker handles these cases.
 pub fn test_without_borrow_check<'s, 'ctx, 't, 'i, 'p>(
     compilation_bump: &'ctx Bump,
@@ -87,7 +77,6 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     )
 }
 
-/// Compile `code` alone (no builtins) — the program must stand on its own.
 pub fn test_no_builtins<'s, 'ctx, 't, 'i, 'p>(
     compilation_bump: &'ctx Bump,
     typing_interner: &'ctx TypingInterner<'s, 't>,
@@ -106,8 +95,6 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     )
 }
 
-/// Like `test_no_builtins`, but with the group borrow checker disabled — for a test that
-/// deliberately exercises a later pass past a not-yet-supported borrow-checker case.
 /// VCOORD: delete this
 pub fn test_no_builtins_without_borrow_check<'s, 'ctx, 't, 'i, 'p>(
     compilation_bump: &'ctx Bump,
@@ -127,10 +114,6 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     )
 }
 
-/// Multi-module variant of `test`: the caller supplies its own package sources (typically one
-/// `Source::from_code_map` holding several modules) and the list of packages to build, so tests can
-/// exercise cross-module `import`s. Builtins are prepended when `include_builtins` is set, and the
-/// on-disk test-resource loader is always appended (mirrors `build`).
 pub fn test_multi<'s, 'ctx, 't, 'i, 'p>(
     compilation_bump: &'ctx Bump,
     typing_interner: &'ctx TypingInterner<'s, 't>,
@@ -180,9 +163,6 @@ where 's: 't, 's: 'i, 'p: 'ctx,
     let mut packages_to_build: Vec<&'p PackageCoordinate<'p>> = Vec::new();
     let mut sources: Vec<Source<'p>> = Vec::new();
     if include_builtins {
-        // The "old way": `Source::builtins` puts all builtin code in the root ("") package
-        // (with empty `v.builtins.<X>` stubs so any `import` still resolves), so the test
-        // program can use `+`, `/`, `drop`, etc. without importing anything.
         packages_to_build.push(PackageCoordinate::builtin(parse_arena, parser_keywords));
         sources.push(Source::builtins(parse_arena, parser_keywords));
     }
@@ -208,34 +188,26 @@ where 's: 't, 's: 'i,
 impl<'s, 'ctx, 't, 'i, 'p> RunCompilation<'s, 'ctx, 't, 'i, 'p>
 where 's: 't, 's: 'i,
 {
-    /// Drive the instantiator, yielding the monomorphized `HinputsI`.
     pub fn get_monouts(&mut self) -> &HinputsI<'s, 'i> {
         self.compilation.get_monouts()
     }
 
-    /// Drive the typing pass and return its outputs (the typed AST) for structural assertions.
-    /// Panics if compilation errored.
     pub fn expect_compiler_outputs(&mut self) -> &HinputsT<'s, 't> {
         self.compilation.expect_compiler_outputs()
     }
 
-    /// Drive the typing pass, returning either its outputs or the typing-pass compile error.
     pub fn get_compiler_outputs(&mut self) -> Result<&HinputsT<'s, 't>, ICompileErrorT<'s, 't>> {
         self.compilation.get_compiler_outputs()
     }
 
-    /// Drive the scout pass and return its per-file output for structural assertions.
     pub fn get_scoutput(&mut self) -> Result<&FileCoordinateMap<'s, ProgramS<'s>>, ICompileErrorS<'s>> {
         self.compilation.get_scoutput()
     }
 
-    /// Drive parsing and return the per-package parse map — lets a test assert which packages were
-    /// actually brought in (e.g. that a non-imported module was pruned).
     pub fn get_parseds(&mut self) -> Result<FileCoordinateMap<'p, (FileP<'p>, Vec<RangeL>)>, FailedParse<'p>> {
         self.compilation.get_parseds()
     }
 
-    /// Run `main` in the TestVM with primitive args, discarding the return value (for void-`main` tests).
     pub fn run_primitive_args<'v>(
         &mut self,
         args: Vec<PrimitiveKindV<'v, 'i, 's>>,
@@ -243,7 +215,6 @@ where 's: 't, 's: 'i,
         self.eval_for_kind_primitive_args(args).map(|_| ())
     }
 
-    /// Run `main` in the TestVM and return everything it printed to stdout as a `String`.
     pub fn eval_for_stdout<'v>(
         &mut self,
         args: Vec<PrimitiveKindV<'v, 'i, 's>>,
@@ -270,7 +241,6 @@ where 's: 't, 's: 'i,
         Ok(captured.take())
     }
 
-    /// Run `main` in the TestVM, returning both its VON result and everything it printed to stdout.
     pub fn eval_for_kind_and_stdout<'v>(
         &mut self,
         args: Vec<PrimitiveKindV<'v, 'i, 's>>,
@@ -297,7 +267,6 @@ where 's: 't, 's: 'i,
         Ok((von, captured.take()))
     }
 
-    /// Compile through the instantiator, run `main` in the TestVM with primitive args, return the VON.
     pub fn eval_for_kind_primitive_args<'v>(
         &mut self,
         args: Vec<PrimitiveKindV<'v, 'i, 's>>,
@@ -319,9 +288,6 @@ where 's: 't, 's: 'i,
         )
     }
 
-    /// Like `eval_for_kind_primitive_args`, but feeds `stdin_lines` to the program's `__getch()`
-    /// (one line per call, in order). Each line is interned into the scout arena so its `StrI`
-    /// lives as long as the program.
     pub fn eval_for_kind_primitive_args_with_stdin<'v>(
         &mut self,
         args: Vec<PrimitiveKindV<'v, 'i, 's>>,

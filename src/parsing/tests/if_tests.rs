@@ -1,4 +1,3 @@
-// Run with: cargo test --manifest-path Cargo.toml --lib parsing::tests::if_tests
 
 use crate::cast;
 use crate::keywords::Keywords;

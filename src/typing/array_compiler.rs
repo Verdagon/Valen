@@ -82,8 +82,6 @@ where
     let rune_a_to_type: IndexMap<IRuneS<'s>, ITemplataType<'s>> = IndexMap::from_iter(
       rune_a_to_type_with_implicitly_coercing_lookups_s.iter().map(|(k, v)| (*k, *v)),
     );
-    // The rules are already explicit Lookup/Call, so nothing rewrites them here (explicify_lookups is retired).
-    // Name-resolution failures (CouldntFindType/TooManyMatchingTypes) still surface from solve_rune_types above.
     let rules_a = rules_s.to_vec();
     // We preprocess out the rune parent env lookups, see MKRFA.
     let (initial_knowns, rules_without_rune_parent_env_lookups): (
@@ -130,8 +128,8 @@ where
                 &[],
                 &initial_knowns,
             )
-            .unwrap_or_else(|_e| panic!("Unimplemented: ICompileErrorT from solve_for_resolving in evaluate_static_sized_array_from_callable"))
-            .unwrap_or_else(|_e| panic!("Unimplemented: evaluate_static_sized_array_from_callable — TypingPassResolvingError"));
+            .unwrap_or_else(|_e| panic!("Unimplemented"))
+            .unwrap_or_else(|_e| panic!("Unimplemented"));
 
     let size = expect_integer(
       templatas.get(&size_rune_a).copied().expect("vassertSome: sizeRuneA not in templatas"),
@@ -203,8 +201,6 @@ where
     let rune_a_to_type: IndexMap<IRuneS<'s>, ITemplataType<'s>> = IndexMap::from_iter(
       rune_a_to_type_with_implicitly_coercing_lookups_s.iter().map(|(k, v)| (*k, *v)),
     );
-    // The rules are already explicit Lookup/Call, so nothing rewrites them here (explicify_lookups is retired).
-    // Name-resolution failures (CouldntFindType/TooManyMatchingTypes) still surface from solve_rune_types above.
     let rules_a = rules_s.to_vec();
     // We preprocess out the rune parent env lookups, see MKRFA.
     let (initial_knowns, rules_without_rune_parent_env_lookups): (
@@ -250,7 +246,7 @@ where
     );
     match self.incrementally_solve(envs, coutputs, &mut solver_state, |_coutputs, _solver| false) {
       Err(_f) => {
-        panic!("implement: evaluate_runtime_sized_array_from_callable — TypingPassSolverError");
+        panic!("implement: evaluate_runtime_sized_array_from_callable");
         // throw CompileErrorExceptionT(TypingPassSolverError(invocationRange, f))
       }
       Ok(true) => {}
@@ -261,8 +257,8 @@ where
                 envs, coutputs, parent_ranges, call_location, &rune_a_to_type, &rules_without_rune_parent_env_lookups,
                 &[], // An array is not a denizen and declares no bounds.
                 &[], &mut solver_state)
-            .unwrap_or_else(|_e| panic!("Unimplemented: ICompileErrorT from check_resolving_conclusions_and_resolve in evaluate_runtime_sized_array_from_callable"))
-            .unwrap_or_else(|_e| panic!("Unimplemented: evaluate_runtime_sized_array_from_callable — TypingPassResolvingError"));
+            .unwrap_or_else(|_e| panic!("Unimplemented"))
+            .unwrap_or_else(|_e| panic!("Unimplemented"));
     let mut entries: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> = Vec::new();
     if let Some(e) = maybe_element_type_rune {
       let e_rune_name_t =
@@ -377,7 +373,6 @@ where
     if let Some(rune) = maybe_element_type_rune_a {
       initially_known_runes.insert(rune, ITemplataType::KindTemplataType(KindTemplataType {}));
     }
-    // Note: Rust solve_rune_types doesn't accept useOptimizedSolver (pre-existing API difference)
     let rune_a_to_type_with_implicitly_coercing_lookups_s = solve_rune_types(
       coutputs,
       self.scout_arena,
@@ -410,8 +405,6 @@ where
     let rune_a_to_type: IndexMap<IRuneS<'s>, ITemplataType<'s>> = IndexMap::from_iter(
       rune_a_to_type_with_implicitly_coercing_lookups_s.iter().map(|(k, v)| (*k, *v)),
     );
-    // The rules are already explicit Lookup/Call, so nothing rewrites them here (explicify_lookups is retired).
-    // Name-resolution failures (CouldntFindType/TooManyMatchingTypes) still surface from solve_rune_types above.
     let rules_a = rules_s.to_vec();
     // We preprocess out the rune parent env lookups, see MKRFA.
     let (initial_knowns, rules_without_rune_parent_env_lookups): (
@@ -457,7 +450,7 @@ where
     );
     match self.incrementally_solve(envs, coutputs, &mut solver_state, |_coutputs, _solver| false) {
       Err(_f) => {
-        panic!("implement: evaluate_static_sized_array_from_values — TypingPassSolverError");
+        panic!("implement: evaluate_static_sized_array_from_values");
         // throw CompileErrorExceptionT(TypingPassSolverError(invocationRange, f))
       }
       Ok(true) => {}
@@ -469,7 +462,7 @@ where
                 &[], // An array is not a denizen and declares no bounds.
                 &[], &mut solver_state)
             .unwrap_or_else(|_e| panic!("Unimplemented: ICompileErrorT from check_resolving_conclusions_and_resolve in evaluate_static_sized_array_from_values"))
-            .unwrap_or_else(|_e| panic!("Unimplemented: evaluate_static_sized_array_from_values — TypingPassResolvingError"));
+            .unwrap_or_else(|_e| panic!("Unimplemented: evaluate_static_sized_array_from_values"));
 
     if let Some(element_type_rune_a) = maybe_element_type_rune_a {
       let expected_element_type = self.get_array_element_type(&templatas, element_type_rune_a);
@@ -528,11 +521,8 @@ where
     global_env: &'t GlobalEnvironmentT<'s, 't>,
     coutputs: &mut CompilerOutputs<'s, 't>,
   ) {
-    // val builtinPackage = PackageCoordinate.BUILTIN(interner, keywords)
     let builtin_package: &'s PackageCoordinate<'s> =
       self.scout_arena.intern_package_coordinate(self.keywords.empty_string, &[]);
-    // val templateId =
-    //   IdT(builtinPackage, Vector.empty, interner.intern(StaticSizedArrayTemplateNameT()))
     let template_name = self
       .typing_interner
       .intern_static_sized_array_template_name(StaticSizedArrayTemplateNameT {});
@@ -566,16 +556,11 @@ where
       id: *template_id,
       templatas: empty_templatas,
     });
-    // coutputs.declareType(templateId)
     coutputs.declare_type(template_id);
-    // coutputs.declareTypeOuterEnv(templateId, arrayOuterEnv)
     let array_outer_env_ref: IInDenizenEnvironmentT<'s, 't> =
       IInDenizenEnvironmentT::Citizen(array_outer_env);
     coutputs.declare_type_outer_env(template_id, array_outer_env_ref);
 
-    // val TemplateTemplataType(types, _) = StaticSizedArrayTemplateTemplataT().tyype
-    // val Vector(IntegerTemplataType(), SharednessTemplataType(), VariabilityTemplataType(), KindTemplataType()) = types
-    // (assertion only — types are verified by the placeholder calls below)
 
     // val sizePlaceholder =
     //   templataCompiler.createNonKindNonRegionPlaceholderInner(
@@ -628,7 +613,6 @@ where
     });
     let array_inner_env_ref: IInDenizenEnvironmentT<'s, 't> =
       IInDenizenEnvironmentT::Citizen(array_inner_env);
-    // coutputs.declareTypeInnerEnv(templateId, arrayInnerEnv)
     coutputs.declare_type_inner_env(template_id, array_inner_env_ref);
   }
 
@@ -679,13 +663,6 @@ where
     });
 
     // See CSFMSEO and SAFHE.
-    // val arrayOuterEnv =
-    //   CitizenEnvironmentT(
-    //     globalEnv,
-    //     PackageEnvironmentT(globalEnv, templateId, globalEnv.nameToTopLevelEnvironment.values.toVector),
-    //     templateId,
-    //     templateId,
-    //     TemplatasStore(templateId, Map(), Map()))
     let global_namespaces: Vec<&TemplatasStoreT<'s, 't>> =
       global_env.name_to_top_level_environment.iter().map(|(_, ts)| *ts).collect();
     let global_namespaces = self.typing_interner.alloc_slice_from_vec(global_namespaces);
@@ -702,20 +679,12 @@ where
       id: *template_id,
       templatas: empty_templatas,
     });
-    // coutputs.declareType(templateId)
     coutputs.declare_type(template_id);
-    // coutputs.declareTypeOuterEnv(templateId, arrayOuterEnv)
     let array_outer_env_ref: IInDenizenEnvironmentT<'s, 't> =
       IInDenizenEnvironmentT::Citizen(array_outer_env);
     coutputs.declare_type_outer_env(template_id, array_outer_env_ref);
 
-    // val TemplateTemplataType(types, _) = RuntimeSizedArrayTemplateTemplataT().tyype
-    // val Vector(SharednessTemplataType(), KindTemplataType()) = types
-    // (assertion only — types are verified by the placeholder calls below)
 
-    // val elementPlaceholder =
-    //   templataCompiler.createCoordPlaceholderInner(
-    //     coutputs, arrayOuterEnv, templateId, 0, CodeRuneS(interner.intern(StrI("E"))), None, ReadOnlyRegionS, OwnT, true)
     let rune_e = self
       .scout_arena
       .intern_rune(IRuneValS::CodeRune(CodeRuneS { name: self.scout_arena.intern_str("E") }));
@@ -728,11 +697,9 @@ where
       true,
     );
 
-    // val placeholders = Vector(elementPlaceholder)
     let element_placeholder_templata =
       ITemplataT::Kind(element_placeholder);
     let placeholders = [element_placeholder_templata];
-    // val id = templateId.copy(localName = templateId.localName.makeCitizenName(interner, placeholders))
     let local_name = template_name.make_citizen_name(self.typing_interner, &placeholders);
     let id = self.typing_interner.intern_id(IdValT {
       package_coord: builtin_package,
@@ -754,7 +721,6 @@ where
     });
     let array_inner_env_ref: IInDenizenEnvironmentT<'s, 't> =
       IInDenizenEnvironmentT::Citizen(array_inner_env);
-    // coutputs.declareTypeInnerEnv(templateId, arrayInnerEnv)
     coutputs.declare_type_inner_env(template_id, array_inner_env_ref);
   }
 

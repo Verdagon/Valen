@@ -1,8 +1,5 @@
 // AFTERM: rename to function_post_parser.rs
 // AFTERM: review scout_function
-// Per @DSAUIMZ, all borrow_val() calls in this file borrow from a stack-local
-// LocationInDenizenBuilder instead of arena-allocating. The slice is promoted
-// to permanent arena storage only inside intern_rune on a miss.
 
 use crate::lexing::ast::RangeL;
 use crate::parsing::ast::rules::get_ordered_rune_declarations_from_rulexes_with_duplicates;
@@ -69,10 +66,6 @@ pub struct ParentCitizen<'s> {
   pub citizen_rules: Vec<IRulexSR<'s>>,
 }
 
-/// Everything an explicit param needs at body-synthesis time that isn't on ParameterS:
-/// the ABI slot to load, and (only when the param destructures) the body-head let's
-/// pattern and its rules. Built once in the param loop so captures and the let share one
-/// source of truth.
 struct ExplicitParamExtras<'s> {
   range: RangeS<'s>,
   abi_name: IVarDeclarationNameS<'s>,
@@ -84,9 +77,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
     &self,
     file_coordinate: &'s FileCoordinate<'s>,
     function: &FunctionP<'p>,
-    // The LID this denizen's coordinate space is rooted at: empty for a top-level function or
-    // interface method; the lambda's own unique LID for a lambda, so its declarations nest within
-    // the enclosing top-level function instead of restarting at empty.
     denizen_root_path: Vec<i32>,
     maybe_parent: IFunctionParent<'s>,
   ) -> Result<(&'s FunctionS<'s>, VariableUses<'s>), ICompileErrorS<'s>> {
@@ -165,7 +155,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       }
       IFunctionParent::ParentFunction { .. } => {}
       IFunctionParent::ParentCitizen(ParentCitizen { citizen_is_interface, .. }) => {
-        // When we have traits that can have static methods, this check might need to go away
         if *citizen_is_interface {
           if let Some(params) = &function.header.params {
             if !params.params.iter().any(|param| param.virtuality.is_some()) {
@@ -177,14 +166,9 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         }
       }
     }
-    // A denizen's own name sits at its root LID (the seed — `[]` for a top-level function, the
-    // nested path for a lambda). Capture it before the builder takes ownership of the path.
     let denizen_root_lid =
       LocationInDenizen { path: self.scout_arena.alloc_slice_copy(&denizen_root_path) };
     let mut lidb = LocationInDenizenBuilder::new(denizen_root_path);
-    // A lambda's closure (self/env) param is declared once but built at two sites — its capture
-    // declaration below and its ParameterS in create_closure_param — so mint its lid once here,
-    // off the function root, and share it to both, keeping the two constructions one identity.
     let closure_param_lid = if is_parent_function {
       Some(lidb.child().consume_in_arena(self.scout_arena))
     } else {
@@ -193,9 +177,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
     let mut rules: Vec<IRulexSR<'s>> = Vec::new();
     let mut impl_bounds: Vec<ImplBoundS<'s>> = Vec::new();
     let mut func_bounds: Vec<(RuneUsage<'s>, FunctionS<'s>)> = Vec::new();
-    // Function declaration names are identity (not interned, @WVSBIZ): built directly, carrying the
-    // denizen-root lid and the interned imprecise (spelling) name, then wrapped in
-    // `INameS::FunctionDeclaration` where a denizen name is needed.
     let function_declaration_name_for_env: IFunctionDeclarationNameS<'s> =
       match (&maybe_parent, function_name) {
         (IFunctionParent::ParentFunction { .. }, Some(_)) => {
@@ -250,8 +231,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         .unwrap_or(0),
       is_interface_internal_method: matches!(&maybe_parent, IFunctionParent::ParentCitizen(_)),
     };
-    // Scout the effect clauses now, while the function environment (with its declared group runes)
-    // is available at top-level scope; scout_body moves the environment below.
     let effects_s = translate_effects_p_into_effects_s(
       self.scout_arena,
       &IEnvironmentS::FunctionEnvironment(function_environment.clone()),
@@ -374,9 +353,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           .collect()
       })
       .unwrap_or_default();
-    // We say PerhapsTypeless because we're in a lambda, they might be anonymous params.
-    // For lambdas, untyped explicit params (like `(a, b) => ...` or `(_) => ...`) get a
-    // synthesized coord rune here that will be added to the function's identifying runes.
     let explicit_params_s_and_synthesized_runes: Vec<(
       ParameterS<'s>,
       Option<RuneUsage<'s>>,
@@ -391,8 +367,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         });
         match (&param.self_borrow, &param.pattern) {
           (Some(_), None) => {
-            // We get here if the parameter was just `&self`. It keeps its real name
-            // `self`, has no destructure, and so needs no body-head let.
             let kind_rune = RuneUsage {
               range: param_range.clone(),
               rune: self.scout_arena.intern_rune(IRuneValS::ImplicitRune(ImplicitRuneValS::new(
@@ -403,7 +377,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
               imprecise_name: self.scout_arena.intern_code_name(self.keywords.self_),
               lid: lidb.child().consume_in_arena(self.scout_arena),
             });
-            // Placeholder ITypeST naming the implicit self kind rune (no user-written type).
             let self_tyype =
               ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: kind_rune.clone() }));
             (
@@ -418,7 +391,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
                 self.scout_arena.alloc_slice_from_vec::<IRulexSR<'s>>(Vec::new()),
                 self.scout_arena.alloc_slice_from_vec::<IRulexSR<'s>>(Vec::new()),
               ),
-              None, // No synthesized_rune
+              None,
               ExplicitParamExtras {
                 range: param_range.clone(),
                 abi_name: self_name,
@@ -426,12 +399,9 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
               },
             )
           }
-          // A normal param, e.g. `foo(x int)`, `foo(&Ship)`, or `foo(Pair[a, b])`.
           (None, Some(pattern)) => {
             let mut pattern_lidb = lidb.child();
 
-            // A param keeps its real name; only an anonymous or ignored param (e.g.
-            // `Pair[a, b]` or `_ Pair`) needs a synthetic DesugaredParamName ABI slot.
             let name = match &pattern.destination {
               Some(destination) => match &destination.decl {
                 INameDeclarationP::LocalNameDeclaration(name_p) => {
@@ -465,17 +435,9 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
               }),
             };
 
-            // Per @PFVSZ, the param's type splits into its outer ref wraps (&/heap/etc)
-            // and the value type (Lookup/Call/etc.). translate_signature_templex fills
-            // both buckets. The destructure (if any) is a separate, body-level concern.
-            // "Unfiltered" means the RuneEnvParentLookup rules havent been stripped out.
             let mut param_type_outer_ref_rules_unfiltered_vec: Vec<IRulexSR<'s>> = Vec::new();
             let mut param_value_type_rules_unfiltered_vec: Vec<IRulexSR<'s>> = Vec::new();
-            // Build the ITypeST FIRST, then derive the @PFVSZ rune split FROM it, mirroring
-            // NormalStructMemberS. The ITypeST is stored on ParameterS.tyype (the borrow checker
-            // reads a param's `in g` group off it); the derived runes stay for the typing solve.
             let (full_type_rune, value_type_rune, synthesized, tyype) = match &pattern.templex {
-              // A typed param, e.g. `foo(x &int)`.
               Some(type_p) => {
                 let type_tree = translate_templex_into_type_st(
                   self.scout_arena,
@@ -523,10 +485,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             let value_type_rules =
               self.scout_arena.alloc_slice_from_vec(param_value_type_rules_vec);
 
-            // Only a destructuring param gets a body-head let. Build its pattern once
-            // here (shared with capture-gathering). It is typeless at the top: the
-            // param's type rides in via load(name), and translate_pattern's rules land
-            // in the let's own bucket, not a throwaway.
             let destructure = match &pattern.destructure {
               None => None,
               Some(destructure_p) => {
@@ -623,11 +581,9 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         };
         for extras in &explicit_param_extras {
           let mut vars: Vec<VariableDeclarationS<'s>> = Vec::new();
-          // A real param name is itself a body-visible local; a synthetic ABI slot isn't.
           if !matches!(extras.abi_name, IVarDeclarationNameS::DesugaredParamName(_)) {
             vars.push(VariableDeclarationS { name: extras.abi_name.clone() });
           }
-          // A destructure contributes its inner names (its top atom is nameless).
           if let Some((atom, _)) = &extras.destructure {
             vars.extend(get_parameter_captures(atom));
           }
@@ -660,11 +616,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       }
       Some(ret_type_p) => {
         let mut ret_lidb = lidb.child();
-        // Not yet routed through translate_signature_type_st: doing so regresses
-        // hash_map_style_return_type_inference_must_not_skip_caller_bound_args, because
-        // translate_maybe_type_into_maybe_rune produces a return rune that return-type inference relies
-        // on. Investigate before migrating this last slot.
-        // VCOORD: investigate
         let ret_rune = translate_maybe_type_into_maybe_rune(
           self.scout_arena,
           self.keywords,
@@ -678,12 +629,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         ret_rune
       }
     };
-    // Build the written return type as a group-annotated tree (mirroring a parameter's `tyype`), so
-    // the borrow checker can read a returned reference's `in g` group. A `RegionRune` return isn't a
-    // real type. Every non-lambda carries a written return type: with none written (or only a region
-    // rune), a named function returns `void`, spelled as a written `void` is — the zero-arg Call of its
-    // Name (@TNLTZACZ), the same `void` the rune side looks up above. Only a lambda leaves it unwritten;
-    // its return is inferred.
     let maybe_return_type = match &function.header.ret.ret_type {
       Some(ret_type_p) if !matches!(ret_type_p, ITemplexPT::RegionRune(_)) => {
         Some(translate_templex_into_type_st(
@@ -871,10 +816,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           }));
           total_params_s.extend(magic_params);
         }
-        // Prepend a synthesized LetSE at the body head only for params that destructure.
-        // `<destructure> = <ParameterS.name>;`. A bare param needs no let: its real name is
-        // the binding. Only explicit user params can destructure (closure/magic never do),
-        // so we drive off explicit_param_extras.
         let param_lets: Vec<&'s IExpressionSE<'s>> = explicit_param_extras
           .iter()
           .filter_map(|extras| {
@@ -893,7 +834,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           })
           .collect();
         let body_s = if !param_lets.is_empty() {
-          // Build combined expr: [param_lets..., original body block expr].
           let mut all_exprs: Vec<&'s IExpressionSE<'s>> = param_lets;
           all_exprs.push(body_s.block.expr);
           let combined = self.scout_arena.alloc(IExpressionSE::Consecutor(ConsecutorSE {
@@ -919,7 +859,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           extra_generic_params_from_body,
         )
       };
-    // Per @PRIIROZ, parent ones go on the end.
     let mut generic_params: Vec<&'s GenericParameterS<'s>> =
       function_user_specified_generic_parameters_s;
     generic_params.extend(extra_generic_params_from_explicit_params_s);
@@ -957,7 +896,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         other => panic!("POSTPARSER_SCOUT_FUNCTION_ATTRIBUTE_NOT_YET_IMPLEMENTED: {:?}", other),
       })
       .collect();
-    // Postparser only runs on user functions.
     func_attrs_s.push(IFunctionAttributeS::UserFunction(UserFunctionS));
 
     let rules_array: &'s [IRulexSR<'s>] = self.scout_arena.alloc_slice_from_vec(rules_array);
@@ -1045,11 +983,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         rune: closure_struct_region_rune,
       }),
     }));
-    // The closure param's outer-ref / value-type rules stay in the function-level
-    // `rule_builder` (the BorrowRef is emitted at closure_param_range in the caller above),
-    // so the closure param's per-param rule slices are empty and
-    // full_type_rune == value_type_rune == the type rune. It keeps its real name and never
-    // destructures, so it needs no body-head let.
     let closure_param_tyype =
       ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: closure_param_type_rune.clone() }));
     return ParameterS::new(
@@ -1085,7 +1018,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           RuneUsage { range: magic_param_range.clone(), rune: magic_param_rune };
         let magic_param_tyype =
           ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: magic_kind_rune_usage.clone() }));
-        // Magic params keep their real MagicParamName and never destructure, so no body-head let.
         ParameterS::new(
           magic_param_range.clone(),
           None,

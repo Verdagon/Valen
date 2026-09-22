@@ -1,10 +1,3 @@
-//! Inline-source end-to-end tests. The Vale program lives as a string in the
-//! test body; the harness writes it to a tempdir (`test.vale`) before running
-//! through `pass_manager::build`.
-//!
-//! Includes the two tests previously stuck under `#[ignore]` in
-//! `pass_manager/end_to_end_test.rs` — the harness now drives the full
-//! backend + clang + exec path, so they're live.
 
 use crate::end_to_end_tests::{
     assert_inline_compile_and_run, assert_inline_compile_and_run_dbg, cmd, expect,
@@ -23,8 +16,6 @@ fn pass_manager_main_builds_simple_program_end_to_end() {
     );
 }
 
-// Builtin `Some<int>` construction — shape-limited (single line, generic builtin);
-// assert the subprogram resolves.
 #[test]
 fn pass_manager_main_builds_program_using_builtin_some() {
     assert_inline_compile_and_run_dbg(
@@ -38,7 +29,6 @@ fn pass_manager_main_builds_program_using_builtin_some() {
     );
 }
 
-// A cross-frame call stack: break inside helper, backtrace shows helper AND its caller main.
 #[test]
 fn basic_function_call() {
     assert_inline_compile_and_run_dbg(
@@ -52,9 +42,9 @@ fn basic_function_call() {
     );
 }
 
-// VDBG: no debugger gate yet — kind deferred (see #[ignore])
+
 #[test]
-#[ignore = "deferred: share"]
+#[ignore]
 fn string_len() {
     assert_inline_compile_and_run(
         "exported func main() int { return (&\"hello\").len(); }",

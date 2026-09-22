@@ -1,7 +1,3 @@
-// Backend (Midas) options assembly. The actual backend call happens inside
-// pass_manager::build (which feeds the in-process MetalCache
-// populated by MetalLowerer straight into backend_compile_program).
-
 use std::path::Path;
 
 use frontend_rust::backend_ffi::{
@@ -9,16 +5,11 @@ use frontend_rust::backend_ffi::{
   BACKEND_OPT_LEVEL_O2I, BACKEND_OPT_LEVEL_O3,
 };
 
-/// Assemble the options struct that pass_manager::build hands to
-/// backend_compile_program. `--triple` is left blank here; pass_manager
-/// injects it from ClangConfig.
 #[allow(clippy::too_many_arguments)]
 pub fn build_backend_options(
   output_dir: &Path,
   maybe_opt_level: Option<&str>,
   maybe_cpu: Option<&str>,
-  // `-o <name>` is consumed by valec for the final clang invocation;
-  // the backend writes a fixed `build.o` regardless of this name.
   _executable_name: &str,
   flares: bool,
   census: bool,
@@ -49,9 +40,6 @@ pub fn build_backend_options(
     opts.cpu = cpu.to_string();
   }
 
-  // Prefer maybe_opt_level when set; otherwise honor the opt_level string
-  // (still matches the pre-refactor midas argv behavior, where an explicit
-  // maybe_opt_level was appended first and opt_level=="O0" was skipped).
   let level_str = maybe_opt_level.unwrap_or(opt_level);
   opts.opt_level = match level_str {
     "O0" => BACKEND_OPT_LEVEL_O0,

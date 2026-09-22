@@ -195,9 +195,6 @@ where
         )
       }
       INameS::AnonymousSubstructImplDeclaration(_) => {
-        // Impl template names carry the sub-citizen and super-interface imprecise
-        // names, which INameS doesn't hold — callers must go through
-        // translate_impl_name with the imprecise names from the ImplS.
         panic!("translate_name_step can't build an impl name; use translate_impl_name");
       }
       INameS::ImplDeclaration(_) => {
@@ -304,7 +301,7 @@ where
         self.typing_interner.intern_iteration_option_name(IterationOptionNameT { imprecise_name, loct: LocT::from_lid(self.typing_interner, lid) }),
       ),
       _ => {
-        panic!("implement: translate_var_name_step — {:?}", discriminant(&name));
+        panic!("implement");
         // vimpl(name.toString)
       }
     }

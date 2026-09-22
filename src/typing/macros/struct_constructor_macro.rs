@@ -32,9 +32,6 @@ use crate::typing::types::types::*;
 use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::utils::range::RangeS;
 
-// A constructor param mirrors a user-written param: it carries the member's @PFVSZ split verbatim, so
-// downstream (e.g. §2A's expected-value-type-template scan) sees a constructor param exactly as it would
-// a hand-written one. Pure: reads only the member's fields and calls the sealed ParameterS::new.
 // VCOORD: inline?
 fn parameter_from_normal_member<'s>(scout_arena: &ScoutArena<'s>, member: &NormalStructMemberS<'s>, lid: LocationInDenizen<'s>) -> ParameterS<'s> {
   ParameterS::new(
@@ -98,8 +95,6 @@ where
       parts: self.scout_arena.alloc_slice_copy(&[struct_imprecise_name]),
     }));
 
-    // Instantiate the struct template; the resulting kind is the constructor's return type,
-    // since an owned value is a bare kind.
     let generic_param_runes: Vec<_> = struct_a.generic_params.iter().map(|p| p.rune).collect();
     let generic_param_runes_slice = self.scout_arena.alloc_slice_copy(&generic_param_runes);
     rules.push(IRulexSR::Call(CallSR {
@@ -109,9 +104,6 @@ where
       args: generic_param_runes_slice,
     }));
 
-    // Each param is a declaration in the constructor denizen (root LID `[]`), so it gets its own
-    // child LID `[1]`, `[2]`, ... — LIDs start at 1 and are never 0. Without a distinct LID every
-    // param would collapse to the same life and collide (see typing-design.md).
     let params: Vec<ParameterS<'s>> = struct_a
       .members
       .iter()
@@ -141,9 +133,6 @@ where
       )),
       args: self.scout_arena.alloc_slice_from_vec(written_arg_types),
     }));
-    // A constructor's imprecise name is the citizen's spelling (a `MyStruct(...)` call resolves as
-    // `CodeName{"MyStruct"}`); its lid is the synthesized denizen root seed. Built directly. A
-    // function declaration name is identity, not interned (@WVSBIZ).
     let constructor_imprecise_name = match struct_imprecise_name {
       IImpreciseNameS::CodeName(cn) => cn,
       IImpreciseNameS::AnonymousSubstructTemplateImpreciseName(n) => match n.interface_imprecise_name {
@@ -173,7 +162,6 @@ where
       params_slice,
       Some(ret_rune),
       Some(written_return_type),
-      // A synthesized constructor carries no effect clause.
       &[],
       rules_slice,
       &[],
@@ -207,9 +195,6 @@ where
     maybe_ret_coord: Option<KindT<'s, 't>>,
   ) -> (FunctionHeaderT<'s, 't>, ExpressionTE<'s, 't>) {
     let ret_coord = maybe_ret_coord.expect("vassertSome: maybeRetCoord");
-    // The return coord arrives ShareRef-wrapped for a share citizen (see the share-wrap in
-    // function_compiler_core); peel to the struct kind to construct it. The return type is
-    // re-wrapped from sharedness below.
     // VCOORD: revisit this
     let struct_tt = match peel_all_references(ret_coord) {
       KindT::Struct(s) => s,
@@ -226,7 +211,7 @@ where
     };
     let members: Vec<(IVarNameT<'s, 't>, KindT<'s, 't>)> = {
       let placeholder_substituter = self.get_placeholder_substituter(
-        false, // sanity_check
+        false,
         &env.template_id,
         struct_tt.id,
         bound_arguments_source,
@@ -261,14 +246,13 @@ where
       instantiation_bound_arguments: instantiation_bounds,
     };
     let mutability = self.struct_compiler_get_sharedness(
-      false, // sanity_check
+      false,
       coutputs,
       env.template_id,
       RegionT::Default,
       *struct_tt,
       bound_arguments_source2,
     );
-    // A share citizen is only ever held ShareRef-wrapped; a single one is held bare.
     let constructor_return_type = match mutability {
       SharednessT::Single => KindT::Struct(struct_tt),
       SharednessT::Shared => {
@@ -285,7 +269,6 @@ where
       maybe_origin_function_templata: Some(env.templata()),
     };
 
-    // This is a compiler-generated constructor body, so its nodes have no user source; the honest range is a synthesized internal one.
     let struct_range = RangeS::internal(self.scout_arena, -70130);
     let args: Vec<ExpressionTE<'s, 't>> = constructor_params_slice
       .iter()

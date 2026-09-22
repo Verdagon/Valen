@@ -357,7 +357,7 @@ exported func main() {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "imm/share citizens not supported yet"]
+#[ignore]
 #[test]
 fn imm_interface() {
     let compilation_bump = bumpalo::Bump::new();
@@ -395,7 +395,6 @@ fn mut_interface() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    // Mutable twin of imm_interface (interfacemut.vale is interfaceimm.vale without `share`).
     let source = load_expected("programs/virtuals/interfacemut.vale");
     let mut compile = test(
         &compilation_bump,
@@ -701,7 +700,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn successful_pointer_downcast_with_as() {
     let compilation_bump = bumpalo::Bump::new();
@@ -727,7 +726,7 @@ fn successful_pointer_downcast_with_as() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn failed_pointer_downcast_with_as() {
     let compilation_bump = bumpalo::Bump::new();
@@ -815,7 +814,7 @@ fn failed_pointer_downcast_with_as() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn successful_owning_downcast_with_as() {
     let compilation_bump = bumpalo::Bump::new();
@@ -841,7 +840,7 @@ fn successful_owning_downcast_with_as() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn failed_owning_downcast_with_as() {
     let compilation_bump = bumpalo::Bump::new();
@@ -867,7 +866,7 @@ fn failed_owning_downcast_with_as() {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn lambda_is_compatible_anonymous_interface() {
     let compilation_bump = bumpalo::Bump::new();

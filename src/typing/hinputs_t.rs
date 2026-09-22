@@ -13,7 +13,6 @@ use crate::typing::typing_interner::TypingInterner;
 use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::utils::fx::HashMap;
 
-/// Arena-allocated (see @TFITCX)
 #[derive(PartialEq, Eq)]
 pub struct InstantiationReachableBoundArgumentsT<'s, 't> {
   pub citizen_rune_to_reachable_prototype: ArenaIndexMap<'t, IRuneS<'s>, PrototypeT<'s, 't>>,
@@ -37,7 +36,6 @@ pub fn make<'s, 't>(
   })
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(PartialEq, Eq)]
 pub struct InstantiationBoundArgumentsT<'s, 't> {
   pub rune_to_bound_prototype: ArenaIndexMap<'t, IRuneS<'s>, PrototypeT<'s, 't>>,
@@ -52,7 +50,7 @@ impl<'s, 't> InstantiationBoundArgumentsT<'s, 't> {
   }
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct HinputsT<'s, 't> {
   pub interfaces: Vec<&'t InterfaceDefinitionT<'s, 't>>,
   pub structs: Vec<&'t StructDefinitionT<'s, 't>>,
@@ -214,8 +212,6 @@ impl<'s, 't> HinputsT<'s, 't> {
     // functions.find(_.header.id.localName.template == funcTemplateName).headOption
   }
 
-  /// The borrow checker's per-parameter `noalias` verdict for the function named `human_name` — one
-  /// bool per parameter, in signature order.
   pub fn param_noalias(&self, human_name: &str) -> &[bool] {
     let function = self.lookup_function_by_str(human_name);
     self

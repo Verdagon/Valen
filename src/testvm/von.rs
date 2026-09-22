@@ -1,6 +1,3 @@
-//! VON (Vale Object Notation) — the value representation the test VM returns. `Heap::to_von`
-//! walks a `ReferenceV` into this detached tree so tests can assert on a program's result
-//! without touching VM heap internals (allocations, references, refcounts).
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum IVonData {

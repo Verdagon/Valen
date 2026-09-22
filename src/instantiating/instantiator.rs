@@ -186,7 +186,7 @@ use crate::instantiating::instantiated_humanizer::humanize_name;
 use crate::typing::types::types::KindT;
 use crate::typing::types::types::SharednessT;
 
-/// Temporary state
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i> where 's: 't, 's: 'i {
     pub func_id_to_bound_arg_prototype: IndexMap<IdT<'s, 't>, &'i PrototypeI<'s, 'i>>,
@@ -205,12 +205,9 @@ impl<'s, 't, 'i> DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i> where 's: 't, 
 }
 
 
-/// Temporary state
+
 pub struct InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
     pub functions: IndexMap<IdI<'s, 'i>, &'i FunctionDefinitionI<'s, 'i>>,
-    // The borrow checker's aliasing info, carried from HinputsT (keyed by the pre-monomorphization
-    // SignatureT) to each instantiated function's IdI, so the backend can look it up by the same id it
-    // lowers. Monomorph-invariant, so all monos of one template share it. Presence = analyzed.
     pub aliasing_info_by_id: IndexMap<IdI<'s, 'i>, &'i FunctionAliasingInfoI<'i>>,
     pub structs: IndexMap<IdI<'s, 'i>, &'i StructDefinitionI<'s, 'i>>,
     pub static_sized_arrays: IndexMap<IdI<'s, 'i>, &'i StaticSizedArrayIT<'s, 'i>>,
@@ -223,15 +220,7 @@ pub struct InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
     pub impl_to_sharedness: IndexMap<IdI<'s, 'i>, SharednessI>,
     pub impl_to_bounds: IndexMap<IdI<'s, 'i>, DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>>,
     pub interface_to_impls: IndexMap<IdI<'s, 'i>, Vec<(IdT<'s, 't>, IdI<'s, 'i>)>>,
-    // A concrete impl's instantiated id → (its typed id, its own instantiation bound args), recorded
-    // when the impl is resolved, so a later
-    // devirtualization (or translate_override) can recover the typed id (to find the impl's edge via
-    // get_impl_template) and the impl's reachable `where func` satisfiers.
     pub instantiated_impl_to_typed_impl_and_bounds: IndexMap<IdI<'s, 'i>, (IdT<'s, 't>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
-    // Inner value is (virtual_param_index, index_in_edge). index_in_edge is the method's vtable
-    // slot = its position in typing's InterfaceEdgeBlueprintT.super_family_root_headers. After the
-    // worklist drains, each inner map is sorted by index_in_edge so the blueprint/internal_methods/
-    // edge all emit in typing's order (matching the slot stamped on each InterfaceFunctionCallIE).
     pub interface_to_abstract_func_to_virtual_index: IndexMap<IdI<'s, 'i>, IndexMap<PrototypeI<'s, 'i>, (usize, i32)>>,
     pub impls: IndexMap<IdI<'s, 'i>, (ICitizenIT<'s, 'i>, IdI<'s, 'i>, DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
     pub abstract_func_to_bounds: IndexMap<IdI<'s, 'i>, (DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
@@ -241,11 +230,6 @@ pub struct InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
     pub new_functions: Vec<(PrototypeT<'s, 't>, PrototypeI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>, Option<DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>>)>,
     pub kind_externs: Vec<KindExternI<'s, 'i>>,
     pub function_externs: Vec<FunctionExternI<'s, 'i>>,
-    // Under rust_interop, a Rust callee is a leaf: instead of enqueuing a body to translate
-    // (it has none), translate_prototype records its substituted prototype here. Keyed by
-    // instantiated id so a callee reached from two Vale bodies is recorded once. The
-    // per_instance_mir provider reads these to build the ReifyFnPointer request-list it hands
-    // rustc's collector. See instantiating/instantiating-rust-interop-design.md.
     #[cfg(feature = "rust_interop")]
     pub rust_instantiation_requests: IndexMap<IdI<'s, 'i>, &'i PrototypeI<'s, 'i>>,
 }
@@ -301,7 +285,7 @@ where 's: 't, 's: 'i {
 }
 
 
-/// Temporary state
+
 pub struct InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
     pub opts: &'ctx GlobalOptions,
     pub interner: &'ctx InstantiatingInterner<'s, 'i>,
@@ -428,11 +412,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         self.assemble_hinputs(monouts, kind_exports, function_exports, non_generic_func_externs)
     }
 
-    // Assemble the finalized `HinputsI` from a fully-drained accumulator: reorder each interface's
-    // methods into blueprint slot order, build the edge blueprints / interfaces / edges, and package
-    // everything the backend lowers. Extracted from `translate_program` so the rust_interop driven
-    // path (single instantiation) can finalize its own driven `monouts` with the demand-collected
-    // exports/externs, instead of re-instantiating the whole program.
     // VCOORD: investigate why we're taking these other arguments in, and why they arent part of
     // the instantiator.
     pub(crate) fn assemble_hinputs(
@@ -442,8 +421,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         function_exports: Vec<FunctionExportI<'s, 'i>>,
         extra_function_externs: Vec<FunctionExternI<'s, 'i>>,
     ) -> HinputsI<'s, 'i> {
-        // Reorder each interface's methods into typing's blueprint slot order, so the blueprint,
-        // internal_methods and edges below all emit in the order the call sites' index_in_edge uses.
         for (_interface, abstract_funcs) in monouts.interface_to_abstract_func_to_virtual_index.iter_mut() {
             abstract_funcs.sort_by(|_k1, v1, _k2, v2| v1.1.cmp(&v2.1));
         }
@@ -530,10 +507,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         result_hinputs
     }
 
-    // Instantiate one exported function: translate its export id and enqueue its body onto the
-    // instantiation queue (via translate_prototype), returning the FunctionExportI for HinputsI.
-    // Extracted from translate_program so per_instance_mir (rust_interop) can seed the queue with a
-    // single export before draining, rather than seeding every export at once.
     pub(crate) fn instantiate_exported_function(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, function_export_t: &FunctionExportT<'s, 't>) -> FunctionExportI<'s, 'i> {
         let FunctionExportT { range, prototype: prototype_t, export_id: export_placeholdered_id_t, exported_name } = function_export_t;
         let perspective_region_t = RegionT::Default;
@@ -575,9 +548,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         }
     }
 
-    // Drain the instantiation worklist to a fixed point: while any of new_functions / new_impls /
-    // new_abstract_funcs is non-empty, translate the next one (which may enqueue more). Extracted from
-    // translate_program so per_instance_mir (rust_interop) can drain after seeding a single export.
     pub(crate) fn drain_instantiation_queue(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>) {
         while {
             // We make structs and interfaces eagerly as we come across them
@@ -760,9 +730,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         _monouts.add_method_to_v_table(*_impl_id, super_interface_id, *_abstract_func_prototype, override_prototype);
     }
 
-    // Resolve, at compile time, the concrete override PrototypeI for (impl, abstract method): find the
-    // impl's edge in hinputs and substitute the
-    // impl's concrete template args into the override's dispatcher/case placeholders.
     pub fn resolve_override_prototype(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, abstract_func_prototype_t: &PrototypeT<'s, 't>, _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>, impl_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>) -> PrototypeI<'s, 'i> {
         let impl_template_id = Compiler::get_impl_template(self.typing_interner, *impl_id_t);
         let edge_t = vassert_one(
@@ -917,8 +884,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         let supplied_bound_args_ref: &'i InstantiationBoundArgumentsI<'s, 'i> = self.interner.bump().alloc(supplied_bound_args);
         monouts.abstract_func_to_bounds.insert(desired_abstract_prototype.id, (denizen_bound_to_denizen_caller_supplied_thing, supplied_bound_args_ref));
 
-        // The vtable slot is this method's position in typing's interface blueprint (typing owns
-        // the order); stored so the map can be sorted by it, matching each call's index_in_edge.
         let typed_interface_id =
             match peel_all_references(desired_abstract_prototype_t.param_types()[virtual_index]) {
                 KindT::Interface(ir) => ir.id,
@@ -988,8 +953,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                         }
                     }
                     (ITemplataT::Placeholder(pt), templata_i) => vec![(pt.id, *templata_i)],
-                    // Groups are ignored by typing pass and instantiator.
-                    (ITemplataT::Group(_), _) => vec![],
+                    (ITemplataT::Group(_), _) => vec![], // Groups are ignored by typing pass and instantiator.
                     _ => panic!("assemble_placeholder_map_inner: unimplemented arm"),
                 }
             })
@@ -1317,7 +1281,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         monouts.functions.insert(result.header.id, result);
 
         // Carry the borrow checker's aliasing info from the template signature to this instantiated
-        // function's id, for the backend to read at lowering. Presence marks the function as analyzed.
+        // function's id, for the backend to read at lowering.
         if let Some(info) = self.hinputs.signature_to_aliasing_info.get(&function_t.header.to_signature()) {
             let mut instr_map: ArenaIndexMap<'i, &'i [i32], &'i [u32]> =
                 ArenaIndexMap::new_in(self.interner.bump());
@@ -1355,8 +1319,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
 
     pub fn translate_ref_expr(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, denizen_name: &IdT<'s, 't>, denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, perspective_region_t: &RegionT, expr: &ExpressionTE<'s, 't>) -> (KindIT<'s, 'i>, ExpressionIE<'s, 'i>) {
         let _denizen_template_name = Compiler::get_template(self.typing_interner, *denizen_name);
-        // The result of any expression is just its onion result kind, monomorphized. This replaces
-        // the old ownership-composition: ownership is now which wrap surrounds the kind.
         let result_it = self.translate_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &expr.result());
         let result_ce = match expr {
             ExpressionTE::LetAndLend(lal) => {
@@ -1610,16 +1572,11 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 let args_ce: Vec<ExpressionIE<'s, 'i>> = args.iter().map(|arg| {
                     self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, arg).1
                 }).collect();
-                // Typing owns the vtable order: the slot is this method's position in its
-                // interface's blueprint (InterfaceEdgeBlueprintT.super_family_root_headers).
                 let typed_interface_id =
                     match peel_all_references(super_function_prototype_t.param_types()[virtual_param_index as usize]) {
                         KindT::Interface(ir) => ir.id,
                         other => panic!("InterfaceFunctionCall virtual param is not an interface: {:?}", other),
                     };
-                // The blueprint map is keyed by interface template: an externally-declared abstract
-                // method's virtual param carries the method's own placeholder, not the interface's,
-                // so we must drop to the template before looking up.
                 let interface_template_id =
                     get_interface_template(self.typing_interner, *typed_interface_id);
                 let blueprint =
@@ -1637,11 +1594,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     args: self.interner.alloc_slice_from_vec(args_ce),
                     result: result_it,
                 }));
-                // VCOORD: clean up this comment
-                // Peel the reference wraps off the virtual param (`virtual self &IShip`) before
-                // reading the interface, mirroring the typed-side peel at typed_interface_id above.
-                // Under the onion a reference is a KindIT wrap layer, so param_types()[vpi] is a
-                // BorrowRefIT around the interface, not a bare InterfaceIT.
                 let interface_id = super_function_prototype.param_types()[virtual_param_index as usize].peel_all_references().expect_interface().id;
                 let instantiation_bound_args = self.translate_bound_args_for_callee(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, self.hinputs.get_instantiation_bound_args(super_function_prototype_t.id));
                 monouts.new_abstract_funcs.push((*super_function_prototype_t, super_function_prototype, virtual_param_index as usize, interface_id, instantiation_bound_args));
@@ -1673,24 +1625,12 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 //    _ => {}
                 // }
 
-                // Under rust_interop, a Rust-backed extern is a leaf rustc must reify + codegen. The
-                // extern call is the real boundary to Rust — the wrapper around it is ordinary Vale
-                // that instantiates normally — so the request is recorded here rather than by
-                // intercepting the wrapper prototype in translate_prototype. per_instance_mir drains
-                // these and hands them to rustc's collector as ReifyFnPointer casts.
                 #[cfg(feature = "rust_interop")]
                 if is_rust_backed(&prototype2.id) {
-                    // Record the request at the real Rust boundary. The FunctionExternI itself is
-                    // materialized by the provider (per_instance_mir), which is where the leaf's real
-                    // (rustc-mangled) symbol becomes known — a Rust extern is defined at resolution, not
-                    // at the call site, so nothing here invents a placeholder name.
                     monouts.rust_instantiation_requests
                         .entry(prototype.id)
                         .or_insert_with(|| self.interner.alloc(prototype));
                 }
-                // No extern registration here — a Rust extern (the only kind that can be generic, since
-                // C has no generics) is materialized by the provider from the request recorded above,
-                // where its real symbol is known.
                 result_ce
             }
             ExpressionTE::FunctionCall(fc) => {
@@ -1700,8 +1640,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     arg_ce
                 }).collect();
                 let prototype = self.translate_prototype(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, prototype_t);
-                // FunctionCallTE.range is a slice (call + arg ranges); take the call's own (first)
-                // as this node's scalar range, falling back to a synthetic range if absent.
                 let range = fc.range.first().copied().unwrap_or_else(|| RangeS::internal(self.scout_arena, -1));
                 ExpressionIE::FunctionCall(self.interner.alloc(FunctionCallIE {
                     range,
@@ -1713,20 +1651,15 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             }
             ExpressionTE::BoundFunctionCall(b) => {
                 let virtual_param_index = b.virtual_param_index;
-                // Resolve the impl bound → the concrete instantiated impl id.
                 let concrete_impl_id = *denizen_bound_to_denizen_caller_supplied_thing
                     .bound_param_impl_id_to_bound_arg_impl_id.get(&b.impl_name)
                     .expect("BoundFunctionCall: missing impl bound arg");
-                // Translate all args; the receiver is kept un-upcast (its concrete kind decides dispatch).
                 let args_it_ce: Vec<(KindIT<'s, 'i>, ExpressionIE<'s, 'i>)> = b.args.iter().map(|arg_te| {
                     self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, arg_te)
                 }).collect();
                 let receiver_it = args_it_ce[virtual_param_index].0;
                 match receiver_it.peel_all_references() {
                     KindIT::StructIT(_) => {
-                        // Concrete receiver → devirtualize: resolve the concrete override in the impl's
-                        // edge and emit a direct static call with the un-upcast receiver. No fat ptr, no vtable.
-                        // Recover the impl's typed id (to find its edge) + its own bound args, recorded when it was resolved.
                         let (concrete_impl_id_t, impl_bound_args) = *monouts.instantiated_impl_to_typed_impl_and_bounds.get(&concrete_impl_id)
                             .expect("BoundFunctionCall: concrete impl not recorded in instantiated_impl_to_typed_impl_and_bounds");
                         let abstract_bound_args = self.translate_bound_args_for_callee(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, self.hinputs.get_instantiation_bound_args(b.abstract_prototype.id));
@@ -1740,20 +1673,14 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                             loci: LocI { path: self.interner.alloc_slice_from_vec(b.loct.path.to_vec()) },
                         }))
                     }
-                    // Interface receiver (interfaces can implement interfaces) → real dynamic dispatch.
-                    // First cut: unimplemented; no current test reaches it (see plan).
                     KindIT::InterfaceIT(_) => panic!("unimplemented: interface-receiver impl-bound dispatch"),
                     other => panic!("BoundFunctionCall receiver peeled to a non-citizen: {:?}", other),
                 }
             }
             ExpressionTE::Reinterpret(r) => {
-                // A Reinterpret is a type-identity node from typing (e.g. `@x` viewed as `&x`)
-                // that only exists to bridge kinds pre-monomorphization. Once substitution is
-                // done its source and result kinds coincide, so assert that and emit the inner
-                // expression directly. Reinterpret never reaches the I-IR or the backend.
-                // VCOORD: need arcana
                 let (inner_it, inner_ce) =
                     self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &r.expr);
+                // VCOORD: need arcana for how the above expr meets the below expectation
                 assert_eq!(inner_it, result_it, "Reinterpret source kind != result kind after substitution");
                 inner_ce
             }
@@ -1982,8 +1909,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     other => panic!("MemberLookup struct_expr must produce a borrow, got {:?}", other),
                 };
                 let member_name = self.translate_var_name(&member_name_t);
-                // Resolve the member's index by name from the struct definition (typing owns member
-                // order, which instantiation preserves) so downstream codegen never re-derives it.
                 let struct_id_t = match peel_all_references(struct_expr_t.result()) {
                     KindT::Struct(s) => s.id,
                     other => panic!("MemberLookup struct_expr type must be a struct, got {:?}", other),
@@ -1992,7 +1917,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     self.find_struct(&struct_id_t).members.iter()
                         .position(|m| IVarNameT::Member(m.name) == member_name_t)
                         .expect("MemberLookup: member name not found in struct") as i32;
-                // The member's (instantiated) type is the storage type the result borrow wraps.
                 let member_type = result_borrow.inner;
                 ExpressionIE::MemberLookup(self.interner.bump().alloc(MemberLookupIE {
                     range,
@@ -2072,16 +1996,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         // }
     }
 
-
-    pub fn run_in_new_pure_region<T>(_denizen_name: &IdT<'s, 't>, _denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, _substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, _denizen_template_name: &IdT<'s, 't>, _new_default_region_t: &ITemplataT<'s, 't>, _run: impl Fn(&IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, &RegionT) -> T) -> T {
-        panic!("Unimplemented: run_in_new_pure_region");
-        // val newDefaultRegionNameT = RegionT(DefaultRegionT)
-        // val newPerspectiveRegionT = newDefaultRegionNameT
-        // val newDefaultRegion = RegionT(DefaultRegionT)
-        // run(substitutions, newPerspectiveRegionT)
-    }
-
-
     pub fn translate_function_id(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, denizen_name: &IdT<'s, 't>, denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, perspective_region_t: &RegionT, full_name_t: &IdT<'s, 't>) -> IdI<'s, 'i> {
         let IdT { package_coord: module, init_steps: steps, local_name: last, .. } = *full_name_t;
         let full_name =
@@ -2140,9 +2054,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 let impl_id = IdI { package_coord: module, init_steps: self.interner.bump().alloc_slice_fill_iter(translated_steps.into_iter()), local_name: INameI::from(impl_name_i) };
                 let bound_args_for_call_unsubstituted = self.hinputs.get_instantiation_bound_args(*_impl_id_t);
                 let rune_to_bound_args_for_new_impl = self.translate_bound_args_for_callee(_monouts, _denizen_name, _denizen_bound_to_denizen_caller_supplied_thing, _substitutions, _perspective_region_t, &bound_args_for_call_unsubstituted);
-                // Record this concrete impl's typed id + its own bound args, keyed by its instantiated
-                // id, so a later BoundFunctionCall devirtualization (and translate_override) can recover
-                // both without reaching into monouts.impls (which isn't populated until the impl drains).
                 let bounds_ref: &'i InstantiationBoundArgumentsI<'s, 'i> = self.interner.alloc(rune_to_bound_args_for_new_impl);
                 _monouts.instantiated_impl_to_typed_impl_and_bounds.insert(impl_id, (*_impl_id_t, bounds_ref));
                 _monouts.new_impls.push((*_impl_id_t, impl_id, bounds_ref));
@@ -2255,7 +2166,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             local_name: local_name_i,
         };
         let ssa_it = StaticSizedArrayIT { name: id_i };
-        // Collect the distinct array kind so the backend can declare its region.
         monouts.static_sized_arrays.entry(id_i).or_insert_with(|| self.interner.alloc(ssa_it));
         ssa_it
     }
@@ -2287,7 +2197,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             local_name: local_name_i,
         };
         let rsa_it = RuntimeSizedArrayIT { name: id_i };
-        // Collect the distinct array kind so the backend can declare its region.
         monouts.runtime_sized_arrays.entry(id_i).or_insert_with(|| self.interner.alloc(rsa_it));
         rsa_it
     }
@@ -2321,8 +2230,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             }
             KindT::StaticSizedArray(a) => KindIT::StaticSizedArrayIT(self.interner.alloc(self.translate_static_sized_array(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, a))),
             KindT::RuntimeSizedArray(a) => KindIT::RuntimeSizedArrayIT(self.interner.alloc(self.translate_runtime_sized_array(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, a))),
-            // Onion wrap layers: recurse into the inner kind and re-wrap (mirrors typing's
-            // replace_value_type_in_ref). Ownership is which wrap surrounds the base kind.
             KindT::BorrowRef(r) => {
                 let inner = self.translate_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &r.inner);
                 KindIT::BorrowRefIT(self.interner.alloc(BorrowRefIT { inner }))
@@ -2607,7 +2514,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     template_args: self.interner.bump().alloc_slice_fill_iter(template_args_si.into_iter()),
                 }))
             }
-            #[allow(unreachable_patterns)] // catch-all; unreachable until more IInterfaceNameT variants exist
+            #[allow(unreachable_patterns)]
             other => panic!("translate_interface_name: unimplemented variant {:?}", discriminant(other)),
         }
     }

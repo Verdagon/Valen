@@ -1,5 +1,3 @@
-// Coordinates the Typing pass
-
 use crate::code_source::CodeSource;
 use crate::compile_options::GlobalOptions;
 use crate::keywords::Keywords;
@@ -29,17 +27,13 @@ use bumpalo::Bump;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-/// Miscellaneous (see @TFITCX)
 pub struct TypingPassOptions {
   pub global_options: GlobalOptions,
   pub debug_out: Arc<dyn Fn(&str) + Send + Sync>,
   pub tree_shaking_enabled: bool,
-  /// Whether the group borrow checker runs. Always `true` outside of a few tests that deliberately
-  /// exercise later passes past a not-yet-supported borrow-checker case.
   pub borrow_checker_enabled: bool,
 }
 
-/// Miscellaneous (see @TFITCX)
 pub struct TypingPassCompilation<'s, 'ctx, 't, 'p>
 where
   's: 't,
@@ -53,8 +47,6 @@ where
   keywords: &'ctx Keywords<'s>,
   options: TypingPassOptions,
   pub typing_interner: &'ctx TypingInterner<'s, 't>,
-  // Answers questions about Rust items for the typing pass. Supplied by the caller so
-  // a test can hand in a fixture; production supplies the TyCtxt-backed one.
   oracles: Oracles<'ctx, 's, 't>,
 }
 
@@ -169,9 +161,6 @@ where
     }
   }
 
-  // `&self` read of the already-computed compiler outputs, so a caller can borrow it alongside
-  // another field of this struct (`&mut expect_compiler_outputs` would conflict). Caller must
-  // have run `expect_compiler_outputs` first.
   pub fn cached_compiler_outputs(&self) -> &HinputsT<'s, 't> {
     self.hinputs_cache.as_ref().expect("compiler outputs not computed")
   }

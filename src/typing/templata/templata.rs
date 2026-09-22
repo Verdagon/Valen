@@ -65,7 +65,6 @@ pub fn expect_kind_templata<'s, 't>(templata: ITemplataT<'s, 't>) -> KindTemplat
   }
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ITemplataT<'s, 't> {
   Kind(KindTemplataT<'s, 't>),
@@ -78,10 +77,6 @@ pub enum ITemplataT<'s, 't> {
   CoordList(&'t KindListTemplataT<'s, 't>),
   RuntimeSizedArrayTemplate(RuntimeSizedArrayTemplateTemplataT),
   StaticSizedArrayTemplate(StaticSizedArrayTemplateTemplataT),
-  /// The ceremonial value of a group generic param. Uniform with type/int params so arity/index
-  /// invariants hold, but never enters a `KindT` and is never read — the borrow checker reads groups
-  /// off the declaration-side `GroupS`, not off this. See @GROUPS-are-declaration-side.
-  /// VGB: arcana for this
   Group(GroupTemplataT),
   Function(&'t FunctionTemplataT<'s, 't>),
   StructDefinition(&'t StructDefinitionTemplataT<'s, 't>),
@@ -93,7 +88,6 @@ impl<'s, 't> ITemplataT<'s, 't>
 where
   's: 't,
 {
-  /// Asserts this is a `Kind` templata and returns its `KindT`.
   pub fn expect_kind(self) -> KindT<'s, 't> {
     match self {
       ITemplataT::Kind(k) => k.kind,
@@ -106,14 +100,11 @@ where
       ITemplataT::Kind(_) => ITemplataType::KindTemplataType(KindTemplataType {}),
       ITemplataT::Placeholder(p) => p.tyype,
       ITemplataT::Group(_) => ITemplataType::GroupTemplataType(GroupTemplataType {}),
-      // ITemplataT::Ownership(_) => ITemplataType::OwnershipTemplataType(OwnershipTemplataType {}),
       ITemplataT::Integer(_) => ITemplataType::IntegerTemplataType(IntegerTemplataType {}),
       ITemplataT::Boolean(_) => ITemplataType::BooleanTemplataType(BooleanTemplataType {}),
       ITemplataT::String(_) => ITemplataType::StringTemplataType(StringTemplataType {}),
-      // ITemplataT::Prototype(_) => ITemplataType::PrototypeTemplataType(PrototypeTemplataType {}),
       ITemplataT::Isa(_) => ITemplataType::ImplTemplataType(ImplTemplataType {}),
       ITemplataT::ImplDefinition(_) => ITemplataType::ImplTemplataType(ImplTemplataType {}),
-      // ITemplataT::Location(_) => ITemplataType::LocationTemplataType(LocationTemplataType {}),
       ITemplataT::CoordList(_) => {
         panic!("Unimplemented: tyype on CoordList");
         // override def tyype = PackTemplataType(KindTemplataType())
@@ -149,35 +140,31 @@ where
   }
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PlaceholderTemplataT<'s, 't> {
   pub id: IdT<'s, 't>,
   pub tyype: ITemplataType<'s>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct KindTemplataT<'s, 't> {
   pub kind: KindT<'s, 't>,
 }
 
-/// Value-type (see @TFITCX).
-/// The ceremonial group-param constant; never read, so it carries no
-/// payload (a `GroupB` would be the real algebra, but this is only the uniform param's value).
-/// VGB: arcana
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct GroupTemplataT {}
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct RuntimeSizedArrayTemplateTemplataT {}
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StaticSizedArrayTemplateTemplataT {}
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FunctionTemplataT<'s, 't>
 where
@@ -200,10 +187,7 @@ where
   }
 }
 
-// AFTERM: figure out why some templatas compare environment and some don't —
-// `FunctionTemplataT`'s equality ignores `outerEnv` but this type's derived
-// equality includes `declaring_env`.
-/// Value-type (see @TFITCX)
+// AFTERM: figure out why some templatas compare environment and some don't
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StructDefinitionTemplataT<'s, 't>
 where
@@ -214,7 +198,7 @@ where
   pub tyype: TemplateTemplataType<'s>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum IContainer<'s> {
   Interface(ContainerInterface<'s>),
@@ -223,8 +207,6 @@ pub enum IContainer<'s> {
   Impl(ContainerImpl<'s>),
 }
 
-/// Value-type (see @TFITCX)
-// Identity equality on the contained denizen (range + name), mirroring `FunctionTemplataT`.
 #[derive(Copy, Clone, Debug)]
 pub struct ContainerInterface<'s> {
   pub interface: &'s InterfaceS<'s>,
@@ -242,8 +224,6 @@ impl<'s> Hash for ContainerInterface<'s> {
   }
 }
 
-/// Value-type (see @TFITCX)
-// Identity equality on the contained denizen (range + name), mirroring `FunctionTemplataT`.
 #[derive(Copy, Clone, Debug)]
 pub struct ContainerStruct<'s> {
   pub struct_: &'s StructS<'s>,
@@ -261,8 +241,6 @@ impl<'s> Hash for ContainerStruct<'s> {
   }
 }
 
-/// Value-type (see @TFITCX)
-// Identity equality on the contained denizen (range + name), mirroring `FunctionTemplataT`.
 #[derive(Copy, Clone, Debug)]
 pub struct ContainerFunction<'s> {
   pub function: &'s FunctionS<'s>,
@@ -280,8 +258,6 @@ impl<'s> Hash for ContainerFunction<'s> {
   }
 }
 
-/// Value-type (see @TFITCX)
-// Identity equality on the contained denizen (range + name), mirroring `FunctionTemplataT`.
 #[derive(Copy, Clone, Debug)]
 pub struct ContainerImpl<'s> {
   pub impl_: &'s ImplS<'s>,
@@ -299,7 +275,7 @@ impl<'s> Hash for ContainerImpl<'s> {
   }
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum CitizenDefinitionTemplataT<'s, 't> {
   Struct(&'t StructDefinitionTemplataT<'s, 't>),
@@ -325,7 +301,7 @@ fn unapply<'s, 't>(
   panic!("Unimplemented: unapply");
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InterfaceDefinitionTemplataT<'s, 't>
 where
@@ -336,7 +312,7 @@ where
   pub tyype: TemplateTemplataType<'s>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplDefinitionTemplataT<'s, 't>
 where
@@ -346,31 +322,31 @@ where
   pub impl_template_id: &'t IdT<'s, 't>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BooleanTemplataT {
   pub value: bool,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct IntegerTemplataT {
   pub value: i64,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StringTemplataT<'s> {
   pub value: StrI<'s>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PrototypeTemplataT<'s, 't> {
   pub prototype: &'t PrototypeT<'s, 't>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct IsaTemplataT<'s, 't> {
   pub declaration_range: RangeS<'s>,
@@ -379,25 +355,20 @@ pub struct IsaTemplataT<'s, 't> {
   pub super_kind: KindT<'s, 't>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct KindListTemplataT<'s, 't> {
   pub kinds: &'t [KindT<'s, 't>],
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExternFunctionTemplataT<'s, 't> {
   pub header: &'t FunctionHeaderT<'s, 't>,
 }
 
-// FunctionHeaderT doesn't derive Debug yet; render by content (id) for @IIIOZ
-// cross-run determinism — pointer addresses vary across runs due to ASLR.
 impl<'s, 't> Debug for ExternFunctionTemplataT<'s, 't> {
   fn fmt(&self, f: &mut Formatter<'_>) -> Result {
     f.debug_struct("ExternFunctionTemplataT").field("header_id", &self.header.id).finish()
   }
 }
-
-// (Templata payload interning family removed — types are TFITCX Value-type;
-// construction goes via `bump.alloc(FooTemplataT { ... })`.)

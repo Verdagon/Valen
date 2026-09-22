@@ -1,10 +1,5 @@
 use crate::postparsing::rules::rules::{IRulexSR, RuneUsage};
 
-/// The runes a rule mentions, so a solve knows which runes it must conclude.
-///
-/// The typing pass ignores regions and groups (that is the borrow checker's job), so a `BorrowRef`
-/// contributes only its result and inner runes. Its region rune, when it has one, is deliberately
-/// left out, so the solver never treats a region as a rune it must conclude.
 pub fn rune_usages<'s>(rule: &IRulexSR<'s>) -> Vec<RuneUsage<'s>> {
   match rule {
     IRulexSR::Equals(x) => vec![x.left.clone(), x.right.clone()],

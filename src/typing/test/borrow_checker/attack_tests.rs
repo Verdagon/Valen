@@ -16,8 +16,6 @@ exported func main() int {
 "#);
 }
 
-// Slice 21: the disjoint-fields `attack2` mutates two distinct groups `r` and `s`, but the arguments
-// are two sibling fields of one fleet, which are provably disjoint — safe.
 #[test]
 fn test_disjoint_fields_attack_is_safe() {
   assert_compiles_clean(r#"
@@ -89,9 +87,6 @@ exported func main() int {
 "#);
 }
 
-// Slice 22 (capstone): `attack`'s own body mutates both borrows' members (no structural op), and
-// `main` calls it with both distinct and aliasing arguments. The whole program borrow-checks clean
-// end-to-end — member writes are not call violations, and common-group aliasing is safe.
 #[test]
 fn test_full_attack_program_is_safe() {
   assert_compiles_clean(r#"

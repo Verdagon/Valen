@@ -44,7 +44,6 @@ where
     };
     let (opt_coord, some_constructor, none_constructor, some_impl_id, none_impl_id) =
       self.get_option(coutputs, env, call_range, call_location, RegionT::Default, borrow_coord)?;
-    // This is a compiler-generated builtin body, so its nodes have no user source; the honest range is a synthesized internal one.
     let synth_range = RangeS::internal(self.scout_arena, -70020);
     let lock_expr = ExpressionTE::LockWeak(self.typing_interner.alloc(LockWeakTE::new(
       synth_range,

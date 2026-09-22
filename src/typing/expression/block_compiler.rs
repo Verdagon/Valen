@@ -13,8 +13,6 @@ use crate::utils::fx::HashSet;
 use crate::utils::range::RangeS;
 use std::iter::once;
 
-// deleted: delegate trait removed per god-struct refactor (Compiler now holds all methods directly)
-
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't>
 where
   's: 't,

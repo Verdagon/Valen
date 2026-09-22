@@ -1,7 +1,5 @@
 use super::util::assert_param_noalias;
 
-// A lone borrow parameter owns its group, so nothing else can reach into it — the backend may mark it
-// `noalias`.
 #[test]
 fn sole_borrow_param_is_noalias() {
   assert_param_noalias(
@@ -19,7 +17,6 @@ exported func main() int {
   );
 }
 
-// Two parameters sharing one group may alias each other, so neither is the sole reference into it.
 #[test]
 fn same_group_params_are_not_noalias() {
   assert_param_noalias(
@@ -38,8 +35,6 @@ exported func main() int {
   );
 }
 
-// Parameters in distinct groups are each the sole reference into their own group, so both are
-// `noalias` — even read-only, since a caller aliasing them is harmless without mutation.
 #[test]
 fn distinct_group_params_are_both_noalias() {
   assert_param_noalias(
@@ -58,7 +53,6 @@ exported func main() int {
   );
 }
 
-// Un-annotated borrow parameters each get their own anonymous group, so both are `noalias`.
 #[test]
 fn anonymous_group_params_are_both_noalias() {
   assert_param_noalias(
@@ -77,7 +71,6 @@ exported func main() int {
   );
 }
 
-// A non-borrow parameter forms no group and is never `noalias`; the borrow beside it still is.
 #[test]
 fn non_borrow_param_is_not_noalias() {
   assert_param_noalias(

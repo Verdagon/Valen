@@ -31,30 +31,18 @@ use crate::utils::code_hierarchy::{FileCoordinateMap, PackageCoordinate};
 use crate::utils::range::{CodeLocationS, RangeS};
 use crate::utils::source_code_utils;
 
-/// One imported extern struct's layout, keyed in the map (see `populate_metal_cache`) by the
-/// struct's humanized name. General source-agnostic metadata: the interop provider fills it from
-/// rustc's `tcx.layout_of`, and standalone passes an empty map.
 pub struct StructLayout {
     pub size: u64,
     pub align: u64,
 }
 
-/// How one argument or return value crosses an extern boundary. Mirrors the C++ `CoercionKind`
-/// (Ignore / DirectInt / DirectPtr / Indirect / Cast).
 pub enum Coercion {
     Ignore,
     DirectInt(u32),
     DirectPtr,
     Indirect,
-    /// A small struct that rustc `Cast`s to a single integer of this many bits: it crosses as that
-    /// integer (the struct's bytes reinterpreted), e.g. an 8-byte struct as an `i64`.
     Cast(u32),
-    /// A small struct rustc passes as two register scalars (`ScalarPair`), e.g. `{i32, i32}`: it
-    /// crosses as two integers of these bit-widths, reassembled into the struct on the far side.
     Pair(u32, u32),
-    /// The hidden `&Location` argument a `#[track_caller]` Rust fn carries at the ABI level (absent from
-    /// its type signature). It is declared as a `ptr` param but has no corresponding Vale argument: the
-    /// boundary synthesizes a null pointer for it (TCHAPZ). Always the trailing arg when present.
     LocationPtr,
 }
 
@@ -72,15 +60,11 @@ impl Coercion {
     }
 }
 
-/// One extern function's ABI, keyed in the map by the extern's humanized prototype name.
 pub struct ExternAbi {
     pub ret: Coercion,
     pub args: Vec<Coercion>,
 }
 
-/// Walk a `HinputsI` and populate the `MetalCache`, returning a fully constructed `Program`. The
-/// two maps carry general extern metadata onto the metal `Package` (see S14): `struct_layouts` keyed
-/// by humanized struct name, `extern_abis` by humanized prototype name. Both are empty for standalone.
 pub fn populate_metal_cache<'cache, 's, 'i>(
     cache: &'cache MetalCache,
     monouts: &HinputsI<'s, 'i>,
@@ -93,7 +77,6 @@ where
 {
     let lowerer = Lowerer { cache, code_map, current_group_facts: RefCell::new(None) };
 
-    // HinputsI is flat; group defs by their id's package coordinate (first-seen order).
     let mut package_coords: Vec<&'s PackageCoordinate<'s>> = Vec::new();
     let mut seen: HashMap<usize, ()> = HashMap::new();
     let mut note = |pc: &'s PackageCoordinate<'s>, out: &mut Vec<&'s PackageCoordinate<'s>>| {
@@ -126,25 +109,14 @@ where
     pb.finish()
 }
 
-/// An owned per-function snapshot of the region-free ground-truth aliasing facts, extracted from the
-/// arena `FunctionAliasingInfoI` for the function currently being lowered. Owned so the `Lowerer` needs
-/// no instantiation-arena lifetime (the durable carrier on `HinputsI` stays arena-allocated).
 struct LoweredAliasingFacts {
     group_count: u32,
-    /// Each instruction's `LocI` path → the set of group indices it accesses.
     accessed: HashMap<Vec<i32>, Vec<u32>>,
 }
 
 struct Lowerer<'cache, 'cm, 'sm> {
     cache: &'cache MetalCache,
-    // Consulted to resolve source ranges (byte offsets) into (file, line, col) for DWARF.
-    // 'cm/'sm are independent of the per-method source lifetime 's; resolve_line_col accepts
-    // the map and the location under independent lifetimes.
     code_map: &'cm FileCoordinateMap<'sm, String>,
-    /// The region-free ground-truth aliasing facts of the function currently being lowered (set per
-    /// function in `lower_package`), so each access/call lowering can look up its accessed-group set by
-    /// `LocI` path. Pure plumbing — the backend numbers the groups and derives the metadata by
-    /// complement; nothing here does group logic.
     current_group_facts: RefCell<Option<LoweredAliasingFacts>>,
 }
 
@@ -153,17 +125,12 @@ fn code_map<'s>(loc: CodeLocationS<'s>) -> String {
 }
 
 impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
-    /// Look up the accessed-group index set for an instruction by its `LocI` path, plus the function's
-    /// group count. Returns None when the checker recorded nothing for this instruction. Pure lookup.
     fn accessed_groups(&self, loc_path: &[i32]) -> Option<(Vec<u32>, u32)> {
         self.current_group_facts.borrow().as_ref().and_then(|f| {
             f.accessed.get(loc_path).map(|set| (set.clone(), f.group_count))
         })
     }
 
-    // Resolve an expression's RangeS into an interned SourceLocation handle for DWARF. Every
-    // ExpressionIE carries a range (populated by the instantiator from the TE node); a synthetic
-    // range (offset < 0) interns the empty "no source info" location. Backend discards it for now.
     fn loc_of<'s>(&self, range: &RangeS<'s>) -> SourceLocation<'cache> {
         if range.begin.offset < 0 {
             return self.cache.get_source_location("", 0, 0);
@@ -228,10 +195,6 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
         self.cache.get_prototype(name, return_type, &params)
     }
 
-    /// Forward the local's identity to the metal `Local`. The instantiator reallocates a fresh
-    /// `LocalVariableI` per mention, so we don't dedup here — the `id` (the structurally-unique
-    /// `IVarNameI`) is the identity, and the backend `BlockState` keys on it. `name` is the
-    /// display/LLVM name only.
     fn lower_local<'s, 'i>(
         &self,
         var: &LocalVariableI<'s, 'i>,
@@ -257,8 +220,6 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             if f.header.id.package_coord as *const _ as usize != pkg_key {
                 continue;
             }
-            // Publish this function's ground-truth aliasing facts so body lowering can tag its accesses
-            // and calls; clear it otherwise. Purely carrying what the checker computed — no logic here.
             *self.current_group_facts.borrow_mut() =
                 monouts.id_to_aliasing_info.get(&f.header.id).map(|i| LoweredAliasingFacts {
                     group_count: i.group_count,
@@ -271,18 +232,10 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             let func = self.lower_function(f);
             *self.current_group_facts.borrow_mut() = None;
             let fname = humanize_id(&code_map, &f.header.id, None);
-            // Presence of an entry means the borrow checker analyzed this function; record its
-            // per-parameter noalias verdict on the package. A function with no entry (generated,
-            // extern, or checker disabled) records nothing, and the backend marks nothing for it.
             if let Some(info) = monouts.id_to_aliasing_info.get(&f.header.id) {
                 pb.add_param_noalias(&fname, info.param_index_to_noalias);
             }
             pb.add_function(&fname, func);
-            // A Rust→Vale callback's body is an ordinary function here, but it also carries an inbound
-            // ABI (how Rust hands args to it), keyed by this same humanized name — the name its metal
-            // prototype gets, and the key the wrapper's `buildBoundarySignature` → `lookupExternAbi`
-            // reads. Record it on the package so the wrapper finds it, exactly as extern leaves do.
-            // Absent for ordinary Vale functions (nothing inserted an entry), so this is a no-op there.
             if let Some(abi) = extern_abis.get(&fname) {
                 let ret = abi.ret.to_ffi();
                 let args: Vec<CoercionFFI> = abi.args.iter().map(|c| c.to_ffi()).collect();
@@ -303,8 +256,7 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             let id = self.lower_interface_def(it);
             pb.add_interface(&humanize_id(&code_map, &it.instantiated_interface.id, None), id);
         }
-        // Arrays always live in the mut/single (unsafe) region, never shared. An array
-        // kind is self-describing, so we build its definition straight from the IT.
+
         for a in monouts.static_sized_arrays.iter().copied() {
             if a.name.package_coord as *const _ as usize != pkg_key {
                 continue;
@@ -347,13 +299,7 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             if e.prototype.id.package_coord as *const _ as usize != pkg_key {
                 continue;
             }
-            // link_name is the real callee symbol: rustc's mangled name for a Rust-interop leaf (the
-            // backend binds it verbatim, single-symbol arch §5.2), or the declared extern name for a
-            // C extern (the backend composes the vale_abi_ shim name from it).
             pb.add_extern_function(e.link_name, self.lower_prototype(e.prototype));
-            // If a producer computed this extern's ABI (interop, from rustc's FnAbi), record it on the
-            // package keyed by the prototype's humanized name. That is the same key the prototype gets, and
-            // the key buildCallOrSideCall / GlobalState.externFunctions look up by. Absent for C externs.
             let extern_key = humanize_id(&code_map, &e.prototype.id, None);
             if let Some(abi) = extern_abis.get(&extern_key) {
                 let ret = abi.ret.to_ffi();
@@ -367,8 +313,6 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             }
             let name = humanize_id(&code_map, &struct_it.id, None);
             pb.add_extern_kind(&name, self.lower_struct_kind(**struct_it));
-            // If a producer sized this imported struct (interop, from rustc's layout_of), record it on
-            // the package keyed by the same humanized name. Absent leaves the backend to size from members.
             if let Some(layout) = struct_layouts.get(&name) {
                 pb.add_struct_layout(&name, layout.size, layout.align);
             }
@@ -380,10 +324,6 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
     fn lower_function<'s, 'i>(&self, f: &FunctionDefinitionI<'s, 'i>) -> Function<'cache> {
         let proto = self.lower_prototype(&f.header.to_prototype());
         let body = self.lower_expression(&f.body);
-        // FunctionHeaderI carries no source range yet, so anchor the function's DWARF
-        // location (DISubprogram file + decl line) to its body's range: same source file,
-        // and a start line that coincides with the declaration line for the single-line-body
-        // functions M1 targets. A real header range would let us point at the `func` keyword.
         let loc = self.loc_of(&f.body.range());
         self.cache.new_function(proto, Some(body), loc)
     }
@@ -456,9 +396,6 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
 
     fn lower_expression<'s, 'i>(&self, expr: &ExpressionIE<'s, 'i>) -> Expression<'cache> {
         let c = self.cache;
-        // Every ExpressionIE carries a source range (the instantiator copies it from the TE node),
-        // so resolve one DWARF loc for this node and pass it to the builder. Backend discards the
-        // loc for now (DWARF emission is a later step); this keeps the plumbing exercised end-to-end.
         let loc = self.loc_of(&expr.range());
         match expr {
             ExpressionIE::ConstantInt(x) => c.expr_constant_int(x.value, x.bits, loc),
@@ -630,7 +567,6 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
                 loc,
             ),
             ExpressionIE::While(x) => {
-                // The synthetic inner block reuses this While's loc (it has no distinct source range).
                 let block = c.expr_block(self.lower_expression(&x.block.inner), self.lower_kind(x.block.result), loc);
                 c.expr_while(block, self.lower_kind(x.result), loc)
             }

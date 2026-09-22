@@ -322,8 +322,6 @@ fn tests_adding_two_numbers() {
   }
 
   assert_eq!(func_call.args.len(), 2);
-  // We wrote `a = 2; b = 3; +(&a, &b)` to match the `+(&int, &int)` signature in arith.vale.
-  // Borrowing a local is a plain LocalLookup (a lookup is itself a borrow) — no temp, no Defer.
   match &func_call.args[0] {
     ExpressionTE::LocalLookup(LocalLookupTE {
       local_variable: LocalVariable {
@@ -346,10 +344,6 @@ fn tests_adding_two_numbers() {
   }
 }
 
-// Two sibling rvalue-borrow temporaries (`&Foo()` and `&Bar()` as two args of one call) must have
-// their drops spliced in last-created-first (LIFO): the `&Bar()` temp drops before the `&Foo()` one.
-// (The hammer dropped siblings in evaluation order (FIFO) — an artifact of its accumulator, pinned
-// here to LIFO to match `drop_since` and the intended semantics.)
 #[test]
 fn sibling_borrow_temps_drop_lifo() {
   let parse_bump = Bump::new();
@@ -415,8 +409,6 @@ exported func main() {
   assert_eq!(dropped_structs[1], "Foo");
 }
 
-// A non-void consumer's result is preserved across the borrow-temp's drop: `frob(&Foo())` returns an
-// int that `main` returns, and the `&Foo()` temp is still dropped (once) — no Defer node remains.
 #[test]
 fn borrow_temp_preserves_consumer_value() {
   let parse_bump = Bump::new();
@@ -478,10 +470,6 @@ exported func main() int {
   assert_eq!(foo_drops.len(), 1);
 }
 
-// Site 5 (If) — a borrow-temp created in an `if` condition must be dropped right after the condition,
-// before the (diverging) branch runs, so it is not orphaned on the `return` path. A correct drain
-// discharges the condition's temp there; a buggy one that bubbles it to the statement boundary would
-// leave the temp un-unstackified on the return path (a stackifier error, so the fixture would panic).
 #[test]
 fn if_condition_borrow_temp_drops_before_diverging_branch() {
   let parse_bump = Bump::new();
@@ -554,8 +542,6 @@ exported func main() int {
   assert_eq!(foo_drops.len(), 1);
 }
 
-// Site 5 (While) — a borrow-temp in a `while` condition must drop after the condition, not be orphaned
-// when the loop `break`s out of the body.
 #[test]
 fn while_condition_borrow_temp_drops_with_break() {
   let parse_bump = Bump::new();
@@ -619,8 +605,6 @@ exported func main() {
   assert_eq!(foo_drops.len(), 1);
 }
 
-// Site 4 — per-statement drain: a borrow-temp created in statement 1 must drop at the end of that
-// statement, before statement 2 (`marker()`) runs, rather than bubbling to block end.
 #[test]
 fn borrow_temp_drops_at_statement_end_before_next_statement() {
   let parse_bump = Bump::new();
@@ -684,8 +668,6 @@ exported func main() {
   assert_eq!(foo_drops.len(), 1);
 }
 
-// Discard-past-Never — when the consuming call itself diverges (`check` returns `__Never`), the
-// borrow-temp is unlet WITHOUT dropping: no destructor runs on a path that never returns.
 #[test]
 fn borrow_temp_discarded_when_consumer_diverges() {
   let parse_bump = Bump::new();
@@ -1151,8 +1133,6 @@ exported func main() int { return do({ return 3; }); }
   assert!(matches!(do_fn.header.return_type, KindT::Int(IntT { bits: 32 })));
 }
 
-// Passing a lambda by value into a parameter that expects a borrow (&F) should
-// resolve: the owned lambda argument satisfies the &F parameter.
 #[test]
 fn test_lambda_passed_by_value_to_borrow_callable_param() {
   let parse_bump = Bump::new();
@@ -1806,8 +1786,6 @@ fn tests_exporting_struct() {
   assert_eq!(export.tyype, KindT::from(&moo.instantiated_citizen));
 }
 
-// VCOORD: enable this after the export/extern gate rework. (Currently also blocked upstream at the
-// interface vtable edge, edge_compiler.rs:163, not the export gate.)
 #[test]
 fn tests_exporting_interface() {
   let parse_bump = Bump::new();
@@ -2624,14 +2602,6 @@ exported func main() int {
   );
 }
 
-// Ensures that when a callsite passes a bare Own local to a parameter that expects
-// Own, but the compiler has no `implicit_clone(&T) T` available to auto-copy the
-// borrow that bare-use produces, the resolver reports NoImplicitCloneDefinedT and
-// the humanized message lists all three options (consume with `^`, explicit
-// `clone(&x)`, or define an `implicit_clone(&T) T`), e.g. `consume(s)` with an Own
-// Ship local when nothing named `implicit_clone` matches `&Ship`.
-// VCOORD: enable this. Error-message check for the retired implicit_clone probe; panics at
-// is_type_convertible's bare-to-borrow hole. Re-enable or delete when implicit_clone is removed.
 #[test]
 #[ignore]
 fn error_when_no_implicit_clone_for_borrow_to_own_conversion() {
@@ -2693,13 +2663,6 @@ exported func main() int {
   );
 }
 
-// Ensures that when the user has defined `implicit_clone` for their type but the
-// resolver rejected every candidate (e.g. the signature takes Own instead of
-// Borrow), the compiler reports ImplicitCloneRejectedT with the FindFunctionFailure
-// preserved, so the humanized message can surface the rejection detail (which
-// candidate was tried and why) alongside the fallback options.
-// VCOORD: enable this. Error-message check for the retired implicit_clone probe; panics at
-// is_type_convertible's bare-to-borrow hole. Re-enable or delete when implicit_clone is removed.
 #[test]
 #[ignore]
 fn error_when_implicit_clone_is_defined_but_rejected() {
@@ -2966,9 +2929,6 @@ fn tests_a_templated_linked_list() {
 }
 
 #[test]
-// VCOORD: enable this. Blocked on closures: forEach(&list, { print(__copy_prim(_)); }) passes a
-// closure whose templated-light-banner resolution hits the @PFVSZ per-param-fold stub
-// (function_compiler_solving_layer.rs:230). Re-enable when the lambda/closure cluster lands.
 fn tests_a_foreach_for_a_linked_list() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -3063,7 +3023,6 @@ exported func main() int {
   assert_eq!(destructor_calls.len(), 2);
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn recursive_struct() {
   let parse_bump = Bump::new();
@@ -3125,7 +3084,6 @@ func main(a ListNode) {}
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn templated_imm_struct() {
   let parse_bump = Bump::new();
@@ -3195,7 +3153,6 @@ exported func main() int {
   compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn test_vector_of_struct_templata() {
   let parse_bump = Bump::new();
@@ -3390,7 +3347,6 @@ exported func main() {
   compile.expect_compiler_outputs();
 }
 
-// VCOORD: enable this after the export/extern gate rework (is_primitive split + peel).
 #[test]
 #[ignore]
 fn reports_when_exported_function_depends_on_non_exported_param() {
@@ -3430,7 +3386,6 @@ that wasn't exported from package test
   );
 }
 
-// VCOORD: enable this after the export/extern gate rework (is_primitive split + peel).
 #[test]
 #[ignore]
 fn reports_when_exported_function_depends_on_non_exported_return() {
@@ -3481,7 +3436,6 @@ that wasn't exported from package test
   );
 }
 
-// VCOORD: enable this after the export/extern gate rework (is_primitive split + peel).
 #[test]
 #[ignore]
 fn reports_when_extern_function_depends_on_non_exported_param() {
@@ -3517,7 +3471,6 @@ Extern function moo depends on kind Firefly that wasn't exported from package te
   );
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 #[ignore]
 fn reports_when_extern_function_depends_on_non_exported_return() {
@@ -3553,7 +3506,6 @@ Extern function moo depends on kind Firefly that wasn't exported from package te
   );
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn reports_when_exported_struct_depends_on_non_exported_member() {
   let parse_bump = Bump::new();
@@ -3563,7 +3515,6 @@ fn reports_when_exported_struct_depends_on_non_exported_member() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: imm → share
   let code = r"
 exported struct Firefly share {
   raza Raza;
@@ -3593,12 +3544,6 @@ Exported kind Firefly depends on kind Raza that wasn't exported from package tes
   );
 }
 
-// The transitive-export check at `ensure_deep_exports` guards its member walk on
-// `sharedness == Shared`, so a non-shared exported struct's members go unchecked. This
-// pins whether that silence is real, and which way it should be resolved: either a
-// non-shared struct crosses as an opaque handle and needs no member export (in which
-// case the guard is right and wants a comment saying so), or the guard is an
-// under-approximation that passes a program it should reject.
 #[test]
 fn reports_when_exported_nonshared_struct_depends_on_non_exported_member() {
   let parse_bump = Bump::new();
@@ -3815,9 +3760,6 @@ fn array_map_with_single_lambda_types_cleanly() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // Same Vale fixture as integration_tests::tests::array_tests::array_map_with_single_lambda,
-  // but typing-pass only — verifies the code_source matches user's __call(&Lam, ...) against
-  // Array's func(&G, int)E bound when Lam is Single, without running the full pipeline.
   let code = r"
 import v.builtins.arrays.*;
 import v.builtins.arith.*;
@@ -3845,9 +3787,6 @@ func main() int {
     &code_source,
   );
   let coutputs = compile.expect_compiler_outputs();
-  // Spirit: the closure's `__call` must resolve with a Borrow first param (not
-  // Own), which is what lets it satisfy Array's `func(&G, int)E` bound when
-  // G = Lam. Match that exact shape: a `__call` whose first param is `&Lam`.
   collect_only_tnode!(
       NodeRefT::Hinputs(coutputs),
       NodeRefT::FunctionHeader(FunctionHeaderT {
@@ -3937,7 +3876,7 @@ exported func main() int {
 }
 
 #[test]
-#[ignore = "runtime-array-from-callable delegates to find_function on the Array library function (array_compiler.rs:299), so a wrong-element generator fails as generic CouldntFindFunctionToCallT (:322) before the dedicated element-type check (:337, itself a bare panic). Un-ignore once the runtime path compares the generator's return type to the element type directly, like the static path (:150)."]
+#[ignore]
 fn reports_when_rsa_callable_returns_wrong_element_type() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -4117,7 +4056,6 @@ Indexed array with non-integer: bool
   );
 }
 
-// VCOORD: check if this is redundant
 #[test]
 fn runtime_sized_array_local_drops_cleanly() {
   let parse_bump = Bump::new();
@@ -4182,7 +4120,6 @@ exported func main() int {
     ICompileErrorT::RangedInternalErrorT { message, .. } if message.contains("Can't apply") => {}
     other => panic!("expected RangedInternalErrorT 'Can't apply', got {:?}", other),
   }
-  // TODO: the RangedInternalErrorT message itself includes a Debug-format of the kind; replace at the error-construction site with a humanize_kind call and re-capture.
   assert_humanized_eq(
     &humanize_compile_error(&mut compile, err),
     r#"At test:0.vale:2:1:
@@ -4578,13 +4515,6 @@ Can't move a local (m) from inside a while loop.
   );
 }
 
-// Ignored because it fails today. The move-tracker skips its entire outer-local-move
-// check when the while body never falls through. The `IExpressionSE::While` arm of
-// `evaluate_expression` (typing/expression/expression_compiler.rs) gates that check on
-// `match uncoerced_body_block_2.result { KindT::Never(_) => {} .. }`, so a body ending in
-// break/return makes an illegal move of an outer local go unreported. The sibling
-// `reports_when_moving_from_inside_a_while` (no break) still errors. The fix drops that
-// Never guard so the check runs regardless of the body's result.
 #[test]
 #[ignore]
 fn reports_when_moving_from_inside_a_while_that_never_falls_through() {
@@ -5318,8 +5248,6 @@ Open (non-sealed) interfaces can't have abstract methods defined outside the int
   );
 }
 
-// Deleted `report_when_imm_struct_has_varying_member` and `report_imm_mut_mismatch_for_generic_type`
-// — ImmStructCantHave*Member validators no longer exist, so the tests had no target error to assert.
 
 #[test]
 fn tests_stamping_a_struct_and_its_implemented_interface_from_a_function_param() {
@@ -5374,8 +5302,6 @@ exported func main() { moo(__pretend<MySome<int>>()); }
 
   coutputs.lookup_impl(my_struct.template_name, interface.template_name);
 }
-
-// TSUGAR: deleted `report_when_imm_contains_varying_member` — ImmStructCantHaveVaryingMember validator was removed.
 
 #[test]
 fn tests_calling_an_abstract_function() {
@@ -5535,7 +5461,6 @@ exported func main() {
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 #[ignore]
 fn tests_destructuring_shared_doesnt_compile_to_destroy() {
@@ -5578,7 +5503,6 @@ exported func main() int {
   assert_eq!(destroys.len(), 0);
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn generates_free_function_for_imm_struct() {
   let code = r#"
@@ -5608,7 +5532,6 @@ fn generates_free_function_for_imm_struct() {
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn reports_when_exported_ssa_depends_on_non_exported_element() {
   let parse_bump = Bump::new();
@@ -5643,7 +5566,6 @@ Exported kind StaticArray<5, Raza> depends on kind Raza that wasn't exported fro
   );
 }
 
-// VCOORD: re-enable share things after onion
 #[test]
 fn reports_when_exported_rsa_depends_on_non_exported_element() {
   let parse_bump = Bump::new();
@@ -6044,7 +5966,6 @@ where implements(SubType, SuperType);
 
 // AFTERM: doublecheck this
 #[test]
-// VCOORD: re enable w borrowing
 fn downcast_with_as() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -6150,7 +6071,6 @@ exported func main() {
               },
             ..
           }),
-      // `try_as<SubType, SuperType, g'>`: the group rune of its borrow parameter.
       }), ITemplataT::Group(_)] => {}
       other => panic!("asPrototypeTemplateArgs: {:?}", other),
     }
@@ -6409,7 +6329,6 @@ exported func main() {
 
 // VCOORD: enable this
 #[test]
-// VCOORD: re enable w borrowing
 fn closure_using_parent_function_s_bound() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -6548,14 +6467,6 @@ exported func main() {
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// VCOORD: revisit this, make sure its phrased well
-// Compiling the struct discharges its own `where func drop(T)void` against the placeholder XNone$0,
-// and drop.vale offers the borrow blanket `drop<T>(x &T)` as a candidate. Solving that candidate
-// sends the placeholder at its `&T` parameter's full_type_rune, so the BorrowRef rule is asked to
-// peel a kind that is not a borrow. A candidate whose shape the argument cannot satisfy must be
-// rejected, never fault the solve. No instantiation is needed to reach this — the bound is
-// discharged at the definition. Namespaces will eventually keep the blanket out of the candidate set
-// entirely, since it belongs to &T's namespace, but nothing here depends on that.
 #[test]
 fn drop_bound_on_a_generic_struct_ignores_the_borrow_blanket() {
   let parse_bump = Bump::new();
@@ -6590,9 +6501,6 @@ exported func main() { }
   let _coutputs = compile.expect_compiler_outputs();
 }
 
-// VCOORD: revisit to turn this into a real test
-// arith probe — verifies source-level `__copy_prim(x)` flows correctly into
-// binary operators. Rewrite to exercise auto-insertion when the syntax is retired.
 #[test]
 fn copy_prim_arith_probe() {
   let parse_bump = Bump::new();
@@ -6626,9 +6534,6 @@ exported func main() int {
   let _coutputs = compile.expect_compiler_outputs();
 }
 // VCOORD: revisit to turn this into a real test
-// Bare-use of an Own local routes through `wrap_in_implicit_clone`. If no
-// `implicit_clone(&T) T` is in scope for the local's type, the lookup fails with
-// `CouldntFindFunctionToCallT` — confirming the error path of Step 1 auto-clone.
 #[test]
 fn bare_use_without_implicit_clone_errors() {
   let parse_bump = Bump::new();
@@ -6638,7 +6543,6 @@ fn bare_use_without_implicit_clone_errors() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // Deliberately no `import v.builtins.implicit_clone.*;`.
   let code = r#"
 struct MyStruct { }
 exported func main() {
@@ -6664,13 +6568,8 @@ exported func main() {
     other => panic!("expected NoImplicitCloneDefinedT for `implicit_clone`, got {:?}", other),
   }
 }
-// Ensures that when a user defines `implicit_clone(&T) T` for their struct kind, a bare
-// assignment like `s2 = s;` silently fires that implicit_clone to give s2 a fresh Own T,
-// e.g. `func implicit_clone(&Ship) Ship` + `s2 = s;` compiles and s2 ends up an owned Ship
-// rather than a borrow. Verifies the FunctionCall to user's implicit_clone shows up in
-// main's body.
 #[test]
-#[ignore = "silent auto-clone for Own struct locals via user-defined implicit_clone is not wired at let-binding sites; the RHS's Borrow flavor flows into s2, and downstream `^s2` hits vfail at soft_load BorrowT + MoveP. Un-ignore when let-binding routes through convert()'s (Borrow, Own) implicit_clone probe."]
+#[ignore]
 fn user_defined_implicit_clone_allows_bare_use_of_struct() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -6727,10 +6626,7 @@ exported func main() int {
       }) => Some(())
   );
 }
-// VCOORD: revisit to turn this into a real test
-// `^x` (move) routes through the `Ownershipped` arm → `soft_load(LoadAsP::Move)`,
-// bypassing `wrap_in_implicit_clone` entirely. No `implicit_clone` in scope —
-// compiles fine.
+
 #[test]
 fn caret_bypasses_implicit_clone() {
   let parse_bump = Bump::new();
@@ -6760,10 +6656,7 @@ exported func main() int {
   );
   let _coutputs = compile.expect_compiler_outputs();
 }
-// VCOORD: revisit to turn this into a real test
-// `&x` (borrow) routes through the `Ownershipped` arm →
-// `soft_load(LoadAsP::LoadAsBorrow)`, bypassing `wrap_in_implicit_clone`.
-// No `implicit_clone` in scope — compiles fine.
+
 #[test]
 fn amp_bypasses_implicit_clone() {
   let parse_bump = Bump::new();
@@ -6795,11 +6688,7 @@ exported func main() int {
   );
   let _coutputs = compile.expect_compiler_outputs();
 }
-// VCOORD: revisit to turn this into a real test
-// Bare member access through a borrow (`b.value` where `b: &MyBox`) hits the
-// `coerce_to_reference_expression` auto-clone path (the other intervention site
-// alongside `evaluate_lookup_for_load`). The Own+Int field is auto-cloned via
-// the builtin `implicit_clone(&int)`.
+
 #[test]
 fn bare_member_access_auto_clones() {
   let parse_bump = Bump::new();
@@ -6837,14 +6726,7 @@ exported func main() int {
   );
   let _coutputs = compile.expect_compiler_outputs();
 }
-// VCOORD: revisit to turn this into a real test
-// probe for the source-level `__copy_prim(x)` syntax. The test compiles a
-// tiny program that needs an Own+Int produced from a Borrow+Int field access (the
-// natural Class A failure post-flip) and verifies wrapping with __copy_prim
-// makes the call resolve. When auto-insertion replaces the syntax, this test
-// should be rewritten to exercise the auto-insertion path (`&int → int` coerce)
-// rather than the source-level syntax — the underlying invariant (CopyPrim
-// resolves an Own+Int from a Borrow+Int field access) is still worth testing.
+
 #[test]
 fn copy_prim_probe() {
   let parse_bump = Bump::new();
@@ -6880,8 +6762,7 @@ exported func main() int {
   );
   let _coutputs = compile.expect_compiler_outputs();
 }
-// VCOORD: revisit to turn this into a real test
-// VCOORD: re-enable share things after onion
+
 #[test]
 fn borrow_share_as_arg_to_generic_func_that_takes_borrowed_things() {
   let parse_bump = Bump::new();

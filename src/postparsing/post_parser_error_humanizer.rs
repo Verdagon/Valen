@@ -40,31 +40,24 @@ where
     ICompileErrorS::ExternHasBodyS(_) => "Extern function can't have a body too.".to_string(),
     ICompileErrorS::RangedInternalErrorS(_) => {
       panic!("implement: humanize RangedInternalErrorS");
-      // " " + message
     }
     ICompileErrorS::CouldntFindRuneS(_) => {
       panic!("implement: humanize CouldntFindRuneS");
-      // "Couldn't find generic parameter \"" + name + "\".\n"
     }
     ICompileErrorS::CouldntFindVarToMutateS(_) => {
       panic!("implement: humanize CouldntFindVarToMutateS");
-      // s"No variable named ${name}. Try declaring it above, like `${name} = 42;`\n"
     }
     ICompileErrorS::CantOwnershipInterfaceInImpl(_) => {
       panic!("implement: humanize CantOwnershipInterfaceInImpl");
-      // s"Can only impl a plain interface, remove symbol."
     }
     ICompileErrorS::CantOwnershipStructInImpl(_) => {
       panic!("implement: humanize CantOwnershipStructInImpl");
-      // s"Only a plain struct/interface can be in an impl, remove symbol."
     }
     ICompileErrorS::InitializingRuntimeSizedArrayRequiresSizeAndCallable(_) => {
       panic!("implement: humanize InitializingRuntimeSizedArrayRequiresSizeAndCallable");
-      // s"Initializing a runtime-sized array requires 1-2 arguments: a capacity, and optionally a function that will populate that many elements."
     }
     ICompileErrorS::InitializingStaticSizedArrayRequiresSizeAndCallable(_) => {
       panic!("implement: humanize InitializingStaticSizedArrayRequiresSizeAndCallable");
-      // s"Initializing a statically-sized array requires one argument: a function that will populate the elements."
     }
     ICompileErrorS::StatementAfterReturnS(_) => {
       panic!("implement: humanize StatementAfterReturnS");
@@ -99,7 +92,6 @@ fn humanize_function_declaration_name<'s>(name: IFunctionDeclarationNameS<'s>) -
     }
     IFunctionDeclarationNameS::ConstructorName(_) => {
       panic!("implement: humanize_function_declaration_name ConstructorName");
-      // "constructor<" + humanizeName(inner.tlcd) + ">"
     }
   }
 }
@@ -312,8 +304,6 @@ pub fn humanize_rule<'s>(rule: &IRulexSR<'s>) -> String {
         + &r.args.iter().map(|x| humanize_rune(x.rune)).collect::<Vec<_>>().join(", ")
         + ">"
     }
-    // Joined rather than asserted-single: a humanizer runs while reporting a failure, so it must
-    // render whatever it is handed rather than adding a second failure on top of the first.
     IRulexSR::Lookup(r) => {
       humanize_rune(r.rune.rune)
         + " = \""
@@ -356,7 +346,6 @@ fn humanize_literal(literal: &ILiteralSL) -> String {
     ILiteralSL::IntLiteral(x) => x.value.to_string(),
     ILiteralSL::StringLiteral(_) => {
       panic!("Unimplemented: humanize_literal StringLiteral");
-      // "\"" + value + "\""
     }
     ILiteralSL::BoolLiteral(x) => x.value.to_string(),
   }

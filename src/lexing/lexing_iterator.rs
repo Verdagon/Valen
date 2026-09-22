@@ -8,19 +8,16 @@ pub struct LexingIterator<'a> {
   pub comments: Vec<RangeL>,
 }
 impl<'a> LexingIterator<'a> {
-  /// Get the rest of the code from current position (for debugging)
   pub fn rest(&self) -> &str {
     &self.code[self.position..]
   }
 
-  /// Consume comments and whitespace
   pub fn consume_comments_and_whitespace(&mut self) {
     // consumeComments will consume any whitespace that comes before the comment
     self.consume_comments();
     self.consume_whitespace();
   }
 
-  /// Find end of whitespace without consuming
   fn find_whitespace_end(&self) -> usize {
     let mut pos = self.position;
     while pos < self.code.len() {
@@ -34,13 +31,11 @@ impl<'a> LexingIterator<'a> {
     pos
   }
 
-  /// Consume all types of comments
   fn consume_comments(&mut self) {
     self.consume_line_comments();
     self.consume_chevron_comments();
   }
 
-  /// Skip to past a specific character
   fn skip_to_past(&mut self, needle: char) -> bool {
     while !self.at_end() {
       let c = self.advance();
@@ -51,7 +46,6 @@ impl<'a> LexingIterator<'a> {
     false
   }
 
-  /// Consume chevron comments (« »)
   fn consume_chevron_comments(&mut self) {
     let pos_after_whitespace = self.find_whitespace_end();
 
@@ -68,7 +62,6 @@ impl<'a> LexingIterator<'a> {
     }
   }
 
-  /// Consume line comments (//)
   fn consume_line_comments(&mut self) {
     let pos_after_whitespace = self.find_whitespace_end();
 
@@ -85,7 +78,6 @@ impl<'a> LexingIterator<'a> {
     }
   }
 
-  /// Peek ahead to get a substring of exact length
   pub fn peek_exact(&self, n: usize) -> Option<&str> {
     if self.position + n > self.code.len() {
       None
@@ -94,7 +86,6 @@ impl<'a> LexingIterator<'a> {
     }
   }
 
-  /// Advance by one character and return it
   pub fn advance(&mut self) -> char {
     if self.at_end() {
       '\0'
@@ -105,7 +96,6 @@ impl<'a> LexingIterator<'a> {
     }
   }
 
-  /// Try to skip a specific character
   pub fn try_skip(&mut self, c: char) -> bool {
     if self.peek() == c {
       self.advance();
@@ -116,7 +106,6 @@ impl<'a> LexingIterator<'a> {
   }
 
   // Optimize: could replace with xor and bitwise and for small strings
-  /// Try to skip a specific string
   pub fn try_skip_str(&mut self, s: &str) -> bool {
     if self.code[self.position..].starts_with(s) {
       self.position += s.len();
@@ -128,7 +117,6 @@ impl<'a> LexingIterator<'a> {
 
   // Optimize: could replace with xor and bitwise and for small strings
   // A complete word is one that doesn't have any more word characters after it
-  /// Try to skip a complete word (must be followed by non-identifier char)
   pub fn try_skip_complete_word(&mut self, word: &str) -> bool {
     if !self.code[self.position..].starts_with(word) {
       return false;
@@ -155,7 +143,6 @@ impl<'a> LexingIterator<'a> {
     self.position >= self.code.len()
   }
 
-  /// Skip to a specific position
   pub fn skip_to(&mut self, pos: usize) {
     self.position = pos;
   }
@@ -164,7 +151,6 @@ impl<'a> LexingIterator<'a> {
     self.position as i32
   }
 
-  /// Consume whitespace
   pub fn consume_whitespace(&mut self) {
     while !self.at_end() {
       match self.peek() {
@@ -176,12 +162,10 @@ impl<'a> LexingIterator<'a> {
     }
   }
 
-  /// Peek if a string matches (without advancing)
   pub fn peek_string(&self, s: &str) -> bool {
     self.code[self.position..].starts_with(s)
   }
 
-  /// Peek if a complete word matches (without advancing)
   pub fn peek_complete_word(&self, word: &str) -> bool {
     if !self.code[self.position..].starts_with(word) {
       return false;
@@ -198,7 +182,6 @@ impl<'a> LexingIterator<'a> {
     true
   }
 
-  /// Peek at the current character without advancing
   pub fn peek(&self) -> char {
     if self.at_end() {
       '\0'
@@ -207,7 +190,6 @@ impl<'a> LexingIterator<'a> {
     }
   }
 
-  /// Peek ahead n characters (returns String)
   pub fn peek_n(&self, n: usize) -> Option<String> {
     if self.position + n > self.code.len() {
       None

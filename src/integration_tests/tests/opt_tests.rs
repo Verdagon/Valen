@@ -42,7 +42,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn test_empty_and_get_for_none() {
     let compilation_bump = bumpalo::Bump::new();

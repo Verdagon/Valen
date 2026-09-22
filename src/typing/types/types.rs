@@ -4,14 +4,14 @@ use crate::typing::names::names::*;
 use crate::typing::templata::templata::ITemplataT;
 use crate::typing::typing_interner::MustIntern;
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum SharednessT {
   Single,
   Shared,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum RegionT {
   Iso,
@@ -19,35 +19,27 @@ pub enum RegionT {
   Default,
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BorrowRefT<'s, 't> {
   pub inner: KindT<'s, 't>,
   // No group here, per BCHATZ.
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct OwnRefT<'s, 't> {
   pub inner: KindT<'s, 't>,
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ShareRefT<'s, 't> {
   pub inner: KindT<'s, 't>,
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct WeakRefT<'s, 't> {
   pub inner: KindT<'s, 't>,
 }
 
-// KindT is inline-owned (not arena-interned). Concrete non-primitive payloads
-// (StructTT, InterfaceTT, etc.) are arena-interned and held as &'t refs here.
-// Primitives inline by value; compound types use &'t to keep the enum small (see @WVSBIZ).
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum KindT<'s, 't> {
   Never(NeverT),
@@ -125,13 +117,13 @@ impl<'s, 't> KindT<'s, 't> {
   }
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct NeverT {
   pub from_break: bool,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct VoidT;
 
@@ -139,28 +131,27 @@ impl IntT {
   pub const I32: IntT = IntT { bits: 32 };
   pub const I64: IntT = IntT { bits: 64 };
 }
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct IntT {
   pub bits: i32,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BoolT;
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StrT;
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FloatT;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct USizeT;
 
-/// Interned (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StaticSizedArrayTT<'s, 't> {
   pub name: IdT<'s, 't>,
@@ -186,13 +177,11 @@ where
   }
 }
 
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StaticSizedArrayTTValT<'s, 't> {
   pub name: IdT<'s, 't>,
 }
 
-/// Interned (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct RuntimeSizedArrayTT<'s, 't> {
   pub name: IdT<'s, 't>,
@@ -211,7 +200,6 @@ where
   }
 }
 
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct RuntimeSizedArrayTTValT<'s, 't> {
   pub name: IdT<'s, 't>,
@@ -222,28 +210,7 @@ fn unapply_i_citizen_tt() {
   // Some(self.id)
 }
 
-// // Inline-owned wrapper enum; concrete payloads are arena-interned &'t refs.
-// /// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
-// #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// pub enum IRefKindTT<'s, 't> {
-//   Borrow(&'t BorrowRefT<'s, 't>),
-//   Share(&'t ShareRefT<'s, 't>),
-//   Weak(&'t WeakRefT<'s, 't>),
-// }
-// impl<'s, 't> TryFrom<KindT<'s, 't>> for IRefKindTT<'s, 't> {
-//   type Error = ();
-//   fn try_from(k: KindT<'s, 't>) -> Result<Self, ()> {
-//     match k {
-//       KindT::BorrowRef(x) => Ok(IRefKindTT::Borrow(x)),
-//       KindT::ShareRef(x) => Ok(IRefKindTT::Share(x)),
-//       KindT::WeakRef(x) => Ok(IRefKindTT::Weak(x)),
-//       _ => Err(()),
-//     }
-//   }
-// }
 
-// Inline-owned wrapper enum; concrete payloads are arena-interned &'t refs.
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ISubKindTT<'s, 't> {
   Struct(&'t StructTT<'s, 't>),
@@ -284,8 +251,6 @@ where
   }
 }
 
-// Inline-owned wrapper enum; concrete payloads are arena-interned &'t refs.
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ISuperKindTT<'s, 't> {
   Interface(&'t InterfaceTT<'s, 't>),
@@ -320,8 +285,6 @@ where
   }
 }
 
-// Inline-owned wrapper enum; concrete payloads are arena-interned &'t refs.
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ICitizenTT<'s, 't> {
   Struct(&'t StructTT<'s, 't>),
@@ -356,33 +319,28 @@ where
   }
 }
 
-/// Interned (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StructTT<'s, 't> {
   pub id: &'t IdT<'s, 't>,
   pub _must_intern: MustIntern,
 }
 
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StructTTValT<'s, 't> {
   pub id: IdT<'s, 't>,
 }
 
-/// Interned (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct InterfaceTT<'s, 't> {
   pub id: &'t IdT<'s, 't>,
   pub _must_intern: MustIntern,
 }
 
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct InterfaceTTValT<'s, 't> {
   pub id: IdT<'s, 't>,
 }
 
-/// Interned (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct OverloadSetT<'s, 't> {
   pub env: IInDenizenEnvironmentT<'s, 't>,
@@ -390,36 +348,19 @@ pub struct OverloadSetT<'s, 't> {
   pub _must_intern: MustIntern,
 }
 
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct OverloadSetTValT<'s, 't> {
   pub env: IInDenizenEnvironmentT<'s, 't>,
   pub name: &'s IImpreciseNameS<'s>,
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct KindPlaceholderT<'s, 't> {
   pub id: IdT<'s, 't>,
 }
 
-// -- Simple / shallow concretes (reuse struct itself as Val) ------------------
-// The 6 concrete Kind payloads above (StructTT, InterfaceTT, StaticSizedArrayTT,
-// RuntimeSizedArrayTT, KindPlaceholderT, OverloadSetT) are arena-interned but
-// have no `&'t [...]` slice fields — each holds either a canonical IdT<'s, 't>
-// (canonicalized by IdValT before this Val is constructed) or scout-lifetime
-// refs only (OverloadSetT). So their permanent struct doubles as the lookup
-// Val. No separate `*ValT` type is defined for any of them.
-//
-// The wrapper enums KindT / ICitizenTT / ISubKindTT / ISuperKindTT are
-// inline-owned 16-byte Copy values (never arena-allocated), so they don't
-// need Val companions either. Casts between them are `match`-and-rewrap via
-// the From/TryFrom bridges below.
 
-// -- Union enums for the Kind-payload interning family ----------------------
-// Dispatch enums for kind interning — these types are interned per @WVSBIZ
-// (enum budget: KindT stores them behind &'t to stay small and Copy).
-/// Interning transient (see @TFITCX)
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum InternedKindPayloadValT<'s, 't>
 where
@@ -433,7 +374,6 @@ where
   OverloadSet(OverloadSetTValT<'s, 't>),
 }
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum InternedKindPayloadT<'s, 't>
 where
@@ -447,7 +387,6 @@ where
   OverloadSet(&'t OverloadSetT<'s, 't>),
 }
 
-// -- From bridges: concrete payload → each wrapper enum it belongs to --------
 
 impl<'s, 't> From<&'t StructTT<'s, 't>> for ICitizenTT<'s, 't> {
   fn from(x: &'t StructTT<'s, 't>) -> Self {
@@ -520,7 +459,6 @@ impl<'s, 't> From<&'t OverloadSetT<'s, 't>> for KindT<'s, 't> {
   }
 }
 
-// -- From bridges: narrow sub-enum → wider sub-enum / KindT ------------------
 
 impl<'s, 't> From<ICitizenTT<'s, 't>> for ISubKindTT<'s, 't> {
   fn from(c: ICitizenTT<'s, 't>) -> Self {
@@ -556,7 +494,6 @@ impl<'s, 't> From<ISuperKindTT<'s, 't>> for KindT<'s, 't> {
   }
 }
 
-// -- TryFrom bridges: wider → narrower ---------------------------------------
 
 impl<'s, 't> TryFrom<KindT<'s, 't>> for ICitizenTT<'s, 't> {
   type Error = ();

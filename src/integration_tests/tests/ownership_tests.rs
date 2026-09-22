@@ -161,7 +161,7 @@ exported func main() {
 
 
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn custom_drop_result_is_an_owning_ref_calls_destructor() {
     let compilation_bump = bumpalo::Bump::new();
@@ -214,7 +214,7 @@ exported func main() {
 
 
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn saves_return_value_then_destroys_temporary() {
     let compilation_bump = bumpalo::Bump::new();
@@ -266,7 +266,7 @@ exported func main() int {
 
 
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn calls_destructor_on_local_var() {
     let compilation_bump = bumpalo::Bump::new();
@@ -319,7 +319,7 @@ exported func main() {
 
 
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn calls_destructor_on_local_var_unless_moved() {
     let compilation_bump = bumpalo::Bump::new();
@@ -423,7 +423,7 @@ exported func main() {
 
 
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn saves_return_value_then_destroys_local_var() {
     let compilation_bump = bumpalo::Bump::new();

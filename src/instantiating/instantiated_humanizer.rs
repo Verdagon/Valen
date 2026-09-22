@@ -25,14 +25,12 @@ pub fn humanize_templata<'s, 'i>(
         ITemplataI::StructDefinition(t) => humanize_id(code_map, &t.env_id, None),
         ITemplataI::Integer(i) => i.value.to_string(),
         ITemplataI::Kind(k) => humanize_kind(code_map, &k.kind),
-        // The ceremonial erased group carries no payload; a bare label is all there is to show.
         ITemplataI::Group(_) => "Group".to_string(),
         _ => panic!("humanize_templata: unimplemented variant"),
     }
 }
 
 
-// A coord is just an onion kind now; ownership shows up as the wrap prefix (see humanize_kind).
 pub fn humanize_coord<'s, 'i>(
     code_map: &dyn Fn(CodeLocationS<'s>) -> String,
     coord: &KindIT<'s, 'i>,

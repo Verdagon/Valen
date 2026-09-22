@@ -65,13 +65,6 @@ fn imm_tuple_access() {
 
 #[test]
 fn impl_bounded_generic_is_merely_called_with_a_concrete_type() {
-    // VCOORD: clean up this comment
-    // Minimal repro of the impl-bound onion regression: a generic fn with a
-    // `where implements(T, IShip)` bound is merely CALLED with a concrete type —
-    // no method is dispatched through the bound. This should just return 7, but
-    // the instantiator panics on an impl-bound count mismatch (1 resolved at the
-    // call site vs 0 recorded on the callee template) because the define-side
-    // impl-bound harvest in resolve_conclusions_for_define is commented out.
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
     let scout_bump = bumpalo::Bump::new();
@@ -109,39 +102,6 @@ exported func main() int {
 
 #[test]
 fn interface_method_call_on_impl_bounded_generic_dispatches_through_interface() {
-    // VCOORD: clean up this comment
-    // The scenario: genericGetFuel<T> takes &T with a `where implements(T, IShip)` bound
-    // and calls x.getFuel() in its body. The user expects this to find IShip's abstract
-    // getFuel, then dispatch virtually to Raza's override at runtime.
-    //
-    // Why this isn't automatic: Vale's interface abstract methods don't sit at the package
-    // level. They live inside the interface's own outer env, reachable only via
-    // coutputs.getOuterEnvForType(getInterfaceTemplate(IShip)). For a *concrete* &IShip
-    // receiver, OverloadResolver.getParamEnvironments mechanically returns IShip's outer
-    // env (because the receiver's type names IShip directly). For a *placeholder* &T
-    // receiver, the type doesn't name IShip — IShip is one indirection away, declared via
-    // the where-clause as an IsaTemplataT(T, IShip) entry in genericGetFuel's near-env.
-    // Without something following that indirection, the lookup of getFuel finds only the
-    // free function `getFuel(self &Raza)` (which type-mismatches T) and never reaches
-    // IShip's outer env where the abstract method lives. Pre-fix, this produced
-    // "No ancestors satisfy call" and the program failed to type-check.
-    //
-    // What we changed: OverloadResolver.getCandidateBanners now also calls
-    // getPlaceholderImplBoundEnvs alongside getParamEnvironments. For each placeholder-
-    // typed param, it looks up ambient impl bounds keyed by the placeholder's imprecise
-    // name (ImplSubCitizenImpreciseNameS, populated automatically when addRunedDataToNearEnv
-    // writes the IsaTemplataT into the near-env), pulls each IsaTemplataT, and adds each
-    // super-interface's outer env to the candidate search. With that, the abstract
-    // getFuel(virtual self &IShip) becomes a candidate; the inner per-call-site solve
-    // verifies T isa IShip via the same IsaTemplataT (through ImplCompiler.isParent); the
-    // call resolves; the instantiator monomorphizes genericGetFuel<Raza>; and the backend
-    // dispatches getFuel virtually through Raza's vtable, returning 42.
-    //
-    // The fix is principle-aligned with @BDPFWDZ (By Default Pull From Where Declared):
-    // IShip's methods stay in IShip's outer env where they were declared; the resolver
-    // walks (via the where-clause's IsaTemplataT link) to find them; nothing is copied
-    // into the calling function's near-env. See
-    // docs/arcana/ByDefaultPullFromWhereDeclared-BDPFWDZ.md for the broader principle.
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
     let scout_bump = bumpalo::Bump::new();
@@ -181,8 +141,6 @@ exported func main() int {
     }
 }
 
-// Ensures an impl-bounded method call runs correctly end-to-end: `cb.bork()` where `cb: &C` and
-// `where implements(C, Bork)`, called with a concrete `C`, returns 7 in the TestVM. (exp-4's repro.)
 #[test]
 fn impl_bounded_generic_method_call_forwarder_testvm() {
     let compilation_bump = bumpalo::Bump::new();
@@ -226,9 +184,6 @@ exported func main() int {
     }
 }
 
-// The impl-bounded method call `cb.bork()` inside a generic must be typed as a BoundFunctionCall
-// (receiver kept un-upcast, devirtualizable at monomorphization), never a FunctionCall-to-abstract
-// with an UpcastGeneric receiver. exp-4 repro.
 #[test]
 fn impl_bounded_method_call_emits_bound_function_call() {
     let compilation_bump = bumpalo::Bump::new();
@@ -289,10 +244,6 @@ exported func main() int {
     );
 }
 
-// After monomorphization with a concrete receiver, the impl-bounded method call must devirtualize:
-// the instantiated `run` body must contain no Upcast (no fat-ptr construction) — a direct static
-// call to the concrete override instead. (The TestVM result — 7 — is covered by
-// impl_bounded_generic_method_call_forwarder_testvm.)
 #[test]
 fn impl_bounded_method_call_instantiates_to_static_override() {
     let compilation_bump = bumpalo::Bump::new();
@@ -456,7 +407,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn borrowing_to_array() {
     let compilation_bump = bumpalo::Bump::new();

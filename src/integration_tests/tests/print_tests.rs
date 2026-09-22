@@ -7,7 +7,7 @@ use crate::typing::typing_interner::TypingInterner;
 
 pub struct PrintTests;
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn printlning_an_int() {
     let compilation_bump = bumpalo::Bump::new();
@@ -34,7 +34,7 @@ exported func main() {
     assert_eq!(compile.eval_for_stdout(Vec::new()).unwrap(), "6\n");
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn printlning_a_bool() {
     let compilation_bump = bumpalo::Bump::new();

@@ -1,13 +1,3 @@
-// Safe-ish Rust bindings for Backend/src/metal/metal_cache_ffi.h.
-//
-// Dumb, faithful 1:1 mirror of the onion FFI: each method wraps one builder call, converting
-// handle newtypes to `*mut c_void` and back. Types are the onion `Kind` (a bare kind is owned;
-// the wrap getters express references). There is no Reference/ownership/location here, and no
-// lowering; all of that is downstream in C++ codegen.
-//
-// Handles are `*mut Opaque` newtypes (`Copy`, so a borrow can be passed to several FFI calls);
-// lifetime safety is enforced via `&MetalCache` on the wrappers: handles returned by `get_*`
-// borrow from the cache for as long as it lives.
 
 use std::ffi::c_void;
 use std::marker::PhantomData;
@@ -53,21 +43,16 @@ pub struct InterfaceDef<'cache>(NonNull<c_void>, PhantomData<&'cache ()>);
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Function<'cache>(NonNull<c_void>, PhantomData<&'cache ()>);
-/// Opaque handle to a populated `Expression*` tree.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Expression<'cache>(NonNull<c_void>, PhantomData<&'cache ()>);
-/// A local is a name + its onion kind; the lowerer constructs each once and reuses the handle.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Local<'cache>(NonNull<c_void>, PhantomData<&'cache ()>);
-/// An interned DWARF source location (file:line:col). Carried on every `expr_*` builder for
-/// per-instruction debug info. Backend currently discards it (DWARF emission is a later step).
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SourceLocation<'cache>(NonNull<c_void>, PhantomData<&'cache ()>);
 
-/// The raw handle pointer the FFI expects for a source location.
 #[inline]
 fn loc_ptr(loc: SourceLocation<'_>) -> *mut c_void {
     loc.0.as_ptr()
@@ -81,9 +66,6 @@ pub enum Mutability { Immutable = 0, Mutable = 1 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Weakability { Weakable = 0, NonWeakable = 1 }
 
-/// C-repr mirror of CoercionFFI in metal/ast.h's FFI header. `kind` is the CoercionKind ordinal
-/// (Ignore=0, DirectInt=1, DirectPtr=2, Indirect=3, Cast=4, Pair=5); `bits` is the DirectInt/Cast
-/// width or a Pair's first component width (else 0); `bits2` is a Pair's second component width (else 0).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CoercionFFI {
@@ -195,8 +177,6 @@ extern "C" {
         prototype: *mut c_void, body: *mut c_void, loc: *mut c_void,
     ) -> *mut c_void;
 
-    // Onion expression constructors. Every one takes a trailing `loc: *mut c_void`
-    // (SourceLocationHandle*, null = no source info) for DWARF; Backend ignores it for now.
     fn metal_expr_constant_void(loc: *mut c_void) -> *mut c_void;
     fn metal_expr_constant_int(value: i64, bits: i32, loc: *mut c_void) -> *mut c_void;
     fn metal_expr_constant_bool(value: i32, loc: *mut c_void) -> *mut c_void;
@@ -336,12 +316,10 @@ extern "C" {
     fn metal_program_free(program: *mut c_void);
 }
 
-/// Owning wrapper around a MetalCache. Frees the underlying cache on drop.
 pub struct MetalCache {
     raw: *mut MetalCacheHandleRaw,
 }
 
-// Small helper to build a `Vec<*mut c_void>` from a slice of handle newtypes via their `.0`.
 macro_rules! ptrs {
     ($slice:expr) => {{
         let v: Vec<*mut c_void> = $slice.iter().map(|h| h.0.as_ptr()).collect();
@@ -358,7 +336,6 @@ impl MetalCache {
 
     pub fn raw(&self) -> *mut MetalCacheHandleRaw { self.raw }
 
-    // --- Singletons ---
 
     pub fn builtin_package_coord(&self) -> PackageCoord<'_> {
         unsafe { PackageCoord(NonNull::new(metal_cache_builtin_package_coord(self.raw)).unwrap(), PhantomData) }
@@ -390,8 +367,6 @@ impl MetalCache {
     pub fn void_kind(&self) -> Kind<'_> {
         unsafe { Kind(NonNull::new(metal_cache_void(self.raw)).unwrap(), PhantomData) }
     }
-
-    // --- Interned getters ---
 
     pub fn get_package_coordinate(&self, project_name: &str, steps: &[&str]) -> PackageCoord<'_> {
         let step_ptrs: Vec<*const c_char> = steps.iter().map(|s| s.as_ptr() as *const c_char).collect();
@@ -465,7 +440,6 @@ impl MetalCache {
         unsafe { Kind(NonNull::new(metal_cache_get_runtime_sized_array(self.raw, name.0.as_ptr())).unwrap(), PhantomData) }
     }
 
-    // Onion wrap kinds.
     pub fn get_borrow_ref(&self, inner: Kind<'_>) -> Kind<'_> {
         unsafe { Kind(NonNull::new(metal_cache_get_borrow_ref(self.raw, inner.0.as_ptr())).unwrap(), PhantomData) }
     }
@@ -515,8 +489,6 @@ impl MetalCache {
             )
         }
     }
-
-    // --- Non-interned constructors ---
 
     pub fn new_struct_member(&self, full_name: &str, name: &str, ty: Kind<'_>) -> StructMember<'_> {
         unsafe {
@@ -602,8 +574,6 @@ impl MetalCache {
         }
     }
 
-    /// Interns a DWARF source location. An empty `file` is the "no source info" marker (the C
-    /// side treats an empty file path as absent); the interner always returns a valid handle.
     pub fn get_source_location(&self, file: &str, line: i32, col: i32) -> SourceLocation<'_> {
         unsafe {
             SourceLocation(
@@ -641,7 +611,6 @@ impl MetalCache {
         }
     }
 
-    // --- Expression constructors (onion) ---
 
     pub fn expr_constant_void<'c>(&'c self, loc: SourceLocation<'c>) -> Expression<'c> {
         unsafe { Expression(NonNull::new(metal_expr_constant_void(loc_ptr(loc))).unwrap(), PhantomData) }
@@ -850,8 +819,6 @@ impl MetalCache {
         unsafe { Expression(NonNull::new(metal_expr_destroy_mut_runtime_sized_array(array_expr.0.as_ptr(), loc_ptr(loc))).unwrap(), PhantomData) }
     }
 
-    // --- Builders ---
-
     pub fn new_package_builder<'c>(&'c self, package_coord: PackageCoord<'c>) -> PackageBuilder<'c> {
         let raw = unsafe { metal_package_builder_new(self.raw, package_coord.0.as_ptr()) };
         assert!(!raw.is_null());
@@ -871,8 +838,6 @@ impl Drop for MetalCache {
     }
 }
 
-/// Accumulates Package contents for one PackageCoordinate. `finish` consumes the builder and
-/// returns the constructed Package; the builder is also freed.
 pub struct PackageBuilder<'cache> {
     raw: *mut c_void,
     _cache: PhantomData<&'cache ()>,
@@ -913,12 +878,9 @@ impl<'cache> PackageBuilder<'cache> {
     pub fn add_extern_kind(&self, name: &str, v: Kind<'cache>) {
         unsafe { metal_package_builder_add_extern_kind(self.raw, name.as_ptr() as *const c_char, name.len(), v.0.as_ptr()) }
     }
-    /// Record an imported extern struct's layout, keyed by its humanized name (same key as `add_struct`).
     pub fn add_struct_layout(&self, name: &str, size: u64, align: u64) {
         unsafe { metal_package_builder_add_struct_layout(self.raw, name.as_ptr() as *const c_char, name.len(), size, align) }
     }
-    /// Record an extern function's ABI under `symbol`. `args` is the ordered per-argument coercion
-    /// list; it is only read during this call.
     pub fn add_extern_abi(&self, symbol: &str, ret: CoercionFFI, args: &[CoercionFFI]) {
         unsafe {
             metal_package_builder_add_extern_abi(
@@ -927,9 +889,6 @@ impl<'cache> PackageBuilder<'cache> {
         }
     }
 
-    /// Record a function's per-parameter `noalias` verdict on the package, keyed by humanized name.
-    /// Its presence means the borrow checker analyzed the function (the backend marks nothing for a
-    /// function with no entry).
     pub fn add_param_noalias(&self, name: &str, param_noalias: &[bool]) {
         unsafe {
             metal_package_builder_add_param_noalias(
@@ -991,8 +950,6 @@ impl<'cache> Drop for Program<'cache> {
     }
 }
 
-// These tests call `MetalCache::new()` → the C++ backend FFI. The interop build doesn't link the
-// backend (§4.2), so they're excluded there and run only in the backend-enabled default/nextest gates.
 #[cfg(all(test, not(feature = "rust_interop")))]
 mod tests {
     use super::*;
@@ -1031,11 +988,8 @@ mod tests {
     fn wrap_kinds_intern_on_inner() {
         let cache = MetalCache::new();
         let i32 = cache.i32();
-        // A borrow-wrap interns by its inner kind.
         assert_eq!(cache.get_borrow_ref(i32), cache.get_borrow_ref(i32));
-        // Different wraps of the same inner are distinct kinds.
         assert_ne!(cache.get_borrow_ref(i32), cache.get_share_ref(i32));
-        // A bare kind is not its own wrap.
         assert_ne!(cache.get_borrow_ref(i32), i32);
     }
 
@@ -1082,8 +1036,6 @@ mod tests {
 
     #[test]
     fn build_hello_world_program_structure() {
-        // Mirrors `exported func main() int { return 7; }` onion-shaped:
-        //   Function { prototype: main(): int, body: Block(Return(ConstantInt(7,32)), int) }
         let cache = MetalCache::new();
         let coord = cache.get_package_coordinate("test", &[]);
         let main_name = cache.get_name(coord, "main");

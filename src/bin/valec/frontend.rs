@@ -1,7 +1,3 @@
-// Frontend invocation. Calls `frontend_rust::pass_manager::build`
-// in-process (linked as a library); runs the MetalLowerer pipeline straight
-// into the C++ backend, no subprocess and no JSON intermediate.
-
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -21,9 +17,6 @@ pub struct ProjectNonValeInputDeclaration {
   pub path: PathBuf,
 }
 
-/// Run the complete in-process pipeline: parse → typing → hammer →
-/// MetalLowerer → backend_compile_program → clang link. Returns the linked
-/// executable path via `BuiltProgram`.
 pub fn compile_in_process(
   project_directories: &[ProjectDirectoryDeclaration],
   project_vale_inputs: &[ProjectValeInputDeclaration],
@@ -37,8 +30,6 @@ pub fn compile_in_process(
   backend_opts: frontend_rust::backend_ffi::BackendCompileOptions,
   clang_cfg: frontend_rust::pass_manager::pass_manager::ClangConfig,
 ) -> Result<frontend_rust::pass_manager::pass_manager::BuiltProgram, String> {
-  // Build the same arg list pass_manager::main consumes, then route it
-  // through parse_opts to populate the Options struct.
   let mut frontend_args: Vec<String> = Vec::new();
   frontend_args.push("build".to_string());
   frontend_args.push("--output_dir".to_string());

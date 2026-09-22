@@ -9,7 +9,6 @@ use crate::instantiating::ast::expressions::{
 };
 use crate::typing::names::names::IdT;
 use crate::utils::fx::IndexMap;
-/// A reference to a node yielded to the collector predicate. Wide (predicate narrows within).
 #[derive(Copy, Clone)]
 pub enum NodeRefI<'s, 'i> {
     Prototype(&'i PrototypeI<'s, 'i>),
@@ -18,7 +17,6 @@ pub enum NodeRefI<'s, 'i> {
     Coord(KindIT<'s, 'i>),
     Kind(KindIT<'s, 'i>),
     Templata(ITemplataI<'s, 'i>),
-    // Top-level / expression-hierarchy variants.
     FunctionDefinition(&'i FunctionDefinitionI<'s, 'i>),
     Expression(ExpressionIE<'s, 'i>),
     LetNormal(&'i LetNormalIE<'s, 'i>),
@@ -121,7 +119,6 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
     out
 }
 
-// ── Value-AST walkers ────────────────────────────────────────────────────────────────────────────
 
 fn visit_prototype<'s, 'i, T, F>(pred: &F, out: &mut Vec<T>, p: &'i PrototypeI<'s, 'i>)
 where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
@@ -157,7 +154,7 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
         KindIT::OwnRefIT(r) => visit_kind(pred, out, r.inner),
         KindIT::ShareRefIT(r) => visit_kind(pred, out, r.inner),
         KindIT::WeakRefIT(r) => visit_kind(pred, out, r.inner),
-        _ => {} // primitives (Never/Void/Int/Bool/Str/Float/USize): leaves
+        _ => {}
     }
 }
 
@@ -169,13 +166,11 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
     }
 }
 
-// ── Names (all 75 INameI variants; leaf names fall to `_ => {}`) ──────────────────────────────────
 
 fn visit_name<'s, 'i, T, F>(pred: &F, out: &mut Vec<T>, n: INameI<'s, 'i>)
 where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
     collect_if(pred, out, NodeRefI::Name(n));
     match n {
-        // Function-ish names
         INameI::ExternFunction(x) => {
             for t in x.template_args { visit_templata(pred, out, *t); }
             for c in x.parameters { visit_coord(pred, out, *c); }
@@ -211,14 +206,12 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
             for t in x.template_args { visit_templata(pred, out, *t); }
             for c in x.parameters { visit_coord(pred, out, *c); }
         }
-        // Citizen / struct / interface names
         INameI::StructName(x) => {
             for t in x.template_args { visit_templata(pred, out, *t); }
         }
         INameI::InterfaceName(x) => {
             for t in x.template_args { visit_templata(pred, out, *t); }
         }
-        // Impl names
         INameI::Impl(x) => {
             for t in x.template_args { visit_templata(pred, out, *t); }
             visit_citizen_it(pred, out, x.sub_citizen);
@@ -230,7 +223,6 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
             for t in x.template_args { visit_templata(pred, out, *t); }
             visit_citizen_it(pred, out, x.sub_citizen);
         }
-        // Anonymous substruct names
         INameI::AnonymousSubstruct(x) => {
             for t in x.template_args { visit_templata(pred, out, *t); }
         }
@@ -238,7 +230,6 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
             for t in x.template_args { visit_templata(pred, out, *t); }
             for c in x.parameters { visit_coord(pred, out, *c); }
         }
-        // Array names
         INameI::RawArray(x) => {
             visit_kind(pred, out, x.element_type);
         }
@@ -248,12 +239,9 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
         INameI::RuntimeSizedArray(x) => {
             visit_kind(pred, out, x.arr.element_type);
         }
-        // Everything else is a leaf name (var/local/path/package/region/template-name/etc.).
         _ => {}
     }
 }
-
-// ── Templatas (20 ITemplataI payloads; leaf payloads fall to `_ => {}`) ───────────────────────────
 
 fn visit_templata<'s, 'i, T, F>(pred: &F, out: &mut Vec<T>, t: ITemplataI<'s, 'i>)
 where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
@@ -273,14 +261,10 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
         ITemplataI::KindList(x) => {
             for c in x.kinds { visit_coord(pred, out, *c); }
         }
-        // leaves: Ownership / Variability / Mutability / Location / Boolean / Integer / String /
-        // Region / RuntimeSizedArrayTemplate / StaticSizedArrayTemplate. ExternFunction's header is a
-        // cI-region definition node not bridgeable into the caller's generic R — not descended here.
         _ => {}
     }
 }
 
-// ── Expression hierarchy walkers (extend as needed per the file's stated design intent) ─────────
 
 fn visit_function_definition<'s, 'i, T, F>(pred: &F, out: &mut Vec<T>, f: &'i FunctionDefinitionI<'s, 'i>)
 where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
@@ -288,10 +272,6 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
     visit_expression_ie(pred, out, f.body);
 }
 
-// Exhaustive over all ExpressionIE variants (no `_` arm — a new variant must be handled here). Each
-// arm recurses into its sub-expressions, plus any carried prototype (call targets / constructors),
-// so a predicate can reach every node in a function body. Leaf nodes (constants, ArgLookup, Unlet,
-// Break, lookups whose only descendant is a kind) descend nowhere.
 fn visit_expression_ie<'s, 'i, T, F>(pred: &F, out: &mut Vec<T>, e: ExpressionIE<'s, 'i>)
 where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
     collect_if(pred, out, NodeRefI::Expression(e));
@@ -416,7 +396,6 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
     }
 }
 
-// ── Macros (parametric mirror of typing/test/traverse.rs macros) ─────────────────────────────────
 
 #[macro_export]
 macro_rules! collect_in_inodes {

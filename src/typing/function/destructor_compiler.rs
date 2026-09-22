@@ -29,18 +29,6 @@ where
       .scout_arena
       .intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS { name: self.keywords.drop }));
     let args = &[type_2];
-    // ZLOOK: those three empty slices are the explicit template args, so dropping a generic
-    // citizen needs T deduced from the argument — and that deduction is dead everywhere, not
-    // just here. assemble_initial_sends_from_args builds exactly the argument-to-parameter
-    // sends that would carry it, and all four callers bind the result and never read it. So
-    // drop is one victim of a general gap rather than a special case: see
-    // opt_with_undroppable_contents, and Vale4's synthesized drop<T>(Holder<T>) failing
-    // SolveIncomplete with T unsolved.
-    //
-    // Two fixes, not exclusive. Wire the sends back up, which serves every call that omits its
-    // type arguments. Or have the synthesizer write the argument here — it stands at the
-    // binding holding the local's resolved type, so it is the one caller that never has to
-    // infer, and Vale4's arch prescribes that shape as __vale_drop<T>(&local).
     let explicit_template_arg_rules_s = &[];
     let positional_explicit_template_arg_runes_s = &[];
     let receiving_rune_to_explicit_template_arg_rune = &[];
@@ -106,14 +94,9 @@ where
         ExpressionTE::Discard(self.typing_interner.alloc(DiscardTE::new(call_range[0], undestructed_expr_2)))
       }
       KindT::Str(_) => {
-        // Discard here will drop the reference count.
         // VCOORD: at some point we'll want to have more precise instructions for the backend for this probably
         ExpressionTE::Discard(self.typing_interner.alloc(DiscardTE::new(call_range[0], undestructed_expr_2)))
       }
-      // Every one of these resolves `drop` by name against the value's own kind, so they share
-      // one body: an interface dispatches to its abstract drop, an array to arrays.vale's
-      // `drop<E>([]E)` or its StaticArray twin, and a placeholder to whatever the denizen's
-      // `where func drop(T)void` bound conjured.
       KindT::Struct(_)
       | KindT::Interface(_)
       | KindT::StaticSizedArray(_)

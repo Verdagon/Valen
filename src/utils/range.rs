@@ -23,7 +23,6 @@ impl<'a> CodeLocationS<'a> {
     Self::internal(scout_arena, -1)
   }
 
-  // SPORK
   pub fn internal(scout_arena: &ScoutArena<'a>, internal_num: i32) -> CodeLocationS<'a> {
     assert!(internal_num < 0, "CodeLocationS::internal - internal_num must be negative");
     let package_coord = scout_arena.intern_package_coordinate(scout_arena.intern_str(""), &[]);
@@ -52,7 +51,6 @@ impl<'a> RangeS<'a> {
     RangeS::new(tz.clone(), tz)
   }
 
-  // SPORK
   pub fn file(&self) -> &'a FileCoordinate<'a> {
     self.begin.file
   }

@@ -16,8 +16,6 @@ use crate::utils::fx::HashSet;
 use crate::utils::range::RangeS;
 use std::iter::once;
 
-// deleted: delegate trait removed per god-struct refactor (Compiler now holds all methods directly)
-
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't>
 where
   's: 't,
@@ -173,7 +171,6 @@ where
     let mut env = func_outer_env.make_child_node_environment(block_as_expr, loct.clone());
 
     let starting_env = env.snapshot(self.typing_interner);
-
     // val patternsTE = evaluateLets(env, coutputs, life + 0, body1.range :: parentRanges, callLocation, region, params1, params2)
     let range_list: &'t [RangeS<'s>] = self.typing_interner.alloc_slice_copy(
       &once(body_1.range).chain(parent_ranges.iter().copied()).collect::<Vec<_>>(),
@@ -262,18 +259,6 @@ where
     };
 
     if is_destructor {
-      // If it's a destructor, make sure that we've actually destroyed/moved/unlet'd
-      // the parameter, because otherwise we'll get infinite recursion like in this function:
-      //     func drop(self Ship) {
-      //       // implicitly calls drop(self) which is... this function. infinite recursion.
-      //     }
-      // For now, we'll just check if it's been moved away, but soon
-      // we'll want fate to track whether it's been destroyed, and do that check instead.
-      // We don't want the user to accidentally just move it somewhere, they need to
-      // promise it gets destroyed.
-      // The parameter's `ParameterT.name` isn't the same value as the local it was bound into (the
-      // binding carries the unique `Local` name, the parameter its source name), so resolve the
-      // parameter to its actual local and check that local's name — which is what unstackify records.
       let param_imprecise = params_2[0]
         .name
         .imprecise_name()
@@ -310,10 +295,6 @@ where
       })
       .collect();
 
-    // A param's name is its binding: bind each one to its argument. A destructuring param
-    // additionally gets a `<destructure> = <name>;` let at the body head, synthesized during
-    // postparse, so no pattern is translated here. Synthetic DesugaredParamNames are bound too,
-    // since that body-head let loads them by name (see @PFVSZ).
     let mut let_exprs: Vec<ExpressionTE<'s, 't>> = Vec::new();
     for (param_1, param_lookup_2) in params_1.iter().zip(param_lookups_2.into_iter()) {
       let local = self.make_user_local_variable(

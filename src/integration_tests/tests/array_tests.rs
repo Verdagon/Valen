@@ -159,7 +159,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn migrate_rsa() {
     let compilation_bump = bumpalo::Bump::new();
@@ -194,7 +194,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn migrate_ssa() {
     let compilation_bump = bumpalo::Bump::new();
@@ -479,14 +479,10 @@ exported func main() int {
     }
 }
 
-// the argument to __Array doesnt even have to be a struct or a lambda or an
-// interface or whatever, its just passed straight through to the prototype
-
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn array_map_with_int() {
-    unimplemented!(); // ZONION-reasoned-ignore + deferred
+    unimplemented!();
     /*
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -583,10 +579,9 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn array_map_with_lambda() {
-    unimplemented!(); // ZONION-reasoned-ignore + deferred
+    unimplemented!();
     /*
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -602,7 +597,6 @@ fn array_map_with_lambda() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share; i copy; a.3 is &int
         r"
 struct Lam share {}
 func __call(lam &Lam, i int) int { return __copy_prim(&i); }
@@ -649,7 +643,6 @@ fn array_map_with_single_lambda() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // Variant of array_map_with_lambda where Lam is Single (owned) instead of share.
         r"
 struct Lam {}
 func __call(lam &Lam, i int) int { return __copy_prim(&i); }
@@ -666,7 +659,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "imm/share citizens not supported yet (share functor struct)"]
+#[ignore]
 #[test]
 fn make_array_map_with_struct() {
     let compilation_bump = bumpalo::Bump::new();
@@ -683,7 +676,6 @@ fn make_array_map_with_struct() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share; i copy; a.3 is &int
         r"
 import array.make.*;
 
@@ -776,8 +768,7 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn array_map_taking_a_closure_which_captures_something() {
     unimplemented!(); // ZONION-reasoned-ignore
     /*
@@ -872,10 +863,9 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "passes in isolation, fails in full-suite (test-interaction; suspected shared state)"]
+#[ignore]
 fn two_dimensional_array() {
-    unimplemented!(); // ZONION-reasoned-ignore
+    unimplemented!();
     /*
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -978,7 +968,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "R3 runtime twin: VM transmute asserts Share<->Share, tripped by @str->&str share-peel (heap.rs:577)"]
+#[ignore]
 #[test]
 fn capture_mutable_array() {
     let compilation_bump = bumpalo::Bump::new();
@@ -1212,10 +1202,9 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn array_has() {
-    unimplemented!(); // ZONION-reasoned-ignore
+    unimplemented!();
     /*
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -1231,7 +1220,6 @@ fn array_has() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: has(103) → has(&103) — has takes &E
         r"
 import array.has.*;
 exported func main() bool {
@@ -1246,7 +1234,7 @@ exported func main() bool {
     */
 }
 
-#[ignore = "strings not implemented yet (drop of str-parameterized SSA iterator)"]
+#[ignore]
 #[test]
 fn each_on_ssa() {
     let compilation_bump = bumpalo::Bump::new();

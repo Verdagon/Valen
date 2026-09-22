@@ -196,32 +196,6 @@ where
       #[allow(unreachable_patterns)]
       _ => panic!("evaluate_addressible_lookup: unexpected variable type"),
     }
-
-    // match self.evaluate_addressible_lookup(coutputs, nenv, range, region, name)? {
-    //     Some(x) => {
-    //         // VCOORD: revisit
-    //         // Bare-use (LoadAsP::Use) of an Own non-primitive local produces a
-    //         // Borrow-flavored SoftLoad; auto-coercion (implicit_clone, alias,
-    //         // MustExplicitlyMove) lives target-side in convert(). Primitives still
-    //         // fire wrap_in_implicit_clone because get_borrow_ownership returns Share
-    //         // for Int/Bool/Float/Str/Void — borrow_soft_load would construct an
-    //         // illegal Share+primitive CoordT.
-    //         let thing = match (target_ownership, x.result().ownership) {
-    //             (LoadAsP::Use, OwnershipT::Own) if !self.is_primitive(x.result()) => {
-    //                 self.borrow_soft_load(coutputs, x)
-    //             }
-    //             (LoadAsP::Use, OwnershipT::Own) => {
-    //                 // VCOORD: retire — this is the primitive Own bare-use path still
-    //                 // going through wrap_in_implicit_clone.
-    //                 self.wrap_in_implicit_clone(coutputs, nenv, range, call_location, region, x)?
-    //             }
-    //             _ => self.soft_load(nenv, range, x, target_ownership, region),
-    //         };
-    //         Ok(Some(ExpressionTE::Reference(thing)))
-    //     }
-    //     None => {
-    //     }
-    // }
   }
 
   pub fn evaluate_addressible_lookup_for_mutate(
@@ -313,8 +287,6 @@ where
         // If we're capturing an own, then on the inside of the closure
         // it's a borrow or a weak. See "Captured own is borrow" test for more.
         assert!(is_ref(coord));
-        // A lookup already yields a borrow of the outer variable (LocalLookup/MemberLookup
-        // result is a BorrowRef), so it is directly the borrow we store in the closure member.
         lookup
       })
       .collect();
@@ -328,47 +300,6 @@ where
       self.typing_interner.alloc_slice_from_vec(lookup_expressions2),
     );
     ExpressionTE::Construct(self.typing_interner.alloc(construct_expr2))
-  }
-
-  /// Compiler-inserted `Call(implicit_clone, &addr)`. Looks up `implicit_clone` in the
-  /// callsite env via resolve_function; constructs the call IR directly. Failure to find
-  /// surfaces as the standard `CouldntFindFunctionToCallT`.
-  // VCOORD: retire — three problems:
-  //   (a) fires source-side (both call sites are on the source coord); the coercion decision
-  //       belongs at the target in convert().
-  //   (b) fires for ALL Own kinds; the refined model auto-clones only Own+primitive at Own
-  //       target — Own non-primitive → Own is MustExplicitlyMove, Own → Borrow is just borrow.
-  //   (c) runs full resolve_function() on every bare-use of an Own local; a primitive-clone
-  //       builtin dispatch shouldn't go through overload resolution, and lookup-failure surfaces
-  //       as CouldntFindFunctionToCallT — the wrong error class.
-  pub fn wrap_in_implicit_clone(
-    &self,
-    coutputs: &mut CompilerOutputs<'s, 't>,
-    nenv: &mut NodeEnvironmentBox<'s, 't>,
-    range: &[RangeS<'s>],
-    call_location: LocationInDenizen<'s>,
-    region: RegionT,
-    addr: ExpressionTE<'s, 't>,
-  ) -> Result<ExpressionTE<'s, 't>, ICompileErrorT<'s, 't>> {
-    panic!("implement");
-    // let addr_coord = addr.result();
-    // let borrow_coord = KindT::BorrowRef(&BorrowRefT{ region: RegionT::Default, inner: addr_coord });
-    // let borrow_te = ExpressionTE::SoftLoad(
-    //     self.typing_interner.alloc(SoftLoadTE { expr: addr, target_ownership: OwnershipT::Borrow }));
-    // let calling_env = IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner));
-    // let stamp = self.resolve_function(
-    //     calling_env, coutputs, range, call_location,
-    //     self.keywords.implicit_clone,
-    //     &[borrow_coord],
-    //     region, true,
-    // )?.map_err(|fff| ICompileErrorT::CouldntFindFunctionToCallT {
-    //     range: self.typing_interner.alloc_slice_copy(range),
-    //     fff,
-    // })?;
-    // assert!(coutputs.get_instantiation_bounds(self.typing_interner, stamp.prototype.id).is_some());
-    // let args_te = self.typing_interner.alloc_slice_from_vec(vec![borrow_te]);
-    // Ok(ExpressionTE::FunctionCall(self.typing_interner.alloc(
-    //     FunctionCallTE::new(stamp.prototype, args_te, stamp.prototype.return_type))))
   }
 
   // VCOORD: think about bringing back AddressibleExpression,
@@ -540,7 +471,7 @@ where
           rune_to_initially_known_type,
         )
         .unwrap_or_else(|_e| {
-          panic!("implement: LetSE — HigherTypingInferError");
+          panic!("implement: LetSE");
           // throw CompileErrorExceptionT(HigherTypingInferError(
           //   range ::
           //       parentRanges, e))
@@ -850,13 +781,6 @@ where
         Ok((call_expr_2, HashSet::default(), PendingTempDrops::none()))
       }
       IExpressionSE::CopyPrim(cp) => {
-        // TEMP: typing-pass handler for source-level `__copy_prim(x)` syntax.
-        // Evaluates the inner expression (any ownership/
-        // kind), asserts result kind is Int/Bool/Float, and produces a fresh
-        // Own+primitive via CopyPrimTE. Removable when auto-insertion of
-        // CopyPrim replaces the source-level syntax; the CopyPrimTE emission
-        // moves to convert_helper.rs (for `&int → int` coercions) and the
-        // move tracker (for primitive `y = x` assignments) instead.
         let (inner_te, returns_from_inner, pending_from_inner) = self.evaluate_expression(
           coutputs,
           nenv,
@@ -869,7 +793,6 @@ where
         let inner_coord = inner_te.result();
         // VCOORD: eventually put here something that checks if it's Copyable.
         // or maybe thisll just go away? we might not even be able to do this from source someday.
-        // /VCOORD
         let result_coord = match peel_one_reference(&inner_coord) {
           // &int -> int, &bool -> bool, ...
           Some(inner) if inner.is_primitive() => inner,
@@ -895,15 +818,6 @@ where
             // source is borrow
             match ownershipped.target_ownership {
               LoadAsP::Move => {
-                // want to move a borrow source
-                // ZHERE: the `ExpressionTE::LocalLookup => Unlet` case here is now
-                // DEAD — `^<local>` is lowered to IExpressionSE::Unlet at scout and
-                // never reaches Ownershipped, and a LocalLookupTE is only ever built
-                // from a bare LocalLoad. So the only Moves that reach here are
-                // `^<non-local>` (a member/element → CantMoveOutOfMember, or an owned
-                // rvalue → no-op). Delete the LocalLookup sub-arm and put the real
-                // move-out-of-place error in its place.
-                // V: this can happen if ...
                 match inner_expr_2 {
                   ExpressionTE::LocalLookup(LocalLookupTE { local_variable, .. }) => {
                     // VCOORD: it's weird that we' previously allocated an LocalLookupTE but now we're discarding it.
@@ -985,8 +899,6 @@ where
                 Ok((ExpressionTE::LetAndLend(let_and_lend_te), returns_from_inner, pending))
               }
               LoadAsP::LoadAsWeak => {
-                // want to weak-borrow a share source
-                // ZHERE: implement `weak x` (LoadAsWeak) — WeakRef of the source.
                 panic!("implement: Ownershipped ShareT LoadAsWeakP");
                 // vfail()
               }
@@ -1062,9 +974,6 @@ where
           KindT::BorrowRef(_) => unborrowed_container_expr_2,
           KindT::WeakRef(_) => panic!("implement: dot on a weak is a compile error"),
           KindT::KindPlaceholder(_) => panic!("implement: dot on a placeholder is a compile error"),
-          // Anything else is a value rather than a place, so it wants materializing into a
-          // temporary and lending, with its drop deferred, probably with
-          // make_temporary_local_borrow at life.add(1).
           _ => panic!("implement: materialize an rvalue container"),
         };
         let expr_2 = match peel_all_references(container_expr_2.result()) {
@@ -1438,7 +1347,7 @@ where
               nenv.mark_local_restackified(*local);
             }
           } else {
-            panic!("implement: evaluate_expression If — vfail branch");
+            panic!("implement: evaluate_expression If");
             // vfail()
           }
         }
@@ -2026,11 +1935,6 @@ where
         }
         Ok((block_2, returns_from_exprs, PendingTempDrops::none()))
       }
-      // IExpressionSE::Pure(_) => {
-      // panic!("implement: evaluate_expression — Pure");
-      // evaluateAndCoerceToReferenceExpression(
-      //   coutputs, nenv, life + 0, parentRanges, outerCallLocation, region, inner)
-      // }
       IExpressionSE::ConstantStr(c) => {
         let result = ExpressionTE::ConstantStr(self.typing_interner.alloc(ConstantStrTE::new(
           self.typing_interner,
@@ -2094,7 +1998,7 @@ where
             )))
           }
           KindT::Interface(_) => {
-            panic!("implement: evaluate_expression Destruct — Interface");
+            panic!("implement: evaluate_expression Destruct");
             // destructorCompiler.drop(nenv.snapshot, coutputs, range :: parentRanges, outerCallLocation, region, innerExpr2)
           }
           _ => panic!("vfail: Can't destruct type: {:?}", inner_expr_2.result()),
@@ -2106,13 +2010,13 @@ where
         let local = match nenv.get_variable(name_imprecise, self.typing_interner) {
           Some(IVariableT::Local(rlv)) => rlv,
           Some(IVariableT::Capture(_)) => {
-            panic!("implement: Unlet — AddressibleClosure (not a local)");
+            panic!("implement: Unlet");
             // throw CompileErrorExceptionT(RangedInternalErrorT(
             //   range ::
             //     parentRanges, "Can't unlet local: " + name))
           }
           None => {
-            panic!("implement: Unlet — No local with name");
+            panic!("implement: Unlet");
             // throw CompileErrorExceptionT(RangedInternalErrorT(
             //   range :: parentRanges,
             //   "No local with name: " + name))
@@ -2142,9 +2046,6 @@ where
           KindT::KindPlaceholder(_) => {
             panic!("implement: indexing a placeholder is a compile error")
           }
-          // Anything else is a value rather than a place, so it wants materializing into a
-          // temporary and lending, with its drop deferred, with
-          // make_temporary_local_borrow at life.add(1).
           _ => panic!("implement: materialize an rvalue container"),
         };
         let (index_expr_2, returns_from_index_expr, pending_from_index) = self.evaluate_expression(
@@ -2283,7 +2184,6 @@ where
         Ok((result, HashSet::default(), PendingTempDrops::none()))
       }
       IExpressionSE::OverloadSet(overload_set) => {
-        // Per canonical: vassert(rules.isEmpty); val name = parts.head.name
         assert!(overload_set.lookup.rules.is_empty()); // implement
         let name =
           overload_set.lookup.parts.first().expect("OverloadSet parts must be non-empty").name;
@@ -2296,28 +2196,28 @@ where
         let range_list_t: &'t [RangeS<'s>] = self.typing_interner.alloc_slice_from_vec(range_list);
         let templata_from_env = match templatas_from_env.as_slice() {
           [ITemplataT::Boolean(_value)] => {
-            panic!("implement: evaluate_expression OverloadSet — BooleanTemplataT")
+            panic!("implement: evaluate_expression OverloadSet")
             // ConstantBoolTE(value, region)
           }
           [ITemplataT::Integer(_value)] => {
-            panic!("implement: evaluate_expression OverloadSet — IntegerTemplataT")
+            panic!("implement: evaluate_expression OverloadSet")
             // ConstantIntTE(
             //   IntegerTemplataT(value),
             //   32,
             //   region)
           }
           [ITemplataT::Placeholder(_t)] => {
-            panic!("implement: evaluate_expression OverloadSet — PlaceholderTemplataT IntegerTemplataType")
+            panic!("implement: evaluate_expression OverloadSet")
             // ConstantIntTE(PlaceholderTemplataT(name, IntegerTemplataType()), 32, region)
           }
           _ if !templatas_from_env.is_empty()
             && templatas_from_env.iter().all(|t| matches!(t, ITemplataT::Function(_))) =>
           {
-            panic!("implement: evaluate_expression OverloadSet — all functions")
+            panic!("implement: evaluate_expression OverloadSet")
             // newGlobalFunctionGroupExpression(nenv.snapshot, coutputs, region, name)
           }
           _ if templatas_from_env.len() > 1 => {
-            panic!("implement: evaluate_expression OverloadSet — too many results");
+            panic!("implement: evaluate_expression OverloadSet");
             // throw CompileErrorExceptionT(RangedInternalErrorT(range :: parentRanges, "Found too many different things named \"" + name + "\" in env:\n" + things.map("\n" + _)))
           }
           [] => {
@@ -2742,9 +2642,6 @@ where
     let rune_type_solver = RuneTypeSolver { scout_arena: self.scout_arena };
     let mut range_list = vec![range_s];
     range_list.extend_from_slice(parent_ranges);
-    // Run the solve only to check the rune types are solvable. Its result isn't used here.
-    // explicify_lookups was the only consumer of that map, and it is retired.
-    // The rules are already explicit Lookup/Call. The lambda's runes get solved again when it is typed.
     match rune_type_solver.solve_rune_types(
       coutputs,
       self.opts.global_options.sanity_check,
@@ -2759,8 +2656,6 @@ where
       Err(_e) => panic!("CouldntSolveRuneTypesT"),
     }
 
-    // The UserFunction attribute is stamped in postparse (function_scout), so attributes_s
-    // already carries it — pass it through unchanged.
     self.scout_arena.alloc(FunctionS::new(
       range_s,
       name_s,
@@ -2889,7 +2784,6 @@ where
     range: RangeS<'s>,
     parts: &[IImpreciseNameS<'s>],
   ) -> Result<IRuneTypeSolverLookupResult<'s>, IRuneTypingLookupFailedError<'s>> {
-    // The last segment names the item; only diagnostics need it separately.
     let name_s = *parts.last().expect("vwat: an empty lookup path");
     let mut filter = HashSet::default();
     filter.insert(ILookupContext::TemplataLookupContext);
@@ -2902,5 +2796,3 @@ where
     citizen_or_templata_rune_type_lookup(coutputs, self.scout_arena, found, range, name_s)
   }
 }
-
-// VCOORD: change to 2 spaces

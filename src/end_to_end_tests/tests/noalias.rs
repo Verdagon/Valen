@@ -1,19 +1,12 @@
-//! End-to-end: the backend emits LLVM `noalias` on a borrow parameter the borrow checker proved is
-//! the sole reference into its group, and omits it where two parameters share a group. Asserts against
-//! the pre-optimization dump (`build.ll`) so a redundant-attribute pass can't hide the result.
-
 use crate::end_to_end_tests::{compile_inline, compile_program, programs_dir};
 use std::fs;
 
-/// The `define` line for the function whose mangled LLVM name contains `needle`.
 fn define_line<'a>(ll: &'a str, needle: &str) -> &'a str {
   ll.lines()
     .find(|l| l.contains("define") && l.contains(needle))
     .unwrap_or_else(|| panic!("no `define` line for `{needle}` in:\n{ll}"))
 }
 
-/// The whole `define … { … }` body of the function whose mangled LLVM name contains `needle`, from its
-/// `define` line through the closing `}`.
 fn function_body(ll: &str, needle: &str) -> String {
   let lines: Vec<&str> = ll.lines().collect();
   let start = lines
@@ -27,16 +20,12 @@ fn function_body(ll: &str, needle: &str) -> String {
   lines[start..=start + rel_end].join("\n")
 }
 
-/// The `declare` line (a bodiless extern) whose mangled LLVM name contains `needle`.
 fn declare_line<'a>(ll: &'a str, needle: &str) -> &'a str {
   ll.lines()
     .find(|l| l.contains("declare") && l.contains(needle))
     .unwrap_or_else(|| panic!("no `declare` line for `{needle}` in:\n{ll}"))
 }
 
-/// The `attributes #N = { … }` group referenced by the `#N` token on `line`. Function-level attributes
-/// (`nounwind`, `willreturn`, …) live in these groups, not inline on the declare/define line — so a
-/// `line.contains("nounwind")` check would wrongly fail.
 fn attr_group<'a>(ll: &'a str, line: &str) -> &'a str {
   let tag = line
     .split_whitespace()
@@ -69,13 +58,11 @@ exported func main() int {
   );
   let ll = fs::read_to_string(cp.cwd.join("build.ll")).expect("read build.ll");
 
-  // The sole-borrow parameter is the only way to reach its group, so it is restrict.
   assert!(
     define_line(&ll, "getFuel").contains("noalias"),
     "getFuel's borrow param should be noalias:\n{}",
     define_line(&ll, "getFuel"),
   );
-  // Two parameters in the same group may alias each other, so neither is noalias.
   assert!(
     !define_line(&ll, "pairSum").contains("noalias"),
     "pairSum's same-group params must not be noalias:\n{}",
@@ -83,10 +70,6 @@ exported func main() int {
   );
 }
 
-/// Block-scoped restrict (Phase B): `a` and `b` share group `g`, so neither is whole-function `noalias`.
-/// But in the trailing span only `a` reaches into `g` (across the opaque `nothing()`), so `a` is the
-/// sole reference there — the checker records those loads as accesses into `g`, and the backend tags
-/// them with `!alias.scope`.
 #[test]
 fn sole_reference_region_loads_get_alias_scope_metadata() {
   let cp = compile_inline(
@@ -111,7 +94,6 @@ exported func main() int {
   );
   let ll = fs::read_to_string(cp.cwd.join("build.ll")).expect("read build.ll");
 
-  // The tail span's loads of `a.fuel` belong to `g`'s alias scope.
   let body = function_body(&ll, "do_things");
   assert!(
     body.contains("!alias.scope"),
@@ -119,8 +101,6 @@ exported func main() int {
   );
 }
 
-/// The opaque `nothing()` call takes no arguments, so it can reach no group and is proven not to touch
-/// `g` — it carries `!noalias {g}`, which is what lets LLVM keep `a`'s accesses coalescable across it.
 #[test]
 fn sole_reference_region_call_gets_noalias() {
   let cp = compile_inline(
@@ -145,7 +125,6 @@ exported func main() int {
   );
   let ll = fs::read_to_string(cp.cwd.join("build.ll")).expect("read build.ll");
 
-  // The `nothing()` call reaches no group, so it is tagged !noalias and LLVM keeps `a`'s loads coalescable.
   let body = function_body(&ll, "do_things");
   let call_line = body
     .lines()
@@ -157,10 +136,6 @@ exported func main() int {
   );
 }
 
-/// Block-scoped restrict for stores (Phase B): `a` and `b` share group `g`, but in the trailing span only
-/// `a` reaches into `g` across the opaque `nothing()`. The two `set a.fuel = …` there are recorded as
-/// accesses into `g`, so the backend tags their LLVM `store` with `!alias.scope` (its group) and
-/// `!noalias` (the disjoint groups) — the write-side mirror of the load tagging above.
 #[test]
 fn sole_reference_region_stores_get_alias_scope_metadata() {
   let cp = compile_inline(
@@ -184,9 +159,6 @@ exported func main() int {
   );
   let ll = fs::read_to_string(cp.cwd.join("build.ll")).expect("read build.ll");
 
-  // The tail span's stores through `a` belong to `g`'s alias scope. (`g` is the only group here, so the
-  // disjoint set is empty and the stores carry no `!noalias` — the `!noalias` rides the `nothing()` call,
-  // asserted separately above.)
   let body = function_body(&ll, "do_things");
   assert!(
     body.lines().any(|l| l.contains("store") && l.contains("!alias.scope")),
@@ -194,8 +166,6 @@ exported func main() int {
   );
 }
 
-/// The `load i32` count in `do_things`'s optimized body, compiling `restrictcoalesce` with the aliasing
-/// hints on or suppressed.
 fn coalesce_load_count(suppress: bool) -> usize {
   let dir = programs_dir().join("programs/externs/restrictcoalesce");
   let cp = compile_program(&dir, &[], |opts| {
@@ -206,11 +176,6 @@ fn coalesce_load_count(suppress: bool) -> usize {
   function_body(&ll, "do_things").lines().filter(|l| l.contains("load i32")).count()
 }
 
-/// Load-bearing proof (Phase B), as an on/off diff: with `!alias.scope`/`!noalias` emitted, the optimizer
-/// coalesces the two `a.fuel` reads across the opaque C-extern `noopBarrier()`; with the metadata
-/// suppressed the barrier blocks the fold. Comparing the two builds of the *same* program isolates
-/// exactly the metadata's effect — any unrelated codegen appears in both counts and cancels — so this is
-/// immune to the drift a fixed absolute count would suffer.
 #[test]
 fn region_reads_coalesce_across_opaque_extern_call() {
   let with = coalesce_load_count(false);
@@ -221,8 +186,6 @@ fn region_reads_coalesce_across_opaque_extern_call() {
   );
 }
 
-/// The `store i32` count in `do_things`'s optimized body, compiling `restrictdse` with the aliasing hints
-/// on or suppressed.
 fn dse_store_count(suppress: bool) -> usize {
   let dir = programs_dir().join("programs/externs/restrictdse");
   let cp = compile_program(&dir, &[], |opts| {
@@ -233,10 +196,6 @@ fn dse_store_count(suppress: bool) -> usize {
   function_body(&ll, "do_things").lines().filter(|l| l.contains("store i32")).count()
 }
 
-/// Load-bearing proof for stores (Phase B), as an on/off diff: with `!alias.scope` on the stores through
-/// `a` and `!noalias` on the opaque `noopBarrier()`, LLVM proves the barrier can't read `a.fuel` and
-/// dead-store-eliminates the redundant `set a.fuel = 2`; with the metadata suppressed the barrier blocks
-/// DSE. Comparing the two builds isolates exactly the metadata's effect, immune to unrelated drift.
 #[test]
 fn region_store_dead_store_eliminated_across_opaque_extern_call() {
   let with = dse_store_count(false);
@@ -247,8 +206,6 @@ fn region_store_dead_store_eliminated_across_opaque_extern_call() {
   );
 }
 
-/// Split a function body (`define … {` through `}`) into basic blocks. A block runs from one label line
-/// (an unindented `name:`) up to just before the next.
 fn basic_blocks(body: &str) -> Vec<String> {
   let mut blocks: Vec<String> = Vec::new();
   let mut cur = String::new();
@@ -268,26 +225,15 @@ fn basic_blocks(body: &str) -> Vec<String> {
   blocks
 }
 
-/// Asserts the restrict metadata let LLVM hoist a field's load out of a loop that contains an opaque call:
-/// the field is read once before the loop and carried in a register, so the loop body block holding the
-/// `noopBarrier()` call has no `load i32` left in it. Without the metadata the call would be assumed to
-/// maybe-touch the field, forcing a reload after it every iteration — so this assertion breaks the moment
-/// the emission is removed (ITBLUX).
 fn assert_field_read_hoisted_across_loop_call(body: &str) {
   let loop_blocks: Vec<String> =
     basic_blocks(body).into_iter().filter(|b| b.contains("@vale_abi_vtest_noopBarrier")).collect();
   assert!(!loop_blocks.is_empty(), "expected a loop block containing a noopBarrier call:\n{body}");
   for b in &loop_blocks {
-    assert!(
-      !b.contains("load i32"),
-      "the field read should be hoisted out of the loop — no reload after the opaque call:\n{b}",
-    );
+    assert!(!b.contains("load i32"));
   }
 }
 
-/// Register-promotion for a sole reference (Phase A, exactly Rust's `&mut`): in `bump(s &Ship)`, `s` is the
-/// only reference into its group, so LLVM keeps `s.fuel` in a register across the loop's opaque
-/// `noopBarrier()` calls — the read is hoisted out and never reloaded.
 #[test]
 fn sole_reference_loop_hoists_field_read_across_opaque_calls() {
   let dir = programs_dir().join("programs/externs/restrictloopsole");
@@ -296,12 +242,6 @@ fn sole_reference_loop_hoists_field_read_across_opaque_calls() {
   assert_field_read_hoisted_across_loop_call(&function_body(&ll, "@vale_abi_vtest_bump("));
 }
 
-/// Block-scoped restrict — the case Rust's `&mut` cannot express. In `bump_inline`, `a` and `b` share
-/// group `g` (two overlapping `&mut` would be rejected by Rust), so *neither* gets whole-function noalias.
-/// Yet in each loop only one of them is used, so the checker proves it sole there and the backend tags that
-/// loop's accesses/call. LLVM then hoists `a.fuel`'s read across the first loop's calls and `b.fuel`'s
-/// across the second's — register-promotion driven purely by the block-scoped metadata, since there is no
-/// param-level noalias to lean on.
 #[test]
 fn block_scoped_restrict_hoists_reads_in_two_aliasing_loops() {
   let dir = programs_dir().join("programs/externs/restrictloopblock");
@@ -310,17 +250,12 @@ fn block_scoped_restrict_hoists_reads_in_two_aliasing_loops() {
   assert_field_read_hoisted_across_loop_call(&function_body(&ll, "@vale_abi_vtest_bump_inline"));
 }
 
-/// Extern declarations inherit Vale's no-unwind execution model (`panic=abort`): the backend stamps
-/// `nounwind` on every extern's LLVM declaration, which LLVM cannot infer for an opaque (bodiless) callee.
-/// This is what lets the optimizer treat an extern call as guaranteed to transfer control to its successor,
-/// unblocking the dead-store elimination the `restrictdse` test above depends on.
 #[test]
 fn extern_declaration_is_nounwind() {
   let dir = programs_dir().join("programs/externs/restrictdse");
   let cp = compile_program(&dir, &[], |opts| opts.print_llvmir = true);
   let ll = fs::read_to_string(cp.cwd.join("build.ll")).expect("read build.ll");
 
-  // Assert on the pre-optimization dump so an opt pass can't be what introduces or hides the attribute.
   let decl = declare_line(&ll, "@vale_abi_vtest_noopBarrier");
   assert!(
     attr_group(&ll, decl).contains("nounwind"),
@@ -328,11 +263,6 @@ fn extern_declaration_is_nounwind() {
   );
 }
 
-/// A read-only callee handed a reference into `g` can still READ `g`, and reading is invisible in a Valen
-/// signature (only `mut` is declared). So a call is `!noalias {g}` only when its arguments cannot reach
-/// `g` — reaching `g` (even to read it) keeps the call out of the complement. Here `reads(a)` is handed
-/// `a`, which reaches `g`, so its call must carry no `!noalias`; otherwise LLVM could delete a write the
-/// callee observes.
 #[test]
 fn read_only_call_reaching_group_is_not_noalias() {
   let cp = compile_inline(
@@ -367,9 +297,6 @@ exported func main() int {
   );
 }
 
-/// `!alias.scope` is inert on its own, so it is emitted uniformly on every access — including a lone
-/// borrow parameter that is the whole-function sole reference into its group, which the param-level
-/// `noalias` attribute also covers. `solo`'s stores through `a` still carry `!alias.scope`.
 #[test]
 fn single_reference_function_store_gets_alias_scope() {
   let cp = compile_inline(
@@ -398,9 +325,6 @@ exported func main() int {
   );
 }
 
-/// Two references in disjoint groups (`a in g`, `c in h`) never alias, so each access carries `!noalias`
-/// naming the other group's scope. Neither group has a second reference, yet both accesses are still
-/// tagged and the cross-group `!noalias` is emitted by complement.
 #[test]
 fn disjoint_group_access_carries_cross_group_noalias() {
   let cp = compile_inline(
@@ -430,11 +354,6 @@ exported func main() int {
   );
 }
 
-/// The `suppress_alias_metadata` test lever drops all aliasing optimization hints — the
-/// `!alias.scope`/`!noalias` metadata AND the parameter-level `noalias` attribute — while keeping
-/// `nounwind`, so a load-bearing test can compile the same program with and without the hints and
-/// compare the optimizer's output. Here we prove the lever itself works: the baseline emits `noalias`,
-/// and with the flag every trace of it is gone but `nounwind` remains.
 #[test]
 fn suppress_alias_metadata_drops_all_alias_hints_but_keeps_nounwind() {
   let dir = programs_dir().join("programs/externs/restrictloopsole");
@@ -453,12 +372,6 @@ fn suppress_alias_metadata_drops_all_alias_hints_but_keeps_nounwind() {
   assert!(ll_off.contains("nounwind"), "nounwind must remain so the execution model stays sound:\n{ll_off}");
 }
 
-/// A read-only call handed an in-group reference is NOT `!noalias`'d against that group — reading is
-/// invisible in the signature (only `mut` is declared), so the call reaches its argument's group and the
-/// backend must not exclude it, or it could delete a write the callee observes. Contrast a no-argument
-/// call, which reaches nothing and so is `!noalias`'d against the group. (Asserted at e2e because the
-/// unified carrier is untagged — a unit test can't tell a call's reach from an access into the same
-/// group.)
 #[test]
 fn read_only_call_reaching_its_argument_group_is_not_noaliased() {
   let cp = compile_inline(

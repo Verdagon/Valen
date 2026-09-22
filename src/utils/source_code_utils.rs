@@ -4,11 +4,6 @@ use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::utils::code_hierarchy::{FileCoordinate, FileCoordinateMap};
 use crate::utils::range::{CodeLocationS, RangeS};
 
-// Compute the 1-based (line, column) of byte offset `pos` within `source`. `pos` is clamped to
-// the source length (a negative `pos` clamps to the end, preserving the historical behavior of
-// the callers that pass raw offsets). Newlines advance the line; the column counts bytes since
-// the last line start. This is the single line/column primitive — resolve_line_col and
-// humanize_pos_path both route through it.
 pub fn line_col_in(source: &str, pos: i32) -> (u32, u32) {
   let end = (pos as usize).min(source.len());
   let bytes = source.as_bytes();
@@ -60,9 +55,6 @@ pub fn humanize_pos(file_path: &Path, source: &str, pos: i32) -> String {
   humanize_pos_path(&file_path.display().to_string(), source, pos)
 }
 
-// Resolve (line, col) for a CodeLocationS against its code map.
-// Returns 1-based line + column. For internal/synthetic locations
-// (offset < 0 or file not present in the map), returns (1, 1).
 pub fn resolve_line_col<'a, 'b>(
   code_map: &FileCoordinateMap<'a, String>,
   code_location_s: &CodeLocationS<'b>,

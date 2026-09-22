@@ -1,15 +1,3 @@
-// VCOORD: review
-//
-// Resurrected from the retired `higher_typing/patterns.rs` at commit
-// `b5bde70e6` with the onion-era renames applied: `pattern.coord_rune` →
-// `pattern.kind_rune` (postparse slice), and the seeded rune type flipped
-// from `KindTemplataType` to `KindTemplataType` (postparse slice retired
-// Coord). The pattern-traversal shape is unchanged.
-//
-// Sole caller today: `typing/expression/expression_compiler.rs` at the
-// `IExpressionSE::Let` arm — seeds the rune-type solver with the pattern's
-// type-annotated runes before let-binding inference.
-
 use crate::postparsing::itemplatatype::{ITemplataType, KindTemplataType};
 use crate::postparsing::names::IRuneS;
 use crate::postparsing::patterns::patterns::AtomSP;

@@ -1,5 +1,3 @@
-/// The type of a group generic param's value (`ITemplataT::Group`). The param stays uniform with
-/// type/int params; its value is the ceremonial constant `Group(Default)` and never enters a `KindT`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct GroupTemplataType {}
 
@@ -21,11 +19,6 @@ pub struct BooleanTemplataType {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StringTemplataType {}
 
-// VCOORD: Internal-only marker for runes whose conclusion is a concrete
-// function prototype (result / prototype_rune of ResolveSR / CallSiteFuncSR /
-// DefinitionFuncSR). The surface `T Prot` type is retired; this marker is not
-// exposed there. Kept parallel to PackTemplataType — no surface counterpart,
-// but the rune-type solver needs the marker for surviving bound-machinery rules.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PrototypeTemplataType {}
 

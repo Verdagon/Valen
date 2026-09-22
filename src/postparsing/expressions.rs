@@ -294,34 +294,16 @@ pub struct LocalLoadSE<'s> {
   pub range: RangeS<'s>,
   pub name: IImpreciseNameS<'s>,
 }
-// One step in a OutsideLoadSE. See OutsideLoadSE comments.
 #[derive(Debug, PartialEq)]
 pub struct LoadPartSE<'s> {
   pub name: IImpreciseNameS<'s>,
   pub explicit_template_args: &'s [RuneUsage<'s>],
 }
 
-// A load from something that lives outside the current definition.
-// For example:
-//     v = Vec<int>.with_capacity(42)
-// would have a OutsideLoadSE for the `Vec<int>.with_capacity` part.
-// It would look like this:
-// - parts: [LoadPartSE("Vec", [$0]), LoadPartSE("with_capacity", [])]
-// - rules: [$0 = LookupSR("int")]
-// Per @PRIIROZ, we add containers' generic params *after* the function's generic params.
-// Example:
-//     number_to_corresponding_string = HashMap<int, str>.create_and_fill(64, 42, i => to_string(i))
-// Would look like this:
-// - parts: [LoadPartSE("HashMap", [$0, $1]), LoadPartSE("create_and_fill", [$2])]
-// - rules: [$0 = "int", $1 = "str", $2 = main:lambda:1]
-//
-// This is only used by OverloadSetSE so far, but someday it could be used for looking up associated aliases on structs
-// or something.
 #[derive(Debug, PartialEq)]
 pub struct OutsideLoadSE<'s> {
   pub range: RangeS<'s>,
   pub rules: &'s [IRulexSR<'s>],
-  // parts' explicitArgs are runes that refer to the above rules.
   pub parts: &'s [&'s LoadPartSE<'s>],
 }
 

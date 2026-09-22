@@ -1,3 +1,24 @@
+# Backend TODO:
+#  * Remove the outgoing extern wrappers that we only have for C ABI interop.
+#    I _think_ we can ask LLVM for the right information, if we really twist
+#    its arm. Last resort we can copy the code from clang that does it.
+#  * Remove the incoming FFI wrappers, and conform our ABI so that we don't
+#    need them. They're just more complexity and probably reduce inlining
+#    quality.
+#  * Reduce GlobalState, it's grown way too big. Also a lot of the things in
+#    there could probably be put into the Program struct.
+#  * Redo all of the extern handling, make it more general, so that we don't
+#    have two separate ABI areas.
+#  * Optimize more like other compilers, so that benchmark comparisons can
+#    be accurate.
+#  * Figure out a better way to emit all the !alias.scope and !noalias
+#    information, spidey sense says there's a better way. It feels like a
+#    smuggled-in side channel (which, TBF, it is, since borrow checking
+#    isn't always enabled), but maybe it can be some optionals on the
+#    instructions/calls or something.
+#  * Figure out this cross-language debugging nonsense, make sure we sync up
+#    with the debug information from other compilers.
+
 cmake_minimum_required(VERSION 3.5)
 project(backend)
 
@@ -7,6 +28,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++17 -fvisibility=hidden")
 if (MSVC)
 	# Set the stack size to 4mb instead of the default 1mb for visual studio
 	# because for some reason 1mb is too small for the backend on Windows.
+	# Also, debug information overflows the stack even on non-Windows machines.
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:4194304")
 endif (MSVC)
 
@@ -41,10 +63,6 @@ set(LLVM_LINK_COMPONENTS
 
 llvm_map_components_to_libnames(llvm_libs ${LLVM_LINK_COMPONENTS})
 
-# All Backend logic — including the historical contents of vale.cpp's main()
-# (now exposed as `backend_compile_argv` in ffi.cpp) — lives in this static
-# library. The standalone `backend` executable and Rust callers (FrontendRust)
-# both link against it.
 set(BACKEND_LIB_SRCS
 		src/vale.cpp
         src/rust_interop/rust_interop.cpp

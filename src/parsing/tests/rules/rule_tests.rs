@@ -1,4 +1,3 @@
-// Run with: cargo test --manifest-path Cargo.toml --lib parsing::tests::rules::rule_tests
 
 use crate::cast;
 use crate::collect_only_rulex;

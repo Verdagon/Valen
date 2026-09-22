@@ -68,7 +68,6 @@ fn sequence_type() {
 
 #[test]
 fn caret_type_is_error() {
-  // `^` is a value-level Move operator only; it's not a templex prefix.
   use crate::parsing::tests::utils::compile_templex;
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -88,14 +87,13 @@ fn weak_prefix_type() {
       inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("T")), .. }),
       ..
     }) => {}
-    other => panic!("expected `weak T` → WeakRef(T), got {:?}", other),
+    other => panic!("expected `weak T` -> WeakRef(T)"),
   }
   assert!(pattern.destructure.is_none());
 }
 
 #[test]
 fn own_prefix_type() {
-  // `own T` parses as an OwnRef wrap around T.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -105,15 +103,13 @@ fn own_prefix_type() {
       inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("T")), .. }),
       ..
     }) => {}
-    other => panic!("expected `own T` → OwnRef(T), got {:?}", other),
+    other => panic!("expected `own T` -> OwnRef(T)"),
   }
   assert!(pattern.destructure.is_none());
 }
 
 #[test]
 fn borrow_without_region() {
-  // A bare `&MyStruct` has no group: its region parses to `Unspecified`. A borrow that names a
-  // group with a trailing `in g` is covered by `borrow_with_group`.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -124,14 +120,13 @@ fn borrow_without_region() {
       inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("MyStruct")), .. }),
       ..
     }) => {}
-    other => panic!("expected `&MyStruct` → BorrowRef(Unspecified, MyStruct), got {:?}", other),
+    other => panic!("expected `&MyStruct` -> BorrowRef(Unspecified, MyStruct)"),
   }
   assert!(pattern.destructure.is_none());
 }
 
 #[test]
 fn borrow_with_group() {
-  // A trailing `in g` on a borrow parses to a `Group` region naming the group g.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -143,7 +138,7 @@ fn borrow_with_group() {
       ..
     }) => {}
     other => {
-      panic!("expected `&MyStruct in g` → BorrowRef(Group(Name g), MyStruct), got {:?}", other)
+      panic!("expected `&MyStruct in g` -> BorrowRef(Group(Name g), MyStruct)")
     }
   }
   assert!(pattern.destructure.is_none());
@@ -151,7 +146,6 @@ fn borrow_with_group() {
 
 #[test]
 fn borrow_with_element_group() {
-  // A trailing `in g[]` parses to an `Elements` group over `g` — a reference into an element of g.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -161,13 +155,12 @@ fn borrow_with_element_group() {
       region: RegionP::Group(GroupP::Elements { base: GroupP::Name(NameP(_, StrI("g"))) }),
       ..
     }) => {}
-    other => panic!("expected `&MyStruct in g[]` → Group(Elements(Name g)), got {:?}", other),
+    other => panic!("expected `&MyStruct in g[]` to become Group(Elements(Name g))"),
   }
 }
 
 #[test]
 fn borrow_with_member_group() {
-  // A trailing `in g.items` parses to a `Member` group naming member `items` of `g`.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -181,13 +174,12 @@ fn borrow_with_member_group() {
         }),
       ..
     }) => {}
-    other => panic!("expected `&MyStruct in g.items` → Group(Member(Name g, items)), got {:?}", other),
+    other => panic!("expected `&MyStruct in g.items` to become Group(Member(Name g, items))"),
   }
 }
 
 #[test]
 fn borrow_with_member_element_group() {
-  // `in g.items[]` parses to `Elements` over `Member(g, items)` — an element of g's `items`.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -200,13 +192,12 @@ fn borrow_with_member_element_group() {
         }),
       ..
     }) => {}
-    other => panic!("expected `&MyStruct in g.items[]` → Group(Elements(Member(g, items))), got {:?}", other),
+    other => panic!("expected `&MyStruct in g.items[]` to become Group(Elements(Member(g, items)))"),
   }
 }
 
 #[test]
 fn borrow_with_descendant_group() {
-  // A trailing `in g...` parses to an `Ellipsis` group over `g` — a reference somewhere within g.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -216,13 +207,12 @@ fn borrow_with_descendant_group() {
       region: RegionP::Group(GroupP::Ellipsis { base: GroupP::Name(NameP(_, StrI("g"))) }),
       ..
     }) => {}
-    other => panic!("expected `&MyStruct in g...` → Group(Ellipsis(Name g)), got {:?}", other),
+    other => panic!("expected `&MyStruct in g...` to become Group(Ellipsis(Name g))"),
   }
 }
 
 #[test]
 fn borrow_with_member_descendant_group() {
-  // `in g.items...` parses to `Ellipsis` over `Member(g, items)` — somewhere within g's items.
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -236,7 +226,7 @@ fn borrow_with_member_descendant_group() {
       ..
     }) => {}
     other => {
-      panic!("expected `&MyStruct in g.items...` → Group(Ellipsis(Member(g, items))), got {:?}", other)
+      panic!("expected `&MyStruct in g.items...` to become Group(Ellipsis(Member(g, items)))")
     }
   }
 }
@@ -253,7 +243,7 @@ fn held_ref_type() {
       inner: ITemplexPT::NameOrRune(NameOrRunePT { name: NameP(_, StrI("MyStruct")), .. }),
       ..
     }) => {}
-    other => panic!("expected `held MyStruct` → BorrowRef(Held, MyStruct), got {:?}", other),
+    other => panic!("expected `held MyStruct` to become BorrowRef(Held, MyStruct)"),
   }
   assert!(pattern.destructure.is_none());
 }
@@ -276,7 +266,7 @@ fn held_and_borrow_ref_type() {
       ..
     }) => {}
     other => panic!(
-      "expected `held &MyStruct` → BorrowRef(Held, BorrowRef(Unspecified, MyStruct)), got {:?}",
+      "expected `held &MyStruct` to become BorrowRef(Held, BorrowRef(Unspecified, MyStruct)), got {:?}",
       other
     ),
   }
@@ -302,8 +292,6 @@ fn call_type() {
   assert!(pattern.destructure.is_none());
 }
 
-// The trailing `mut` placeholder belongs to parameters only. Through the bare pattern entry point
-// (a `let` destination, a destructure element) it is still junk after the type.
 #[test]
 fn trailing_mut_is_not_allowed_outside_parameters() {
   let parse_bump = Bump::new();
@@ -311,6 +299,6 @@ fn trailing_mut_is_not_allowed_outside_parameters() {
   let keywords = Keywords::new_for_parse(&parse_arena);
   match compile_pattern(&parse_arena, &keywords, "x &Win mut") {
     Err(ParseError::BadThingAfterTypeInPattern(_)) => {}
-    other => panic!("expected BadThingAfterTypeInPattern, got {:?}", other),
+    other => panic!("expected BadThingAfterTypeInPattern"),
   }
 }

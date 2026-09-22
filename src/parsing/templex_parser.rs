@@ -8,7 +8,6 @@ use crate::parsing::parse_utils::{parse_region, try_skip_past_equals_while};
 
 type ParseResult<T> = Result<T, ParseError>;
 
-/// TemplexParser - parses type expressions
 pub struct TemplexParser<'p, 'ctx> {
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -22,7 +21,6 @@ where
     TemplexParser { parse_arena, keywords }
   }
 
-  /// Parse an array type expression
   pub fn parse_array(
     &self,
     original_iter: &mut ScrambleIterator<'p, '_>,
@@ -31,7 +29,6 @@ where
 
     let mut tentative_iter = original_iter.clone();
 
-    // Check for squared brackets
     let squared_contents;
     let size_scramble_iter_l = match tentative_iter.peek_cloned() {
       Some(INodeLEEnum::Squared(squared)) => {
@@ -42,9 +39,6 @@ where
       _ => return Ok(None),
     };
 
-    // Only empty brackets `[]T` are an array type (the runtime-sized array). The
-    // known-size array type is the ordinary generic `StaticArray<N, T>`, so a
-    // non-empty `[...]` is not an array type.
     if size_scramble_iter_l.has_next() {
       return Ok(None);
     }
@@ -62,7 +56,6 @@ where
     Ok(Some(result))
   }
 
-  /// Parse a function name (including operator names)
   pub fn parse_function_name(&self, iter: &mut ScrambleIterator<'p, '_>) -> Option<NameP<'p>> {
     match iter.peek_cloned() {
       Some(INodeLEEnum::Word(word)) => {
@@ -158,14 +151,12 @@ where
         }
       }
       Some(INodeLEEnum::Parend(ParendLE { range, .. })) => {
-        // Don't advance, we do that elsewhere
         Some(NameP(RangeL::new(range.begin(), range.begin()), self.keywords.underscores_call))
       }
       _ => None,
     }
   }
 
-  /// Parse a function prototype type
   pub fn parse_prototype(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -181,10 +172,6 @@ where
       None => return Err(ParseError::BadPrototypeName(iter.get_pos())),
     };
 
-    // The params are parsed here rather than through `parse_tuple`, which does not check that each
-    // element's tokens are exhausted: a bound param must be exactly a type, optionally followed by
-    // the `mut` placeholder for a future per-parameter borrow-checker modifier, which is recognized
-    // and discarded (nothing stores it yet). Anything else after the type is an error.
     let args_begin = iter.get_pos();
     let args = match iter.peek_cloned() {
       Some(INodeLEEnum::Parend(ParendLE { contents, .. })) => {
@@ -217,15 +204,12 @@ where
     Ok(Some(result))
   }
 
-  /// Parse a templex prefix (`&T`, `weak T`, `heap T`, `@T`) into the
-  /// corresponding structural ref variant. Returns None if no prefix.
   pub fn parse_ref_prefix(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
   ) -> ParseResult<Option<ITemplexPT<'p>>> {
     let begin = iter.get_pos();
 
-    // `weak T` → ITemplexPT::WeakRef
     if iter.try_skip_word(self.keywords.weak).is_some() {
       let inner = self.parse_templex_atom_and_call_and_prefixes(iter)?;
       return Ok(Some(ITemplexPT::WeakRef(WeakRefPT {
@@ -234,7 +218,6 @@ where
       })));
     }
 
-    // `own T` → ITemplexPT::OwnRef
     if iter.try_skip_word(self.keywords.own).is_some() {
       let inner = self.parse_templex_atom_and_call_and_prefixes(iter)?;
       return Ok(Some(ITemplexPT::OwnRef(OwnRefPT {
@@ -243,8 +226,6 @@ where
       })));
     }
 
-    // `held T` → ITemplexPT::BorrowRef with the held region (a borrow the caller proves the
-    // callee can't destroy). Takes no explicit region: held is itself a region.
     if iter.try_skip_word(self.keywords.held).is_some() {
       let inner = self.parse_templex_atom_and_call_and_prefixes(iter)?;
       return Ok(Some(ITemplexPT::BorrowRef(BorrowRefPT {
@@ -254,8 +235,6 @@ where
       })));
     }
 
-    // `&T` → ITemplexPT::BorrowRef. `&&T` parses as nested BorrowRef via the
-    // recursive parse_templex_atom_and_call_and_prefixes call — double-borrow.
     if iter.try_skip_symbol('&') {
       let inner = self.parse_templex_atom_and_call_and_prefixes(iter)?;
       let region = self.parse_trailing_group_clause(iter)?;
@@ -269,9 +248,6 @@ where
     Ok(None)
   }
 
-  /// Parse an optional trailing group clause `in g` on a borrow, e.g. `&Ship in g`. Near-term only a
-  /// single group name (`GroupP::Name`) is accepted; member/element/union group expressions come
-  /// later. Absent `in`, the borrow has no group (`RegionP::Unspecified`).
   fn parse_trailing_group_clause(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -282,10 +258,6 @@ where
     Ok(RegionP::Group(self.parse_group(iter)?))
   }
 
-  /// Parse a group expression, e.g. `g` at `&Ship in g` or inside `mut(g)`. A bare name
-  /// (`GroupP::Name`) followed by any number of path steps: `.member` (`GroupP::Member`) and `[]`
-  /// (`GroupP::Elements` — an element of the group), so `g.items[]` is an element of g's `items`.
-  /// Union group expressions come later.
   pub fn parse_group(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -298,14 +270,11 @@ where
       _ => return Err(ParseError::BadTypeExpression(iter.get_pos())),
     };
     loop {
-      // `...` — a descendant step; terminal, so nothing follows it. Checked before `.member`, since
-      // `try_skip_symbols` only advances when all three dots are present.
       if iter.try_skip_symbols(&['.', '.', '.']) {
         group = &*self.parse_arena.alloc(GroupP::Ellipsis { base: group });
         break;
       }
       match iter.peek_cloned() {
-        // `.member`
         Some(INodeLEEnum::Symbol(SymbolLE(_, '.'))) => {
           iter.advance();
           match iter.peek_cloned() {
@@ -317,7 +286,6 @@ where
             _ => return Err(ParseError::BadTypeExpression(iter.get_pos())),
           }
         }
-        // `[]` — empty brackets are an element step; a non-empty `[...]` is not a group step.
         Some(INodeLEEnum::Squared(squared)) => {
           let contents = squared.contents.clone();
           if ScrambleIterator::new(&contents).has_next() {
@@ -332,7 +300,6 @@ where
     Ok(group)
   }
 
-  /// Parse ending region suffix (type')
   pub fn parse_ending_region(
     &self,
     original_iter: &mut ScrambleIterator<'p, '_>,
@@ -344,7 +311,6 @@ where
       Some(region_rune) => region_rune,
     };
 
-    // This is an ending region, so nothing should follow
     if tentative_iter.has_next() {
       return Ok(None);
     }
@@ -354,7 +320,6 @@ where
     Ok(Some(region))
   }
 
-  /// Parse templex atom and any following calls/prefixes/suffixes
   pub fn parse_templex_atom_and_call_and_prefixes_and_suffixes(
     &self,
     original_iter: &mut ScrambleIterator<'p, '_>,
@@ -363,7 +328,6 @@ where
     Ok(inner)
   }
 
-  /// Parse a templex atom (basic type expression)
   pub fn parse_templex_atom(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -371,7 +335,6 @@ where
     assert!(iter.peek_cloned().is_some());
     let _begin = iter.get_pos();
 
-    // Try keywords first (lines 340-403)
     if let Some(range) = iter.try_skip_word(self.keywords.underscore) {
       return Ok(ITemplexPT::AnonymousRune(AnonymousRunePT { range }));
     }
@@ -381,22 +344,18 @@ where
     if let Some(range) = iter.try_skip_word(self.keywords.faalse) {
       return Ok(ITemplexPT::Bool(BoolPT { range, value: false }));
     }
-    // Try parsing prototype (lines 404-408)
     if let Some(proto) = self.parse_prototype(iter)? {
       return Ok(proto);
     }
 
-    // Try parsing tuple (lines 409-413)
     if let Some(tup) = self.parse_tuple(iter)? {
       return Ok(tup);
     }
 
-    // Try parsing array (lines 414-418)
     if let Some(array) = self.parse_array(iter)? {
       return Ok(array);
     }
 
-    // Parse other node types (lines 419-440)
     match iter.peek_cloned().expect("peek should not be empty") {
       INodeLEEnum::String(StringLE { range, parts }) => {
         iter.advance();
@@ -427,7 +386,6 @@ where
     }
   }
 
-  /// Parse template call arguments <...>
   pub fn parse_template_call_args(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -453,7 +411,6 @@ where
     Ok(Some(self.parse_arena.alloc_slice_from_vec(elements_p)))
   }
 
-  /// Parse a tuple type
   pub fn parse_tuple(
     &self,
     outer_iter: &mut ScrambleIterator<'p, '_>,
@@ -483,7 +440,6 @@ where
     }
   }
 
-  /// Parse templex atom and any following call
   pub fn parse_templex_atom_and_call(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -506,14 +462,12 @@ where
     Ok(atom)
   }
 
-  /// Parse templex atom, call, and prefixes
   pub fn parse_templex_atom_and_call_and_prefixes(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
   ) -> ParseResult<ITemplexPT<'p>> {
     assert!(iter.has_next());
 
-    // Check for 'in' keyword - should not be interpreted as a templex (lines 506-515)
     match iter.peek_cloned() {
       Some(INodeLEEnum::Word(WordLE { str, .. })) if str == self.keywords.r#in => {
         panic!("Should not interpret 'in' as a valid templex");
@@ -523,32 +477,26 @@ where
 
     let _begin = iter.get_pos();
 
-    // Try parsing an ending region (lines 525-529)
     if let Some(x) = self.parse_ending_region(iter)? {
       return Ok(ITemplexPT::RegionRune(x));
     }
 
-    // Try parsing interpreted type with ownership/region prefixes (lines 531-535)
     if let Some(x) = self.parse_ref_prefix(iter)? {
       return Ok(x);
     }
 
-    // Parse atom and call (line 537)
     self.parse_templex_atom_and_call(iter)
   }
 
-  /// Main entry point for parsing a templex
   pub fn parse_templex(&self, iter: &mut ScrambleIterator<'p, '_>) -> ParseResult<ITemplexPT<'p>> {
     self.parse_templex_atom_and_call_and_prefixes_and_suffixes(iter)
   }
 
-  /// Parse a typed rune (T: Type)
   pub fn parse_typed_rune(
     &self,
     original_iter: &mut ScrambleIterator<'p, '_>,
   ) -> ParseResult<Option<IRulexPR<'p>>> {
     match original_iter.peek2_cloned() {
-      // Don't parse "func moo()void" (lines 550-552)
       (Some(INodeLEEnum::Word(WordLE { str: name_str, .. })), _)
         if name_str == self.keywords.func =>
       {
@@ -558,7 +506,6 @@ where
         Some(INodeLEEnum::Word(WordLE { range: name_range, str: name_str })),
         Some(INodeLEEnum::Word(WordLE { range: type_range, .. })),
       ) => {
-        // Parse the rune name (or underscore for anonymous)
         let maybe_name = if name_str == self.keywords.underscore {
           None
         } else {
@@ -567,7 +514,6 @@ where
 
         original_iter.advance();
 
-        // Parse the rune type
         let tyype = match self.parse_rune_type(original_iter)? {
           None => panic!("Expected rune type"),
           Some(x) => x,
@@ -583,7 +529,6 @@ where
     }
   }
 
-  /// Parse a rule call
   pub fn parse_rule_call(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -598,7 +543,6 @@ where
       ) => {
         let range = RangeL::new(name_range.begin(), args_range.end());
 
-        // Parse the arguments
         let mut args_pr = Vec::new();
         let args_lr_clone = args_lr.clone();
         let args_iter = ScrambleIterator::new(&args_lr_clone);
@@ -619,31 +563,25 @@ where
     }
   }
 
-  /// Parse a rule atom
   pub fn parse_rule_atom(&self, iter: &mut ScrambleIterator<'p, '_>) -> ParseResult<IRulexPR<'p>> {
     let _begin = iter.get_pos();
 
-    // Try parsing a rule call (lines 637-641)
     if let Some(x) = self.parse_rule_call(iter)? {
       return Ok(x);
     }
 
-    // Try parsing a typed rune (lines 649-653)
     if let Some(x) = self.parse_typed_rune(iter)? {
       return Ok(x);
     }
 
-    // Parse a templex as fallback (lines 655-658)
     let t = self.parse_templex(iter)?;
     Ok(IRulexPR::Templex(t))
   }
 
-  /// Parse a rule up to equals precedence
   pub fn parse_rule_up_to_equals_precedence(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
   ) -> ParseResult<IRulexPR<'p>> {
-    // Try to find an equals sign while scouting ahead (lines 663-672)
     let maybe_before_iter = try_skip_past_equals_while(iter, |scouting_iter| {
       match scouting_iter.peek_cloned() {
         None => false,
@@ -657,11 +595,9 @@ where
 
     match maybe_before_iter {
       None => {
-        // No equals found, just parse a rule atom (line 673)
         self.parse_rule_atom(iter)
       }
       Some(mut before_iter) => {
-        // Found an equals, parse left and right sides (lines 674-687)
         let left = self.parse_rule_atom(&mut before_iter)?;
         let right = self.parse_rule_atom(iter)?;
         Ok(IRulexPR::Equals(EqualsPR {
@@ -673,12 +609,10 @@ where
     }
   }
 
-  /// Main entry point for parsing a rule
   pub fn parse_rule(&self, iter: &mut ScrambleIterator<'p, '_>) -> ParseResult<IRulexPR<'p>> {
     self.parse_rule_up_to_equals_precedence(iter)
   }
 
-  /// Parse a rune type (Ref, Int, etc.)
   pub fn parse_rune_type(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,

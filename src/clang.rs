@@ -1,9 +1,6 @@
-// Clang invocation for linking
-
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// Invoke clang to link the final executable
 pub fn invoke_clang(
     windows: bool,
     maybe_clang_path_override: Option<&str>,
@@ -50,10 +47,6 @@ pub fn invoke_clang(
         args.push(format!("--sysroot={}", sys.display()));
     }
     if is_wasi {
-        // wasm-ld --gc-sections (default) drops `main` because it isn't
-        // statically reachable from `_start` — wasi-libc's __main_void
-        // references main as a *weak* undef, which doesn't pin it. Force
-        // the export so the link keeps our entry point.
         args.push("-Wl,--export=main".to_string());
     }
 
@@ -62,15 +55,12 @@ pub fn invoke_clang(
         args.push("/SUBSYSTEM:CONSOLE".to_string());
         args.push(format!("/Fe:{}", exe_file.display()));
 
-        // Use absolute path for /Fo
         let output_dir_resolved = output_dir.canonicalize()
             .unwrap_or_else(|_| output_dir.to_path_buf());
         args.push(format!("/Fo:{}\\\\", output_dir_resolved.display()));
     } else {
         args.push("-o".to_string());
         args.push(exe_file.display().to_string());
-        // wasi-libc folds libm into libc, and -lm with no separate libm
-        // would error out.
         if !is_wasi {
             args.push("-lm".to_string());
         }
@@ -80,7 +70,6 @@ pub fn invoke_clang(
         args.push("-g".to_string());
     }
 
-    // Workaround for subprocess stderr handling
     args.push("-Wno-nullability-completeness".to_string());
     args.push("-Wno-availability".to_string());
     args.push("-Wno-format".to_string());
@@ -92,11 +81,6 @@ pub fn invoke_clang(
     if pie {
         args.push("-fPIE".to_string());
     } else if !windows && !is_wasi {
-        // Some Linux distros (Ubuntu 22.04+) default the system linker to PIE,
-        // which rejects non-PIC objects from the Vale backend with
-        // "relocation R_X86_64_32 ... can not be used when making a PIE object".
-        // Explicitly disable PIE link when the caller didn't request it.
-        // wasm-ld has no concept of PIE; the flag is rejected.
         args.push("-no-pie".to_string());
     }
 
@@ -107,10 +91,6 @@ pub fn invoke_clang(
             args.push("clang_rt.asan_dynamic_runtime_thunk-x86_64.lib".to_string());
         } else {
             args.push("-fsanitize=address".to_string());
-            // `-fsanitize=leak` is standalone-LSan (Linux). On Apple targets
-            // LSan integrates into ASan itself — enable at runtime via
-            // ASAN_OPTIONS=detect_leaks=1 (arm64-apple-darwin refuses the
-            // flag as unsupported).
             let is_apple = target_triple.map_or(cfg!(target_vendor = "apple"), |t| t.contains("apple"));
             if !is_apple {
                 args.push("-fsanitize=leak".to_string());

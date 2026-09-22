@@ -204,8 +204,6 @@ exported struct MyStruct { a int; }
   }
 }
 
-// VCOORD: enable when we have closures. Loads list.vale, which imports v.builtins.migrate and calls
-// migrate(...); the migrate builtin is currently disabled (it uses closures), so lexing can't find it.
 #[test]
 fn typing_pass_array_type_convertible() {
   let parse_bump = Bump::new();
@@ -216,8 +214,6 @@ fn typing_pass_array_type_convertible() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
 
-  // Loads list.vale, whose `drop` for a List exercises is_type_convertible
-  // on a RuntimeSizedArray vs a placeholder.
   let source = r"
 import list.*;
 exported func main() {
@@ -276,7 +272,6 @@ fn typing_pass_uses_same_instance() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
 
-  // Minimal program that triggers the `===` (vale_same_instance) builtin.
   let source = r"
 struct MyStruct { }
 exported func main() bool {
@@ -319,7 +314,6 @@ exported func main() bool {
     &code_source,
     typing_pass_options,
   );
-  // Just exercise the path; success means generate_function_body_same_instance ran.
   compile.expect_compiler_outputs();
 }
 
@@ -537,11 +531,8 @@ exported func main() {
   compile.expect_compiler_outputs();
 }
 
-// Exploratory: run the typing pass on roguelike.vale to gauge real-world coverage.
-// Loads the roguelike.vale source from disk, rewrites `stdlib.*` imports to use
-// the on-disk file layout, and feeds the program through compiler_test_compilation.
 #[test]
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn typing_pass_on_roguelike() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

@@ -1592,10 +1592,6 @@ void RCImm::defineConcreteStructNewFunction(StructDefinition* structDefM) {
         }
 
         // allocate() starts the new struct at RC=1 (see SRCAO in allocate()).
-        // Each share-typed field param arrives already aliased (+1) by the
-        // wrapper's regularReceive; the allocation stores those refs into the
-        // struct without re-aliasing, so no per-field alias/dealias is needed
-        // here — the +1 travels straight from arg into the new struct.
         auto structRef =
             allocate(FL(), functionState, builder, structRefMT, memberRefs);
 

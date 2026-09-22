@@ -1,4 +1,3 @@
-// Code formatting utilities
 
 pub enum IClass {
   W,

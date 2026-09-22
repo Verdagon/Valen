@@ -22,7 +22,6 @@ RUN apt-get update \
         zlib1g-dev libzstd-dev libcurl4-openssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Rust toolchain (rustup, default nightly — the frontend needs nightly features)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
 

@@ -40,8 +40,6 @@ pub fn replace_all(original: &str, replacements: &indexmap::IndexMap<&str, &str>
   str_acc
 }
 
-// Get all possible versions of original_map where the keys are the same
-// but the value for each is randomized.
 pub fn scrambles<T, Y>(original_map: &indexmap::IndexMap<T, Y>) -> Vec<indexmap::IndexMap<T, Y>>
 where
   T: Clone + Eq + Hash,

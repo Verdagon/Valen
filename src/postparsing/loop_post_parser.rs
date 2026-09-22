@@ -47,7 +47,6 @@ pub(crate) fn scout_each<'s, 'p, 'ctx>(
     context_region0,
     PostParser::<'s, 'p, '_>::no_declarations(),
     |stack_frame1, each_contents_lidb| {
-      // Per @PPSPASTNZ, synthesize loop desugaring as parser AST, allocated in parse_arena.
       let pa = post_parser.parse_arena;
       let kp = post_parser.keywords_p;
       let (stack_frame2, let_iterable_se, let_iterable_self_uses, let_iterable_child_uses): (
@@ -208,7 +207,6 @@ fn scout_each_body<'s, 'p, 'ctx>(
     post_parser.scout_arena,
     range,
     |stack_frame1, condition_lidb| {
-      // Per @PPSPASTNZ, synthesize loop iteration as parser AST, allocated in parse_arena.
       let next_lookup_expr_p: &'p IExpressionPE<'p> =
         &*pa.alloc(IExpressionPE::Lookup(pa.alloc(LookupPE {
           name: IImpreciseNameP::LookupName(NameP(in_keyword_range, kp.next)),
@@ -291,7 +289,6 @@ fn scout_each_body<'s, 'p, 'ctx>(
         context_region1,
         PostParser::<'s, 'p, '_>::no_declarations(),
         |stack_frame2, then_inner_lidb| {
-          // Per @PPSPASTNZ, allocate synthetic parser node in parse_arena
           let iteration_option_lookup_expr_p: &'p IExpressionPE<'p> =
             &*pa.alloc(IExpressionPE::Lookup(pa.alloc(LookupPE {
               name: IImpreciseNameP::IterationOptionName(in_keyword_range),
@@ -332,7 +329,6 @@ fn scout_each_body<'s, 'p, 'ctx>(
   )?;
   let if_se = &*post_parser.scout_arena.alloc(IExpressionSE::If(if_se));
 
-  // Per @PPSPASTNZ, allocate synthetic parser nodes in parse_arena
   let (stack_frame5, consume_some_se, consume_some_self_uses, consume_some_child_uses): (
     StackFrame<'s>,
     &'s IExpressionSE<'s>,

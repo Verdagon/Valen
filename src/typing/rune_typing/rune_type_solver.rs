@@ -1,5 +1,3 @@
-// VCOORD:
-
 use crate::postparsing::ast::GenericParameterS;
 use crate::postparsing::itemplatatype::ImplTemplataType;
 use crate::postparsing::itemplatatype::*;
@@ -100,14 +98,12 @@ pub struct RuneTypingTooManyMatchingTypes<'s> {
   pub range: RangeS<'s>,
   pub name: IImpreciseNameS<'s>,
 }
-impl<'s> RuneTypingTooManyMatchingTypes<'s> {} // end impl RuneTypingTooManyMatchingTypes
 
 #[derive(Debug)]
 pub struct RuneTypingCouldntFindType<'s> {
   pub range: RangeS<'s>,
   pub name: IImpreciseNameS<'s>,
 }
-impl<'s> RuneTypingCouldntFindType<'s> {} // end impl RuneTypingCouldntFindType
 
 #[derive(Debug)]
 pub struct FoundTemplataDidntMatchExpectedTypeA<'s> {
@@ -145,11 +141,6 @@ pub struct TemplataLookupResult<'s> {
   pub templata: ITemplataType<'s>,
 }
 
-/// Map a rune-type-solver path lookup into a solver lookup result. After the id-only refactor,
-/// StructDefinition/InterfaceDefinition templatas carry only ids, so their type and generic params
-/// come from the postparsed cache; every other templata answers tyype() cache-free. Shared by the
-/// IRuneTypeSolverEnv::lookup impls that need the citizen generic-params, so the cache access lives
-/// in one place instead of being copy-pasted per environment.
 pub fn citizen_or_templata_rune_type_lookup<'s, 't>(
   coutputs: &CompilerOutputs<'s, 't>,
   scout_arena: &ScoutArena<'s>,
@@ -470,8 +461,6 @@ fn solve_rule<'s, 't, E: IRuneTypeSolverEnv<'s, 't>>(
       IndexSet::default(),
     ),
     IRulexSR::Lookup(x) => {
-      // VCOORD: the rune-type solver must walk the path too, not just the typing solver — both
-      // need one notion of where a name resolves, or a collision types the rune off the wrong item.
       let actual_lookup_result = match env.lookup(coutputs, x.range.clone(), x.parts) {
         Err(_e) => {
           panic!("LookupSR solve error path not yet implemented");
@@ -510,7 +499,6 @@ fn solve_rule<'s, 't, E: IRuneTypeSolverEnv<'s, 't>>(
         scout_arena.intern_imprecise_name(IImpreciseNameValS::RuneName(RuneNameValS {
           rune: x.rune.rune.clone(),
         }));
-      // A rune name is a one-segment path — the degenerate case, spelled the same way.
       let lookup_path = scout_arena.alloc_slice_copy(&[lookup_name]);
       let actual_lookup_result = match env.lookup(coutputs, x.range.clone(), lookup_path) {
         Err(_e) => {
@@ -563,11 +551,6 @@ fn solve_rule<'s, 't, E: IRuneTypeSolverEnv<'s, 't>>(
             IndexSet::default(),
           )
         }
-        // Only primitives reach here: they are the one kind of type name the environment holds as a
-        // finished `ITemplataT::Kind` rather than a template, so the zero-arg Call @TNLTZACZ emits
-        // for a bare `int` arrives with a Kind in template position. Applying zero args to a kind is
-        // the identity. Every other name — citizens included, generic or not — resolves to a real
-        // template and takes the branch above.
         // VCOORD: now that the scout lowers bare names to zero-arg Calls, delete the Template->Kind
         // coercion in lookup_rune_type and its two-pass predicting machinery.
         // VCOORD: THIS IS A HACK. i think.
@@ -621,8 +604,6 @@ fn solve_rule<'s, 't, E: IRuneTypeSolverEnv<'s, 't>>(
       ]
       .into_iter()
       .collect();
-      // V: i removed this because its not really a templata so it cant be a conclusion, sound right?
-      // conclusions.insert(region.rune.clone(), ITemplataType::RegionTemplataType(RegionTemplataType {}));
       solver_state.commit_step::<IRuneTypeRuleError<'s>>(
         false,
         vec![rule_index],
@@ -753,14 +734,11 @@ pub fn solve_rune_types<'s, 't, E: IRuneTypeSolverEnv<'s, 't>>(
 where
   's: 't,
 {
-  // Iterate over LookupSR rules and pre-compute types via env.lookup.
-  // For now, with no rules in the simple test case, this is empty.
   let mut initially_known_runes: IndexMap<IRuneS<'s>, ITemplataType<'s>> = {
     let mut map = IndexMap::default();
     for rule in rules_s {
       match rule {
         IRulexSR::Lookup(lookup) => {
-          // VCOORD: same walk as the solve arm above — see its note.
           match env.lookup(coutputs, lookup.range.clone(), lookup.parts) {
             Err(e) => {
               return Err(RuneTypeSolveError {
@@ -811,55 +789,6 @@ where
             }
           }
         }
-        // IRulexSR::MaybeCoercingLookup(lookup) => {
-        // match env.lookup(lookup.range.clone(), lookup.name.clone()) {
-        // Err(e) => {
-        // return Err(RuneTypeSolveError {
-        // range: vec![lookup.range.clone()],
-        // failed_solve: FailedSolve {
-        // steps: vec![],
-        // conclusions: HashMap::default(),
-        // unsolved_rules: rules_s.to_vec(),
-        // unsolved_runes: vec![],
-        // error: ISolverError::RuleError(
-        // RuleError {
-        // err: e.into(),
-        // _phantom: PhantomData,
-        // }
-        // ),
-        // },
-        // });
-        // }
-        // Ok(result) => {
-        // let entries: Vec<(IRuneS<'s>, ITemplataType)> = match &result {
-        // We don't know whether we'll coerce this into a kind or a coord.
-        // IRuneTypeSolverLookupResult::Primitive(p) => {
-        // match &p.tyype {
-        // ITemplataType::KindTemplataType(_) => vec![],
-        // ITemplataType::TemplateTemplataType(t) if t.param_types.is_empty() => vec![],
-        // other => vec![(lookup.rune.rune.clone(), other.clone())],
-        // }
-        // }
-        // IRuneTypeSolverLookupResult::Citizen(c) => {
-        // match &c.tyype {
-        // ITemplataType::TemplateTemplataType(t) if t.param_types.is_empty() && matches!(&*t.return_type, ITemplataType::KindTemplataType(_)) => vec![],
-        // other => vec![(lookup.rune.rune.clone(), other.clone())],
-        // }
-        // }
-        // IRuneTypeSolverLookupResult::Templata(t) => {
-        // match &t.templata {
-        // ITemplataType::TemplateTemplataType(tt) if tt.param_types.is_empty() && matches!(&*tt.return_type, ITemplataType::KindTemplataType(_)) => vec![],
-        // ITemplataType::KindTemplataType(_) => vec![],
-        // other => vec![(lookup.rune.rune.clone(), other.clone())],
-        // }
-        // }
-        // };
-        // for (k, v) in entries {
-        // map.insert(k, v);
-        // }
-        // }
-        // }
-        // }
         _ => {
           // Other rules don't contribute to initially known runes
         }
@@ -871,8 +800,6 @@ where
     initially_known_runes.insert(k, v);
   }
 
-  // Compute all_runes for solver = rules.flatMap(getRunes) ++ initiallyKnownRunes.keys, deduplicated
-  // (additionalRunes are NOT included here — they're added after solving for the completeness check)
   let mut all_runes_set: crate::utils::fx::IndexSet<IRuneS<'s>> =
     crate::utils::fx::IndexSet::default();
   for rule in rules_s {
@@ -900,7 +827,6 @@ where
     solver_state.userify_conclusions().iter().for_each(|(rune, conclusion)| {
       sanity_check_conclusion(rune.clone(), conclusion);
     });
-    // Stage 1: simple solve
     match solver_state.get_next_solvable() {
       None => break, // No more solvable rules
       Some(rule_index) => {

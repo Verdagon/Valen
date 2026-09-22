@@ -32,7 +32,6 @@ fn read_code_from_resource(resource_filename: &str) -> String {
   panic!("Unimplemented: read_code_from_resource");
 }
 
-// VCOORD: enable this
 #[test]
 fn simple_lambda() {
   let parse_bump = Bump::new();
@@ -59,7 +58,6 @@ fn simple_lambda() {
   assert_eq!(coutputs.lookup_function_by_str("main").header.return_type, expected);
 }
 
-// VCOORD: enable this
 #[test]
 fn lambda_with_one_magic_arg() {
   let parse_bump = Bump::new();
@@ -95,12 +93,6 @@ fn lambda_with_one_magic_arg() {
   assert_eq!(coutputs.lookup_lambda_in("main").header.return_type, KindT::Int(IntT { bits: 32 }),);
 }
 
-// Regression for 24338999 (struct members got their own MemberNameT, distinct from variable
-// names). A closure that captures a local and reads it lowers to a MemberLookup on the closure
-// struct. That MemberLookup must name its member by the struct's member name (IVarNameT::Member),
-// not the capture's original Local name — otherwise instantiation's member match
-// (`IVarNameT::Member(m.name) == member_name`, instantiator.rs) never hits and it panics
-// "member name not found in struct". See tests_generic_s_lambda_calling_parent_function_s_bound.
 #[test]
 fn closure_capture_read_names_its_member() {
   let parse_bump = Bump::new();
@@ -115,8 +107,6 @@ exported func main() int { a = 7; return { a }(); }
 "#;
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  // Borrow checker off: a closure capturing a reference is a deferred borrow-checker case that
-  // panics before typing output is available, and this test is about the typed MemberLookup's name.
   let mut compile = compiler_test_compilation_without_borrow_check(
     &typing_interner,
     &scout_arena,
@@ -127,23 +117,12 @@ exported func main() int { a = 7; return { a }(); }
   );
   let coutputs = compile.expect_compiler_outputs();
   let lambda = coutputs.lookup_lambda_in("main");
-  // Reading captured `a` lowers to a MemberLookup on the closure struct; its member must be named
-  // by the struct's member name (IVarNameT::Member), not the capture's original Local name.
   collect_only_tnode!(
     NodeRefT::FunctionDefinition(lambda),
     NodeRefT::MemberLookup(MemberLookupTE { member_name: IVarNameT::Member(_), .. }) => Some(())
   );
 }
 
-// Repro of the end_to_end `arrays::ssamutdestroyintocallable` failure, reduced to the
-// typing pass: mutating a closure-captured variable (`set sum` inside a lambda that
-// captured `sum`) should compile. The typing pass now lowers the mutation (mirroring the
-// read path in `evaluate_addressible_lookup_for_mutate`), but the borrow checker cannot yet
-// derive a group for a closure-captured reference — the deferred group-generic-closures
-// feature (borrow_types.rs ~347). This is a live
-// repro: it panics in the borrow checker until that feature lands, at which point
-// `expect_compiler_outputs` should succeed and this becomes a passing regression test.
-// Ignored for now (the feature is a large deferred piece); un-ignore when it lands.
 #[test]
 fn mutate_captured_variable_compiles() {
   let parse_bump = Bump::new();
@@ -167,7 +146,6 @@ fn mutate_captured_variable_compiles() {
   let _ = compile.expect_compiler_outputs();
 }
 
-// VCOORD: enable this
 #[test]
 fn lambda_is_reused() {
   let parse_bump = Bump::new();
@@ -199,7 +177,6 @@ exported func main() {
   assert_eq!(lambdas.len(), 1);
 }
 
-// VCOORD: enable this
 #[test]
 fn lambda_called_with_different_types() {
   let parse_bump = Bump::new();
@@ -231,7 +208,6 @@ exported func main() {
   assert_eq!(lambdas.len(), 2);
 }
 
-// VCOORD: enable this
 #[test]
 fn curried_lambda() {
   let parse_bump = Bump::new();
@@ -263,7 +239,6 @@ exported func main() {
   assert_eq!(lambdas.len(), 3);
 }
 
-// VCOORD: enable this
 #[test]
 fn lambda_with_a_type_specified_param() {
   let parse_bump = Bump::new();
@@ -273,7 +248,6 @@ fn lambda_with_a_type_specified_param() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: function-call +(a,a) → binary a + a (auto-borrows operands to match +(&int, &int) post-flip)
   let code = r"
 import v.builtins.arith.*;
 exported func main() int {
@@ -309,7 +283,6 @@ exported func main() int {
   );
 }
 
-// VCOORD: enable this
 #[test]
 fn lambda_emits_call_and_drop() {
   let parse_bump = Bump::new();
@@ -322,7 +295,6 @@ fn lambda_emits_call_and_drop() {
   let code = r#"
 exported func main() int { return { 7 }(); }
 "#;
-  // AFTERM: we should move away from the .or stuff for resolving
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
@@ -335,7 +307,6 @@ exported func main() int { return { 7 }(); }
   );
   let coutputs = compile.expect_compiler_outputs();
   let main = coutputs.lookup_function_by_str("main");
-  // Exactly one FunctionCall in main is the lambda's __call.
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
       NodeRefT::FunctionCall(FunctionCallTE {
@@ -345,7 +316,6 @@ exported func main() int { return { 7 }(); }
           ..
       }) => Some(())
   );
-  // Exactly one FunctionCall in main is the lambda struct's auto-generated drop.
   collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
       NodeRefT::FunctionCall(FunctionCallTE {
@@ -362,7 +332,6 @@ exported func main() int { return { 7 }(); }
   );
 }
 
-// VCOORD: enable this
 #[test]
 fn tests_lambda_and_concept_function() {
   let parse_bump = Bump::new();
@@ -409,7 +378,6 @@ exported func main() {
 
 // VCOORD: enable this
 #[test]
-// VCOORD: re enable w borrowing
 fn lambda_inside_different_function_with_same_name() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -418,7 +386,6 @@ fn lambda_inside_different_function_with_same_name() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: print(x) where x is captured int → needs copy
   let code = r#"
 import printutils.*;
 
@@ -457,7 +424,6 @@ exported func main() {
 }
 
 #[test]
-// VCOORD: re enable w borrowing
 fn lambda_inside_template() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -466,7 +432,6 @@ fn lambda_inside_template() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: where `func print(&T)void` → `func print(T)void`; `print(x)` → `print(__copy_prim(x))` (auto-coerce-reversal of borrow + addressible-primitive capture)
   let code = r#"
 import v.builtins.drop.*;
 import printutils.*;
@@ -506,7 +471,6 @@ exported func main() {
 
 // VCOORD: enable this
 #[test]
-// VCOORD: re enable w borrowing
 fn curried_lambda_inside_template() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -515,7 +479,6 @@ fn curried_lambda_inside_template() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  // TSUGAR: helper(4) → helper(&4); helper("bork") → helper(&"bork") — helper wants &T, `4`/`"bork"` are Own
   let code = r#"
 import v.builtins.drop.*;
 func helper<T, g'>(x &T in g) &T in g {
@@ -546,12 +509,7 @@ exported func main() {
   assert_eq!(lambdas.len(), 2);
 }
 
-// Probe for the primitive-flip experiment: same body as curried_lambda_inside_template
-// but with explicit `&` on the literal call-site args. Verifies whether the parser/typer
-// already supports `&` on rvalue literals as the auto-borrow workaround.
-// VCOORD: enable this
 #[test]
-// VCOORD: re enable w borrowing
 fn curried_lambda_inside_template_explicit_borrow_probe() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

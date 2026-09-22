@@ -1,7 +1,3 @@
-// # Don't Use Ellipses In Matches (DUEIM)
-// By default, don't like using ellipses in matches. We prefer to use explicit matches.
-// Only the human should use ellipses. This is because explicit matches are a signal of when we
-// might need to consider extra code at the pattern site whenever we add a new field to the struct.
 
 use crate::interner::StrI;
 use crate::keywords::Keywords;
@@ -220,7 +216,6 @@ where
   F: Fn(NodeRefP<'p>) -> Option<T>,
 {
   collect_if(pred, out, NodeRefP::Function(function));
-  // Recurse down into function's fields
   let FunctionP { range: _range, header, body } = function;
   visit_function_header(pred, out, header);
   if let Some(body) = body {
@@ -937,9 +932,6 @@ where
   out
 }
 
-/// Deep search helper; if the given pattern matches anything in the given expr, then return
-/// the given body's result.
-/// See test_collect_where_finds_function_by_name for an example.
 #[macro_export]
 macro_rules! collect_where {
   ($expr:expr, $pattern:pat => $body:expr) => {{

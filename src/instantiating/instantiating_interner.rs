@@ -4,11 +4,6 @@ use crate::utils::arena_index_map::ArenaIndexMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 
-/// Arena wrapper for the instantiating pass. Instantiateds are write-once / read-once and are
-/// NOT interned, so this only hands out arena allocations — no deduplication, no canonical
-/// identity. (It keeps the `InstantiatingInterner` name and `alloc*` surface the pass already
-/// threads; the dedup maps and `intern_*` methods are gone.)
-/// Temporary state (see @TFITCX)
 pub struct InstantiatingInterner<'s, 'i>
 where 's: 'i,
 {
@@ -23,7 +18,6 @@ where 's: 'i,
         InstantiatingInterner { bump, _marker: PhantomData }
     }
 
-    // --- Arena access ---
     pub fn bump(&self) -> &'i Bump { self.bump }
     pub fn alloc<T>(&self, val: T) -> &'i mut T { self.bump.alloc(val) }
     pub fn alloc_slice_copy<T: Copy>(&self, src: &[T]) -> &'i [T] {
@@ -44,7 +38,7 @@ where 's: 'i,
     }
 }
 
-// V: figure out where these go
+// V: figure out a better place for these
 #[cfg(all(test, any()))]
 mod tests {
     use super::*;
@@ -60,7 +54,7 @@ mod tests {
         let r1 = intr.intern_struct_it_si(v1);
         let r2 = intr.intern_struct_it_si(v2);
 
-        // Pointer equality: two equal Val inputs canonicalize to the same arena ref.
+        // Two equal Val inputs should be the same pointer.
         assert!(eq(r1, r2));
     }
 
@@ -81,11 +75,6 @@ mod tests {
         }
     }
 
-    // Region-mode separation is enforced at the type level — `StructIT` and
-    // `StructIT` are distinct types that can't be confused, so the interner's
-    // 3 per-mode HashMaps are statically separate. No runtime test needed (and
-    // address-level checks are unreliable while StructIT is still a ZST due to
-    // bare-placeholder IdI).
 
     #[test]
     fn intern_name_si_canonicalizes_via_family() {
@@ -107,7 +96,7 @@ mod tests {
             _ => unreachable!(),
         };
 
-        // Two equal Val inputs canonicalize to the same arena ref via family dispatch.
+        // Two equal Val inputs should be the same pointer.
         assert!(eq(r1, r2));
     }
 
@@ -120,7 +109,6 @@ mod tests {
         let r1 = intr.intern_package_top_level_name_si(v);
         let r2 = intr.intern_package_top_level_name_si(v);
 
-        // Per-concrete wrapper goes through the family dispatch and unwraps.
         assert!(eq(r1, r2));
     }
 }

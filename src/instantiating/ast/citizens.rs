@@ -15,7 +15,7 @@ pub enum ICitizenDefinitionI<'s, 'i> {
     InterfaceDefinitionI(&'i InterfaceDefinitionI<'s, 'i>),
 }
 
-/// Temporary state
+
 pub struct StructDefinitionI<'s, 'i> {
     pub instantiated_citizen: &'i StructIT<'s, 'i>,
     pub attributes: &'i [ICitizenAttributeI<'s>],
@@ -34,9 +34,6 @@ impl<'s, 'i> StructDefinitionI<'s, 'i> {
 }
 
 
-/// A struct member is name-keyed and carries an onion kind directly — no reference/address
-/// member split (addressibility is retired). Mirrors typing's named + KindT members.
-/// Temporary state
 #[derive(PartialEq, Eq, Hash)]
 pub struct StructMemberI<'s, 'i> {
     pub name: IVarNameI<'s, 'i>,
@@ -45,7 +42,7 @@ pub struct StructMemberI<'s, 'i> {
 
 
 
-/// Temporary state
+
 pub struct InterfaceDefinitionI<'s, 'i> {
     pub instantiated_interface: &'i InterfaceIT<'s, 'i>,
     pub attributes: &'i [ICitizenAttributeI<'s>],

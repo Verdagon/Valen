@@ -165,7 +165,7 @@ fn string_with_hex_escape() {
     assert_eq!(result, "sprog\u{001b}woggle");
 }
 
-#[ignore = "R3 runtime twin: VM transmute asserts Share<->Share, tripped by @str->&str share-peel (heap.rs:577)"]
+#[ignore]
 #[test]
 fn int_to_string() {
     let compilation_bump = bumpalo::Bump::new();
@@ -191,7 +191,7 @@ fn int_to_string() {
     }
 }
 
-#[ignore = "R3 runtime twin: VM transmute asserts Share<->Share, tripped by @str->&str share-peel (heap.rs:577)"]
+#[ignore]
 #[test]
 fn i64_to_string() {
     let compilation_bump = bumpalo::Bump::new();
@@ -217,7 +217,7 @@ fn i64_to_string() {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn string_length() {
     let compilation_bump = bumpalo::Bump::new();
@@ -243,7 +243,7 @@ fn string_length() {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn strings_equal() {
     let compilation_bump = bumpalo::Bump::new();
@@ -270,8 +270,7 @@ fn strings_equal() {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "share-blanket / bound-resolution not yet honest for clone-of-borrow-in-generics; needs `&&T` structural distinctness or primitive-borrow flip"]
+#[ignore]
 fn string_interpolate() {
     unimplemented!();
     /*
@@ -300,7 +299,7 @@ fn string_interpolate() {
     */
 }
 
-#[ignore = "strings not implemented yet"]
+#[ignore]
 #[test]
 fn slice_a_slice() {
     let compilation_bump = bumpalo::Bump::new();

@@ -57,7 +57,7 @@ fn or() {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn and_short_circuiting() {
     let compilation_bump = bumpalo::Bump::new();
@@ -79,7 +79,7 @@ fn and_short_circuiting() {
     assert_eq!(compile.eval_for_stdout(Vec::new()).unwrap(), "bork!");
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn or_short_circuiting() {
     let compilation_bump = bumpalo::Bump::new();

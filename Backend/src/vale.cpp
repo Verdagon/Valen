@@ -1257,9 +1257,6 @@ int32_t finalizeCompile(GlobalState* globalState) {
   return 0;
 }
 
-// Copy the frontend's (basename -> absolute path) source-file map onto the Program, so DWARF
-// emission (getOrCreateDIFile) can record a real DW_AT_comp_dir. No-op when the frontend supplied
-// none (interop, or inputs with no on-disk file).
 static void loadSourcePaths(
     Program* program, const SourceFilePathFFI* sourcePaths, size_t numSourcePaths) {
   for (size_t i = 0; i < numSourcePaths; i++) {
@@ -1287,8 +1284,6 @@ static int32_t compileStandalone(
   LLVMTargetDataRef dataLayout = LLVMCreateTargetDataLayout(machine);
   GlobalState globalState(opt, context, mod, machine, dataLayout);
   loadSourcePaths(program, sourcePaths, numSourcePaths);
-  // Standalone valec: a `main` export makes this a binary — emit the libc `main` entry;
-  // no `main` is a library, so no entry (compileValeCode returns nullptr).
   Prototype* valeMainPrototype = compileValeCode(&globalState, metalCache, program);
   if (valeMainPrototype != nullptr) {
     makeEntryFunction(&globalState, valeMainPrototype, "main", /*emitLibcShim=*/true);
@@ -1348,8 +1343,6 @@ static int32_t compileIntoModuleFromRustc(
     return ok == 0 ? 0 : (int32_t)ExitCode::BadOpts;
   }
   auto modRef = reinterpret_cast<LLVMModuleRef>(mod);
-  // rustc already set the module's data layout from the target; read it off as-is (no
-  // machine to derive it from, and re-deriving could drift from rustc's).
   LLVMTargetDataRef dataLayout = LLVMGetModuleDataLayout(modRef);
   GlobalState globalState(
       &valeOptions,

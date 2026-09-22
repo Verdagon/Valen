@@ -19,7 +19,7 @@ use crate::testvm::von::IVonData;
 use crate::testvm::von::VonInt;
 pub struct ArrayListTest;
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn simple_array_list_no_optionals() {
     let compilation_bump = bumpalo::Bump::new();
@@ -74,7 +74,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn doubling_array_list() {
     let compilation_bump = bumpalo::Bump::new();
@@ -111,7 +111,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn array_list_zero_constructor() {
     let compilation_bump = bumpalo::Bump::new();
@@ -148,7 +148,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn array_list_len() {
     let compilation_bump = bumpalo::Bump::new();
@@ -183,7 +183,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn array_list_set() {
     let compilation_bump = bumpalo::Bump::new();
@@ -220,7 +220,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "blocked on migrate builtin (__vbi_panic); re-enable when borrow-group (R1) lands"]
+#[ignore]
 #[test]
 fn array_list_with_optionals_with_mutable_element() {
     let compilation_bump = bumpalo::Bump::new();
@@ -273,7 +273,6 @@ fn mutate_mutable_from_in_lambda() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    // Mutable capture (`set m = ...` inside a lambda), so borrow-check off like the closure tests.
     let mut compile = test_without_borrow_check(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
@@ -320,7 +319,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn move_mutable_from_in_lambda() {
     let compilation_bump = bumpalo::Bump::new();
@@ -378,7 +377,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn remove_from_middle() {
     let compilation_bump = bumpalo::Bump::new();
@@ -418,7 +417,7 @@ exported func main() {
     compile.eval_for_kind_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn remove_from_beginning() {
     let compilation_bump = bumpalo::Bump::new();

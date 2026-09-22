@@ -50,8 +50,6 @@ where
       self.typing_interner,
       self.translate_generic_template_function_name(function.name, arg_types),
     ));
-    // Register the lambda's __call FunctionS under its LambdaCallFunctionTemplate id — the id the
-    // borrow checker's resolve_callee looks up — so a call to a lambda has a postparsed present.
     coutputs.register_postparsed_function(*name, function);
     let mut builder = TemplatasStoreBuilder::new(name);
     builder.add_entries(self.scout_arena, entries);
@@ -260,8 +258,6 @@ where
       self.typing_interner,
       self.translate_generic_template_function_name(function.name, arg_types),
     );
-    // Register a light lambda's __call FunctionS under its LambdaCallFunctionTemplate id (the id the
-    // borrow checker's resolve_callee looks up), mirroring the closure banner above.
     coutputs.register_postparsed_function(outer_env_id, function);
     let outer_env = self.make_env_without_closure_stuff(parent_env, function, outer_env_id, false);
     self.evaluate_templated_light_banner_from_call(

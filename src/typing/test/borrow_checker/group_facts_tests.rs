@@ -1,17 +1,7 @@
-//! Ground-truth aliasing facts — the region-free half of the aliasing analysis. For each function the
-//! checker records, per instruction, the set of groups it accesses (a load/store touches exactly one; a
-//! call reaches the set its arguments can reach). The backend numbers the groups and derives
-//! `!alias.scope`/`!noalias` by complement. These tests assert the checker's ground truth via
-//! `GroupFactsView`: the group paths (index = per-function scope id) and the per-instruction accessed
-//! sets. The unified map is untagged, so a call is told apart from an access only by its set (a no-arg
-//! call's empty set, or a call's larger reach set), not by a kind field.
 
 use super::util::{group_facts_of, group_facts_of_with_arrays};
 use std::collections::HashSet;
 
-// `a` and `b` share group `g`, so there is exactly one group. Every access (through either reference) is
-// into `g`, so every non-empty set is `{0}`. The no-argument `nothing()` call reaches no group, so its
-// set is empty — the one empty set among the instructions, which the backend will `!noalias` against `g`.
 #[test]
 fn shared_group_accesses_map_to_the_one_group_and_noarg_call_reaches_nothing() {
   let facts = group_facts_of(
@@ -49,9 +39,6 @@ exported func main() int {
   );
 }
 
-// A lone borrow parameter is the whole-function sole reference into its group — the param-level `noalias`
-// attribute already covers it. But `!alias.scope` is inert on its own and free to emit, so we record its
-// accesses uniformly like any other: `solo`'s accesses are recorded, all into the one group `g`.
 #[test]
 fn whole_function_sole_reference_accesses_are_still_recorded() {
   let facts = group_facts_of(
@@ -80,9 +67,6 @@ exported func main() int {
   );
 }
 
-// With no call at all, there is nothing to `!noalias` and so the tags are inert — but we still record the
-// accesses uniformly (no region gate). `do_things` has one group and every instruction accesses it, so
-// there is no empty (call-reaching-nothing) set.
 #[test]
 fn tail_without_a_call_still_records_accesses() {
   let facts = group_facts_of(
@@ -112,10 +96,6 @@ exported func main() int {
   );
 }
 
-// Per-child scopes: two runtime-sized-array members of one struct (`lvl.tiles`, `lvl.foes`) are distinct
-// child groups `l.tiles[]` and `l.foes[]` — both under root `l`, but genuinely disjoint heap buffers, so
-// a load through each element reference must land in its OWN scope, not be collapsed to the shared root
-// `l`.
 #[test]
 fn sibling_array_members_get_distinct_child_scopes() {
   let facts = group_facts_of_with_arrays(
@@ -146,9 +126,6 @@ exported func main() int {
   assert!(distinct.len() >= 2, "the two element loads should land in distinct scopes, got {distinct:?}");
 }
 
-// Direct element writes (`set lvl.tiles[0] = …`, not via a bound reference) must record the element's
-// child group too — otherwise the same element memory is tagged the parent scope `l` when written
-// directly but `l.tiles[]` when written through a bound ref, an unsound split.
 #[test]
 fn direct_element_accesses_get_distinct_child_scopes() {
   let facts = group_facts_of_with_arrays(
@@ -175,9 +152,6 @@ exported func main() int {
   assert!(distinct.len() >= 2, "the two direct element writes should land in distinct scopes, got {distinct:?}");
 }
 
-// Every parameter's group is counted, even one never directly accessed — the design numbers all groups
-// (e.g. `l` and `s` in its attack example, only passed to calls) so scope ids are complete. Here `b`'s
-// group `h` is never touched, yet must still get a scope number.
 #[test]
 fn unaccessed_parameter_group_is_still_counted() {
   let facts = group_facts_of(
@@ -201,9 +175,6 @@ exported func main() int {
   assert!(facts.group_paths.iter().any(|n| n == "h"), "expected h (unaccessed param group) to still be counted, got {:?}", facts.group_paths);
 }
 
-// A call handed a *parent* reference reaches that group AND every descendant group — passing `lvl`
-// (group `l`) can touch `l.tiles[]` and `l.foes[]` through it. So the call's reach is the downward
-// closure over the group universe, seen here as an instruction whose accessed set has all three groups.
 #[test]
 fn call_reaches_descendants_of_its_argument_group() {
   let facts = group_facts_of_with_arrays(
@@ -225,7 +196,6 @@ exported func main() int {
 "#,
     "do_things",
   );
-  // Universe: l (param), l.tiles[], l.foes[] (accessed). reads_level(lvl) reaches all three.
   assert!(facts.group_paths.len() >= 3, "expected l + two child groups, got {:?}", facts.group_paths);
   assert!(
     facts.accessed_group_sets.iter().any(|s| s.len() >= 3),
@@ -234,9 +204,6 @@ exported func main() int {
   );
 }
 
-// A static-sized array is inline, so a borrow of its element carries the PARENT array's group — no
-// distinct `Elements` child scope, unlike a runtime-sized array. Here `b` borrows an inferred SSA
-// local and `&b[0]` folds into `b`'s group (`arr`), so there is no `arr[]` scope.
 #[test]
 fn static_sized_array_element_ref_folds_into_parent_group() {
   let facts = group_facts_of_with_arrays(

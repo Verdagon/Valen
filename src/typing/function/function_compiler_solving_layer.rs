@@ -118,7 +118,6 @@ where
       all_rules.iter().copied().filter(|r| include_rule_in_call_site_solve(r)).collect();
 
     let call_range_t: &'t [RangeS<'s>] = self.typing_interner.alloc_slice_copy(call_range);
-    // VTBRX: thread coutputs/calling_env/call_range_t/call_location/context_region into this call (seam signature change, Edit 2).
     let initial_sends = self.assemble_initial_sends_from_args(
       call_range[0],
       function,
@@ -140,9 +139,6 @@ where
       IndexMap::default(),
     )?;
 
-    // Feed each argument type into its param's value_type_rune: the send becomes an Equals rule plus
-    // an InitialKnown, and its sender rune gets a Kind type. Without this the arg types never reach
-    // the solve, and any param-bearing call comes back SolveIncomplete.
     for s in initial_sends {
       initial_knowns.push(InitialKnown { rune: s.sender_rune, templata: s.send_templata });
       call_site_rules.push(IRulexSR::Equals(EqualsSR {
@@ -165,8 +161,6 @@ where
         },
         coutputs,
         &call_site_rules,
-        // Empty because this resolves a call (see DBDAR) rather than defining, so the callee's bounds
-        // must be proven rather than conjured.
         &[],
         &rune_to_type,
         call_range_t,
@@ -221,15 +215,15 @@ where
     let instantiation_bound_args = self.typing_interner.alloc(InstantiationBoundArgumentsT {
             rune_to_bound_prototype: self.typing_interner.alloc_index_map_from_iter(
                 instantiation_bound_params.rune_to_bound_prototype.iter()
-                    .map(|(_k, _v)| panic!("implement: evaluate_templated_function_from_call_for_banner — rune_to_bound_prototype passthrough"))
+                    .map(|(_k, _v)| panic!("implement: evaluate_templated_function_from_call_for_banner"))
             ),
             rune_to_citizen_rune_to_reachable_prototype: self.typing_interner.alloc_index_map_from_iter(
                 instantiation_bound_params.rune_to_citizen_rune_to_reachable_prototype.iter()
-                    .map(|(_x, _v)| panic!("implement: evaluate_templated_function_from_call_for_banner — InstantiationReachableBoundArgumentsT mapping"))
+                    .map(|(_x, _v)| panic!("implement: evaluate_templated_function_from_call_for_banner"))
             ),
             rune_to_bound_impl: self.typing_interner.alloc_index_map_from_iter(
                 instantiation_bound_params.rune_to_bound_impl.iter()
-                    .map(|(_k, _v)| panic!("implement: evaluate_templated_function_from_call_for_banner — rune_to_bound_impl passthrough"))
+                    .map(|(_k, _v)| panic!("implement: evaluate_templated_function_from_call_for_banner"))
             ),
         });
     coutputs.add_instantiation_bounds(
@@ -264,15 +258,6 @@ where
       _ => {}
     }
 
-    // Per @ECSIIOSZ, this is the per-call-site solver for function call resolution: argument
-    // types become InitialSends, explicit template args become InitialKnowns, and
-    // assemble_call_site_rules filters per SROACSD.
-    //
-    // VCOORD: A user param's type-binding rules live per-param rather than in header_rules, so both the
-    // solve and rune-typing must fold them in or the param runes are never bound (@PFVSZ). The
-    // sites at :407, :556 and :720 do; this one does not, so it is wrong for any function with a
-    // source-written parameter. Fold `params.flat_map(value_type_rules ++ type_outer_ref_rules)`
-    // in the way they do.
     let all_rules: Vec<IRulexSR<'s>> = function
       .header_rules
       .iter()
@@ -285,7 +270,6 @@ where
       all_rules.iter().copied().filter(|r| include_rule_in_call_site_solve(r)).collect();
 
     let call_range_t: &'t [RangeS<'s>] = self.typing_interner.alloc_slice_copy(call_range);
-    // VTBRX: thread coutputs/calling_env/call_range_t/call_location/context_region into this call (seam signature change, Edit 2).
     let initial_sends = self.assemble_initial_sends_from_args(
       call_range[0],
       function,
@@ -307,9 +291,6 @@ where
       IndexMap::default(),
     )?;
 
-    // Feed each argument type into its param's value_type_rune: the send becomes an Equals rule plus
-    // an InitialKnown, and its sender rune gets a Kind type. Without this the arg types never reach
-    // the solve, and any param-bearing call comes back SolveIncomplete.
     for s in initial_sends {
       initial_knowns.push(InitialKnown { rune: s.sender_rune, templata: s.send_templata });
       call_site_rules.push(IRulexSR::Equals(EqualsSR {
@@ -332,8 +313,6 @@ where
         },
         coutputs,
         &call_site_rules,
-        // Empty because this resolves a call (see DBDAR) rather than defining, so the callee's bounds
-        // must be proven rather than conjured.
         &[],
         &rune_to_type,
         call_range_t,
@@ -442,9 +421,6 @@ where
     }
   }
 
-  // IOW, add the necessary data to turn the near env into the runed env.
-  // The reachable_bounds_from_params_and_return harvest violates @BDPFWDZ — the bound prototypes
-  // are pushed downward from each citizen-typed param's inner env into this near-env.
   pub fn add_runed_data_to_near_env(
     &self,
     near_env: &BuildingFunctionEnvironmentWithClosuredsT<'s, 't>,
@@ -455,10 +431,6 @@ where
     let identifying_templatas: Vec<ITemplataT<'s, 't>> =
       identifying_runes.iter().map(|r| *templatas_by_rune.get(r).unwrap()).collect();
 
-    // reachableBoundsFromParamsAndReturn.zipWithIndex.toVector
-    //   .map({ case (t, i) => (interner.intern(ReachablePrototypeNameT(i)), TemplataEnvEntry(t)) }) ++
-    // templatasByRune.toVector
-    //   .map({ case (k, v) => (interner.intern(RuneNameT(k)), TemplataEnvEntry(v)) })
     let entries_list: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> =
       reachable_bounds_from_params_and_return
         .iter()
@@ -478,7 +450,6 @@ where
         }))
         .collect();
 
-    // newEntries = templatas.addEntries(interner, entries_list)
     let new_entries = self.typing_interner.alloc(near_env.templatas.add_entries(
       self.typing_interner,
       self.scout_arena,
@@ -517,11 +488,6 @@ where
     let function = outer_env.function;
     self.check_closure_concerns_handled(outer_env);
 
-    // A user param's type-binding rules live per-param (value_type_rules + type_outer_ref_rules),
-    // not in function.rules, so both the call-site solve and rune-typing must fold them in or the
-    // param runes are never bound (@PFVSZ produced-but-not-consumed). This is the call-site twin
-    // of the defining-path wiring at :671. Return-type rules already ride in function.rules. Both
-    // call_site_rules and derive_rune_to_type (below) use all_rules. // VCOORD: rewrite comment
     let all_rules: Vec<IRulexSR<'s>> = function
       .header_rules
       .iter()
@@ -600,8 +566,6 @@ where
 
     let mut loop_check = function.generic_params.len() as i32 + 1;
 
-    // Per @DRSINI, defaults are added here incrementally as a fallback, only for runes
-    // that remain unsolved after argument inference.
     match self.incrementally_solve(envs, coutputs, &mut solver, |_coutputs, solver_state| {
       if loop_check == 0 {
         panic!("RangedInternalErrorT: Infinite loop detected in incremental call solve!");
@@ -732,9 +696,6 @@ where
       IndexMap::default(),
     )?;
 
-    // VTBRX: thread coutputs/calling_env/call_range_t/call_location/context_region into this call (defining-path twin, Edit 2).
-    // Defining path keeps old_ for now: it has no context_region, and §2A upcast does not apply to
-    // its placeholder args (it defines the function rather than resolving a concrete call).
     let initial_sends = self.old_assemble_initial_sends_from_args(call_range[0], function, args);
 
     let preliminary_envs = InferEnv {
@@ -910,10 +871,6 @@ where
     let function_template_id =
       near_env.parent_env.id().add_step(self.typing_interner, function_name_local);
 
-    // A user param's type-binding rules live per-param (value_type_rules + type_outer_ref_rules),
-    // not in function.rules, so the solve must fold them in or the param runes are never bound
-    // (@PFVSZ produced-but-not-consumed). Return-type rules already ride in function.rules. Both
-    // the value solve (definition_rules) and rune-typing (derive_rune_to_type below) use all_rules. VCOORD: rewrite this comment
     let all_rules: Vec<IRulexSR<'s>> = function
       .header_rules
       .iter()
@@ -1074,12 +1031,6 @@ where
     Ok(header)
   }
 
-  /// Conjures, for each `where implements(Sub, Super)` the denizen declares, an `Isa` that
-  /// satisfies it.
-  /// Runs after the solve because nothing mid-solve reads an `Isa`. Per SFWPRL
-  /// (docs/Generics.md:355) the solve postpones resolving structs and interfaces precisely so a
-  /// fact like this can arrive late. Runs before the conclusions become an environment so that
-  /// these can be included in that environment.
   pub fn conjure_impl_bounds_for_defining(
     &self,
     envs: InferEnv<'s, 't>,
@@ -1171,14 +1122,8 @@ where
       let Some(unpeeled_arg) = arg_maybe else {
         continue;
       };
-      // Peel the arg to match the parameter's value slot before seeding its value_type_rune.
-      // Ask whether the value slot is a rune (a generic like `T`, perhaps under the param's own
-      // ref wraps) rather than a concrete type produced by a Call (e.g. `int` or `Opt<T>`). A
-      // rune slot binds whatever the arg is, references and all, so we peel only the param's own
-      // written wraps and keep the rest. That is how an explicitly-bound `T = &Spaceship` keeps
-      // its `&`. A concrete slot instead reads out the arg's outer reference, a spurious mention
-      // borrow.
-      // VCOORD: This is here only temporarily because we don't want to change the entire solver
+
+      // VCOORD: this is here only temporarily because we don't want to change the entire solver
       // quite yet. We cant move plan-phased-calls.md's 4A entirely to here because 4A needs
       // to read things that were determined by the explicit template args.
       let value_slot_is_rune = !param.value_type_rules.iter().any(
@@ -1190,9 +1135,6 @@ where
       } else {
         peel_all_references(*unpeeled_arg)
       };
-      // Phase 2A: if the arg's template differs from the param's and the arg implements the
-      // param's interface, seed the upcast interface kind so the send's Equals stops
-      // conflicting. convert_via_upcast emits the actual upcast later.
       let send_kind = self
         .compute_upcast_coerced_arg(
           coutputs,

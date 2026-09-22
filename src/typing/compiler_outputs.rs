@@ -24,7 +24,7 @@ use crate::utils::fx::IndexMap;
 use crate::utils::fx::{HashMap, HashSet};
 use crate::utils::range::RangeS;
 
-/// Temporary state (see @TFITCX)
+
 #[derive(Clone)]
 pub enum DeferredActionT<'s, 't>
 where
@@ -47,30 +47,17 @@ where
     function_id: &'t IdT<'s, 't>,
   },
 }
-/// Temporary state (see @TFITCX)
+
 pub struct CompilerOutputs<'s, 't>
 where
   's: 't,
 {
   pub return_types_by_signature: HashMap<SignatureT<'s, 't>, KindT<'s, 't>>,
-  // Per @IIIOZ, iterated by get_all_functions → IndexMap for cross-run determinism.
   pub signature_to_function: IndexMap<SignatureT<'s, 't>, &'t FunctionDefinitionT<'s, 't>>,
 
-  // The borrow checker's aliasing info per function. IndexMap for cross-run determinism. Surfaced
-  // onto HinputsT for the backend.
   pub signature_to_aliasing_info: IndexMap<SignatureT<'s, 't>, &'t FunctionAliasingInfoT<'s, 't>>,
 
   // VCOORD: whether a postparsed already exists in these tables must be undetectable to callers.
-  // Once Rust imports go lazy, get_or_create_postparsed_* builds a missing denizen on demand, so a
-  // caller that could ask "is this id in the table yet?" would observe that build order. It must not.
-  // The only two legal operations are:
-  //   1. ask an environment what denizens it holds, and
-  //   2. get_or_create_postparsed_* for a denizen id, which always returns (building on a miss).
-  // There must be no "does this id have a postparsed?" query anywhere.
-  // Enforce it structurally: move these tables and their peek behind a private module that exposes
-  // only the total get_or_create_* accessors, so the fields stop being pub and the membership check
-  // lives in exactly one sealed place. A lint guarding against new existence queries may
-  // be worth adding on top.
   template_id_to_postparsed_function: IndexMap<&'t IdT<'s, 't>, &'s FunctionS<'s>>,
   template_id_to_postparsed_struct: IndexMap<&'t IdT<'s, 't>, &'s StructS<'s>>,
   template_id_to_postparsed_interface: IndexMap<&'t IdT<'s, 't>, &'s InterfaceS<'s>>,
@@ -86,7 +73,6 @@ where
 
   pub interface_name_to_sealed: HashMap<IdT<'s, 't>, bool>,
 
-  // Per @IIIOZ, iterated by get_all_structs / get_all_interfaces → IndexMap for cross-run determinism.
   pub struct_template_name_to_definition: IndexMap<IdT<'s, 't>, &'t StructDefinitionT<'s, 't>>,
   pub interface_template_name_to_definition:
     IndexMap<IdT<'s, 't>, &'t InterfaceDefinitionT<'s, 't>>,
@@ -102,7 +88,6 @@ where
 
   pub instantiation_name_to_bounds: HashMap<IdT<'s, 't>, &'t InstantiationBoundArgumentsT<'s, 't>>,
 
-  // Per @IIIOZ, deferred queues are IndexMap so drain order is insertion-ordered and deterministic across runs.
   pub deferred_function_body_compiles: IndexMap<PrototypeT<'s, 't>, DeferredActionT<'s, 't>>,
   pub deferred_function_compiles: IndexMap<IdT<'s, 't>, DeferredActionT<'s, 't>>,
   pub finished_deferred_function_body_compiles: HashSet<PrototypeT<'s, 't>>,
@@ -156,12 +141,9 @@ where
   }
 
   pub fn mark_deferred_function_body_compiled(&mut self, prototype_t: &'t PrototypeT<'s, 't>) {
-    // vassert(prototypeT == vassertSome(deferredFunctionBodyCompiles.headOption)._1)
     let first_key = *self.deferred_function_body_compiles.keys().next().unwrap();
     assert!(*prototype_t == first_key);
-    // finishedDeferredFunctionBodyCompiles += prototypeT
     self.finished_deferred_function_body_compiles.insert(*prototype_t);
-    // deferredFunctionBodyCompiles -= prototypeT
     self.deferred_function_body_compiles.shift_remove(prototype_t);
   }
 
@@ -173,9 +155,7 @@ where
     // vassert(name == vassertSome(deferredFunctionCompiles.headOption)._1)
     let first_key = *self.deferred_function_compiles.keys().next().unwrap();
     assert_eq!(*name, first_key);
-    // finishedDeferredFunctionCompiles += name
     self.finished_deferred_function_compiles.insert(*name);
-    // deferredFunctionCompiles -= name
     self.deferred_function_compiles.shift_remove(name);
   }
 
@@ -189,7 +169,6 @@ where
     &self,
     signature: &'t SignatureT<'s, 't>,
   ) -> Option<&'t FunctionDefinitionT<'s, 't>> {
-    // signatureToFunction.get(signature)
     self.signature_to_function.get(signature).copied()
   }
 
@@ -304,7 +283,6 @@ where
     self.signature_to_function.insert(*signature, function);
   }
 
-  /// Record the borrow checker's aliasing info for one function, keyed by signature.
   pub fn record_aliasing_info(
     &mut self,
     signature: SignatureT<'s, 't>,
@@ -315,24 +293,15 @@ where
   }
 
   pub fn declare_function(&mut self, call_ranges: &[RangeS<'s>], name: &'t IdT<'s, 't>) {
-    // functionDeclaredNames.get(name) match {
-    //   case Some(oldFunctionRange) => {
-    //     throw CompileErrorExceptionT(FunctionAlreadyExists(oldFunctionRange, callRanges.head, name))
-    //   }
-    //   case None =>
-    // }
     if let Some(_old_function_range) = self.function_declared_names.get(name) {
       panic!("implement CompileErrorExceptionT(FunctionAlreadyExists(oldFunctionRange, callRanges.head, name))");
       // throw CompileErrorExceptionT(FunctionAlreadyExists(oldFunctionRange, callRanges.head, name))
     }
-    // functionDeclaredNames.put(name, callRanges.head)
     self.function_declared_names.insert(*name, call_ranges[0]);
   }
 
   pub fn declare_type(&mut self, template_name: &'t IdT<'s, 't>) {
-    // vassert(!typeDeclaredNames.contains(templateName))
     assert!(!self.type_declared_names.contains(template_name));
-    // typeDeclaredNames += templateName
     self.type_declared_names.insert(*template_name);
   }
 
@@ -376,7 +345,6 @@ where
     // vassert(!typeNameToOuterEnv.contains(nameT))
     assert!(!self.type_name_to_outer_env.contains_key(name_t));
     // vassert(nameT == env.id)
-    // (skipped — requires pattern-matching all IInDenizenEnvironmentT variants to extract id)
     // typeNameToOuterEnv += (nameT -> env)
     self.type_name_to_outer_env.insert(*name_t, env);
   }
@@ -630,13 +598,6 @@ where
     self.template_id_to_postparsed_function.insert(template_id, function);
   }
 
-  // The four tables are sealed (see the VCOORD on their declaration): callers must not be able to
-  // observe whether an id has a postparsed yet. The function table can be lazy (Rust functions build
-  // on first lookup), so its peek is private to the typing module and its ONLY caller is
-  // Compiler::get_or_create_postparsed_function, which turns a miss into a build. Struct/interface/impl
-  // are always eager (seeded at index time), so their accessors are total and cannot reveal existence:
-  // a miss is a vfail (compiler bug), never a recoverable "not there".
-  // VCOORD: revisit
   // VENFORCE: only called by illuminate_function
   pub(in crate::typing) fn peek_postparsed_function(
     &self,

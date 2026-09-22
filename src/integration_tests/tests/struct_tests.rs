@@ -12,7 +12,7 @@ use crate::utils::utils::scrambles;
 use crate::testvm::von::IVonData;
 use crate::testvm::von::VonInt;
 
-#[ignore = "imm/share citizens not supported yet"]
+#[ignore]
 #[test]
 fn make_empty_imm_struct() {
     let compilation_bump = bumpalo::Bump::new();
@@ -29,7 +29,6 @@ fn make_empty_imm_struct() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: `imm` keyword → `share`
         r"
 struct Marine share {}
 exported func main() {
@@ -40,7 +39,7 @@ exported func main() {
     compile.run_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "imm/share citizens not supported yet"]
+#[ignore]
 #[test]
 fn make_imm_struct_with_one_member() {
     let compilation_bump = bumpalo::Bump::new();
@@ -57,7 +56,6 @@ fn make_imm_struct_with_one_member() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share
         r"
 struct Marine share { hp int; }
 exported func main() {
@@ -68,7 +66,7 @@ exported func main() {
     compile.run_primitive_args(Vec::new()).unwrap();
 }
 
-#[ignore = "imm/share citizens not supported yet"]
+#[ignore]
 #[test]
 fn make_nested_imm_struct() {
     let compilation_bump = bumpalo::Bump::new();
@@ -85,7 +83,6 @@ fn make_nested_imm_struct() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share
         r"
 struct Weapon share { ammo int; }
 struct Marine share { hp int; weapon Weapon; }
@@ -109,7 +106,6 @@ fn make_nested_mut_struct() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    // Mutable twin of make_nested_imm_struct (identical but without `share`).
     let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
@@ -302,9 +298,6 @@ fn mutate_inline_struct_member_borrow_sees_new_value() {
     }
 }
 
-// A `set x = NewStruct(..)` on an inline-struct local overwrites the local's existing allocation in
-// place rather than repointing, so a borrow of the local taken before the set observes the NEW value
-// afterward (a repoint model would leave the borrow on the stale old allocation).
 #[test]
 fn mutate_inline_local_borrow_sees_new_value() {
     let compilation_bump = bumpalo::Bump::new();
@@ -398,7 +391,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "R3: str share-peel Reinterpret (&@str->&str) trips instantiator.rs:1769"]
+#[ignore]
 #[test]
 fn destroy_members_at_right_times() {
     let compilation_bump = bumpalo::Bump::new();
@@ -441,7 +434,7 @@ exported func main() {
 }
 
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn panic_function() {
     let compilation_bump = bumpalo::Bump::new();

@@ -685,7 +685,7 @@ where
             ) {
               Ok(x) => vec![ISuperKindTT::from(&*self.typing_interner.alloc(x))],
               Err(_) => {
-                // Throwing away error! TODO: Use an index or something instead.
+                // VCOORD: clean up this thrown away error
                 vec![]
               }
             }
@@ -766,7 +766,7 @@ where
       }
     }
 
-    // Check if there's already a compiled IsaTemplataT that directly matches.
+    // Check if there's already a compiled IsaTemplataT that matches.
     if let Some(impl_isa) = impl_templatas_with_duplicates.iter().find(|i| {
       KindT::from(sub_kind_tt) == i.sub_kind && KindT::from(super_kind_tt) == i.super_kind
     }) {

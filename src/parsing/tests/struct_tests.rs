@@ -333,8 +333,6 @@ fn struct_with_int_rune() {
   }
 }
 
-// The forwarder shape: a struct's `where func` bound whose middle param carries the `mut`
-// placeholder. It parses to exactly `func __call(&F, &Win, &Inp)void`, the `mut` dropped.
 #[test]
 fn struct_bound_param_trailing_mut_is_ignored() {
   let parse_bump = Bump::new();

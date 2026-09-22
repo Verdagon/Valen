@@ -23,12 +23,10 @@ use bumpalo::Bump;
 
 pub struct AfterRegionsErrorTests {}
 
-// VCOORD: enable this. Downcast error-message check; try_as resolves through the Result machinery
-// (fails finding `expect`) before the relatedness check, so CantDowncastUnrelatedTypes never surfaces.
+// VCOORD: enable this.
 #[test]
 #[ignore]
 fn report_when_downcasting_between_unrelated_types() {
-  // This test does not pass yet.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let typing_bump = Bump::new();
@@ -112,11 +110,7 @@ exported func main() {
     &parse_arena,
     &code_source,
   );
-  // The compiler rejects this not via a body-vs-return-type comparison on the
-  // synthesized forwarder, but earlier: the substruct constructor's __call bound
-  // (emitted by AnonymousInterfaceMacro) checks the lambda's __call return type
-  // during inference and reports a ReturnTypeConflictInConclusionResolve. See
-  // investigations/family1_4_body_result_doesnt_match_unreachable.md.
+  
   let err = compile
     .get_compiler_outputs()
     .err()
@@ -165,7 +159,6 @@ Found function: main.λC:test:0.vale:6:25.λF:test:0.vale:6:25<i32>(&main.λC:te
   );
 }
 
-// This test does not pass yet, use #[ignore].
 #[test]
 fn detects_sending_non_citizen_to_citizen() {
   let parse_bump = Bump::new();
@@ -276,7 +269,6 @@ _4 = "void"
   );
 }
 
-// This test does not pass yet, use #[ignore].
 #[test]
 fn accidentally_mention_type_rune() {
   let parse_bump = Bump::new();
@@ -324,7 +316,6 @@ Can't use rune `Z` as a value expression. Did you mean a local variable with a s
   );
 }
 
-// This test does not pass yet, use #[ignore].
 #[test]
 fn call_bound_with_wrong_arguments() {
   let parse_bump = Bump::new();
@@ -526,9 +517,8 @@ Sharedness mismatch in impl: struct is shared, but interface is not shared.
   );
 }
 
-// This test does not pass yet, use #[ignore].
 #[test]
-#[ignore = "blocked - typing pass produces Ok where TookWeakRefOfNonWeakableError is expected for `&&m` on non-weakable struct"]
+#[ignore]
 fn cant_make_weak_ref_to_non_weakable() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -564,12 +554,6 @@ exported func main() int {
 
 #[test]
 fn hash_map_style_return_type_inference_must_not_skip_caller_bound_args() {
-  // Regression guard for @BRRZ. Reproduces the shape from docs/Generics.md:531-539
-  // that motivated removing return-type inference. With the relaxed ResolveSR puzzle
-  // the solver no longer stalls on K and V, but the post-solve bound-arg check
-  // (InferCompiler.checkResolvingConclusionsAndResolve:295) must still reject this
-  // because main doesn't supply enough to determine K and V. If this test ever
-  // passes, the safety property of BRRZ has drifted and needs immediate investigation.
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let typing_bump = Bump::new();
@@ -605,7 +589,6 @@ exported func main() int {
       "Expected HashMap-style K/V inference from return type to fail, but compilation succeeded."
     )
   });
-  // expected — K and V cannot be inferred; any Err variant is acceptable structurally.
   assert_humanized_eq(
     &humanize_compile_error(&mut compile, err),
     r#"At test:0.vale:9:1:

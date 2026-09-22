@@ -1,6 +1,3 @@
-// V: feels like this might not want to be here... tests/ seems to be mostly about fixtures,
-// but this is a bunch of utils.
-
 use crate::code_source::Source;
 use crate::parse_arena::ParseArena;
 use crate::scout_arena::ScoutArena;
@@ -12,10 +9,6 @@ use std::path::PathBuf;
 
 const TEST_MODULE: &str = "test";
 
-/// Build a test code map from a single code string. The file is named
-/// `0.vale`. Accepts `&str` or `String`.
-/// A "test code map" is just a code map whose package is hardcoded to
-/// `("test", [])`.
 pub fn new_test_code_map<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   code: impl Into<String>,
@@ -28,10 +21,6 @@ where
   new_test_code_map_from_files(parse_arena, map)
 }
 
-/// Build a test code map from a filename→contents map. Caller controls the
-/// filenames (e.g. `"test.vale"`).
-/// A "test code map" is just a code map whose package is hardcoded to
-/// `("test", [])`.
 pub fn new_test_code_map_from_files<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   contents: HashMap<String, String>,
@@ -49,11 +38,6 @@ where
   Source::from_code_map(&result)
 }
 
-/// Build a `FileCoordinateMap<String>` for the "test" package holding a single
-/// file `"test.vale"` with `contents`. Used by humanizer-shaped tests to feed
-/// `humanize_pos_code_map`, `lines_between`, etc. — they need a code map to
-/// render source snippets, but the specific contents don't matter for what
-/// they're checking.
 pub fn new_humanizer_test_code_map<'a>(
   scout_arena: &ScoutArena<'a>,
   contents: impl Into<String>,
@@ -83,10 +67,6 @@ pub fn load_expected(resource_filename: &str) -> String {
     .unwrap_or_else(|| panic!("Failed to load resource: {}", resource_filename))
 }
 
-/// Build a `Source::CodeMap` for the named test package by reading
-/// `src/tests/<module>/<packages...>/<last>.vale` off disk.
-/// `package_path` uses dotted notation: `"panicutils"` for a top-level
-/// package, `"array.make"` for a subpackage.
 pub fn new_test_package_source<'a>(
   parse_arena: &'a ParseArena<'a>,
   package_path: &str,
@@ -105,9 +85,6 @@ pub fn new_test_package_source<'a>(
   Source::from_code_map(&map)
 }
 
-/// Resolve a `PackageCoordinate` by reading `src/tests/<module>/<packages>/<last>.vale`
-/// off disk. Called lazily per-coord by `Source::Fn` at resolve time —
-/// only the specific packages a test's imports actually reach get read.
 pub fn test_source_from_dir(package_coord: &PackageCoordinate) -> Option<HashMap<String, String>> {
   let directory: Vec<&str> = {
     let mut v = vec![package_coord.module.as_str()];

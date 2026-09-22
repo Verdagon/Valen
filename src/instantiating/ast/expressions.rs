@@ -12,11 +12,6 @@ use crate::instantiating::ast::ast::{
 use std::marker::PhantomData;
 
 
-/// One flat expression IR — the pre-onion Reference/Address two-sort split is gone (every local is
-/// storage; a lookup yields a borrow of that storage). Mirrors typing's flat `ExpressionTE`.
-/// Every variant carries a `range: RangeS<'s>` (see `range()`) for per-instruction DWARF; the
-/// instantiator copies it from the source TE node. Backend currently discards it.
-/// Arena-allocated (see @TFITCX)
 #[derive(Copy, Clone, Debug)]
 pub enum ExpressionIE<'s, 'i> {
     LetAndLend(&'i LetAndLendIE<'s, 'i>),
@@ -120,8 +115,6 @@ impl<'s, 'i> ExpressionIE<'s, 'i> {
         }
     }
 
-    /// The source range of this expression, for per-instruction DWARF. Populated by the
-    /// instantiator from the source TE node.
     pub fn range(&self) -> RangeS<'s> {
         match self {
             ExpressionIE::LetAndLend(x) => x.range,
@@ -175,7 +168,6 @@ impl<'s, 'i> ExpressionIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct LetAndLendIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -186,7 +178,6 @@ pub struct LetAndLendIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct LockWeakIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -201,7 +192,6 @@ pub struct LockWeakIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct BorrowToWeakIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -212,7 +202,6 @@ pub struct BorrowToWeakIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct LetNormalIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -223,7 +212,6 @@ pub struct LetNormalIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct RestackifyIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -234,7 +222,6 @@ pub struct RestackifyIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct UnletIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -244,7 +231,6 @@ pub struct UnletIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct DiscardIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -261,7 +247,6 @@ impl<'s, 'i> DiscardIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct IfIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -275,7 +260,6 @@ pub struct IfIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct WhileIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -285,7 +269,6 @@ pub struct WhileIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct MutateIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -299,7 +282,6 @@ pub struct MutateIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ReturnIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -316,7 +298,6 @@ impl<'s, 'i> ReturnIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct BreakIE<'s> {
 	pub range: RangeS<'s>,
@@ -331,7 +312,6 @@ impl<'s> BreakIE<'s> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct BlockIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -342,7 +322,6 @@ pub struct BlockIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ConsecutorIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -351,7 +330,6 @@ pub struct ConsecutorIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct StaticArrayFromValuesIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -362,7 +340,6 @@ pub struct StaticArrayFromValuesIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ArraySizeIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -373,7 +350,6 @@ pub struct ArraySizeIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct IsSameInstanceIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -392,7 +368,6 @@ impl<'s, 'i> IsSameInstanceIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct AsSubtypeIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -409,7 +384,6 @@ pub struct AsSubtypeIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct VoidLiteralIE<'s> {
 	pub range: RangeS<'s>,
@@ -424,7 +398,6 @@ impl<'s> VoidLiteralIE<'s> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ConstantIntIE<'s> {
 	pub range: RangeS<'s>,
@@ -441,7 +414,6 @@ impl<'s> ConstantIntIE<'s> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ConstantBoolIE<'s> {
 	pub range: RangeS<'s>,
@@ -457,9 +429,6 @@ impl<'s> ConstantBoolIE<'s> {
 }
 
 
-/// A string constant is share-wrapped (immutable/shared). Its ShareRefIT result is arena-allocated
-/// at construction and stored here, since a wrap can't be built without the interner.
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ConstantStrIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -477,7 +446,6 @@ impl<'s, 'i> ConstantStrIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ConstantFloatIE<'s> {
 	pub range: RangeS<'s>,
@@ -493,8 +461,6 @@ impl<'s> ConstantFloatIE<'s> {
 }
 
 
-/// A local lookup yields a borrow of the local's storage (mirrors typing's LocalLookupTE).
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct LocalLookupIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -504,7 +470,6 @@ pub struct LocalLookupIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ArgLookupIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -521,7 +486,6 @@ impl<'s, 'i> ArgLookupIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct StaticSizedArrayLookupIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -534,7 +498,6 @@ pub struct StaticSizedArrayLookupIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct RuntimeSizedArrayLookupIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -547,7 +510,6 @@ pub struct RuntimeSizedArrayLookupIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ArrayLengthIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -564,8 +526,6 @@ impl<'s, 'i> ArrayLengthIE<'s, 'i> {
 }
 
 
-/// A member lookup yields a borrow of the member's storage (mirrors typing's MemberLookupTE).
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct MemberLookupIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -579,14 +539,11 @@ pub struct MemberLookupIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct InterfaceFunctionCallIE<'s, 'i> {
 	pub range: RangeS<'s>,
 	pub super_function_prototype: &'i PrototypeI<'s, 'i>,
 	pub virtual_param_index: i32,
-	// Vtable slot of the called method within its interface — the position of this method
-	// in typing's InterfaceEdgeBlueprintT.super_family_root_headers (typing owns the order).
 	pub index_in_edge: i32,
 	pub args: &'i[ExpressionIE<'s, 'i>],
 	pub result: KindIT<'s, 'i>,
@@ -594,7 +551,6 @@ pub struct InterfaceFunctionCallIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ExternFunctionCallIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -605,7 +561,6 @@ pub struct ExternFunctionCallIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct FunctionCallIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -616,7 +571,6 @@ pub struct FunctionCallIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct CopyPrimIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -627,7 +581,6 @@ pub struct CopyPrimIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct ConstructIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -638,7 +591,6 @@ pub struct ConstructIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct NewRuntimeSizedArrayIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -649,7 +601,6 @@ pub struct NewRuntimeSizedArrayIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct StaticArrayFromCallableIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -661,7 +612,6 @@ pub struct StaticArrayFromCallableIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct DestroyStaticSizedArrayIntoFunctionIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -680,7 +630,6 @@ impl<'s, 'i> DestroyStaticSizedArrayIntoFunctionIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct DestroyStaticSizedArrayIntoLocalsIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -698,7 +647,6 @@ impl<'s, 'i> DestroyStaticSizedArrayIntoLocalsIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct DestroyRuntimeSizedArrayIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -713,7 +661,6 @@ impl<'s, 'i> DestroyRuntimeSizedArrayIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct RuntimeSizedArrayCapacityIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -730,7 +677,6 @@ impl<'s, 'i> RuntimeSizedArrayCapacityIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct PushRuntimeSizedArrayIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -749,7 +695,6 @@ impl<'s, 'i> PushRuntimeSizedArrayIE<'s, 'i> {
 }
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct PopRuntimeSizedArrayIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -760,7 +705,6 @@ pub struct PopRuntimeSizedArrayIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct InterfaceToInterfaceUpcastIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -772,7 +716,6 @@ pub struct InterfaceToInterfaceUpcastIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct UpcastIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -785,8 +728,6 @@ pub struct UpcastIE<'s, 'i> {
 
 
 
-/// A read that peels exactly one reference wrap off its inner (mirrors typing's DerefTE).
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct DerefIE<'s, 'i> {
 	pub range: RangeS<'s>,
@@ -797,7 +738,6 @@ pub struct DerefIE<'s, 'i> {
 
 
 
-/// Arena-allocated (see @TFITCX) — no equality.
 #[derive(Copy, Clone, Debug)]
 pub struct DestroyIE<'s, 'i> {
 	pub range: RangeS<'s>,

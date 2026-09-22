@@ -25,10 +25,8 @@ where
   let lexer = Lexer::new(parse_arena, keywords);
   let parser = Parser::new(parse_arena, keywords);
 
-  // Lex the entire file
   let mut iter_for_lex = LexingIterator::new(code);
 
-  // Parse denizens one by one
   let mut denizens = Vec::new();
   while !iter_for_lex.at_end() {
     iter_for_lex.consume_comments_and_whitespace();
@@ -53,7 +51,6 @@ where
   })
 }
 
-/// Compile a Vale file and panic if it fails (for tests)
 pub fn compile<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -66,7 +63,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse file: {:?}", e))
 }
 
-/// Compile denizens (top-level declarations) from code
 pub fn compile_denizens<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -78,7 +74,6 @@ where
   compile_file(parse_arena, keywords, code).map(|file| file.denizens)
 }
 
-/// Compile a single denizen from code
 pub fn compile_denizen<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -92,7 +87,6 @@ where
   Ok(&denizens[0])
 }
 
-/// Compile a single denizen and panic if it fails
 pub fn compile_denizen_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -105,7 +99,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse denizen: {:?}", e))
 }
 
-/// Compile a single denizen and expect it to fail with an error, passing the error to a callback
 pub fn compile_denizen_for_error<'p, 'ctx, F>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -121,7 +114,6 @@ pub fn compile_denizen_for_error<'p, 'ctx, F>(
   }
 }
 
-/// Compile an expression from code
 pub fn compile_expression<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -141,7 +133,6 @@ where
   expression_parser.parse_expression(&mut iter, false, &mut templex_parser, &mut pattern_parser)
 }
 
-/// Compile an expression and panic if it fails
 pub fn compile_expression_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -154,7 +145,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse expression: {:?}", e))
 }
 
-/// Compile an expression and expect it to fail, returning the error
 pub fn compile_expression_for_error<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -166,7 +156,6 @@ where
   compile_expression(parse_arena, keywords, code).expect_err("Expected parsing to fail")
 }
 
-/// Compile a statement from code
 pub fn compile_statement<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -186,7 +175,6 @@ where
   expression_parser.parse_statement(&mut iter, false, &mut templex_parser, &mut pattern_parser)
 }
 
-/// Compile a statement and panic if it fails
 pub fn compile_statement_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -199,7 +187,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse statement: {:?}", e))
 }
 
-/// Compile block contents from code
 pub fn compile_block_contents<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -222,7 +209,6 @@ where
   )
 }
 
-/// Compile block contents and panic if it fails
 pub fn compile_block_contents_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -235,7 +221,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse block contents: {:?}", e))
 }
 
-/// Compile a pattern from code
 pub fn compile_pattern<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -264,7 +249,6 @@ where
   )
 }
 
-/// Compile a pattern and panic if it fails
 pub fn compile_pattern_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -277,7 +261,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse pattern: {:?}", e))
 }
 
-/// Compile a templex (type expression) from code
 pub fn compile_templex<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -295,7 +278,6 @@ where
   parser.templex_parser.parse_templex(&mut iter)
 }
 
-/// Compile a templex and panic if it fails
 pub fn compile_templex_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -308,7 +290,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse templex: {:?}", e))
 }
 
-/// Compile a rulex (rule expression) from code
 pub fn compile_rulex<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -326,7 +307,6 @@ where
   parser.templex_parser.parse_rule(&mut iter)
 }
 
-/// Compile a rulex and panic if it fails
 pub fn compile_rulex_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -339,7 +319,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse rulex: {:?}", e))
 }
 
-/// Compile a struct from code
 pub fn compile_struct<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -355,7 +334,6 @@ where
   }
 }
 
-/// Compile a struct and panic if it fails
 pub fn compile_struct_expect<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
@@ -368,8 +346,6 @@ where
     .unwrap_or_else(|e| panic!("Failed to parse struct: {:?}", e))
 }
 
-/// Returns the function with the given name.
-/// See test_find_func_named_returns_function for an example.
 pub fn find_func_named<'p>(file: &'p FileP<'p>, name: &str) -> &'p FunctionP<'p> {
   collect_only!(
       file,
@@ -392,7 +368,6 @@ fn test_find_func_named_returns_function() {
   assert!(main_function.header.params.as_ref().unwrap().params.is_empty());
 }
 
-/// Returns the struct with the given name. See find_func_named's test for a similar example.
 pub fn find_struct_named<'p, 'f>(file: &'f FileP<'p>, name: &str) -> &'f StructP<'p>
 where
   'f: 'p,
@@ -438,44 +413,36 @@ pub fn assert_destination_local_name(destination: &DestinationLocalP, expected: 
   assert_eq!(local_name.str().as_str(), expected);
 }
 
-/// Asserts that a slice has exactly 1 element and returns it.
 pub fn expect_1<T>(elements: &[T]) -> &T {
   assert_eq!(elements.len(), 1, "Expected exactly 1 element, got {}", elements.len());
   &elements[0]
 }
 
-/// Asserts that a slice has exactly 2 elements and returns them.
 pub fn expect_2<T>(elements: &[T]) -> (&T, &T) {
   assert_eq!(elements.len(), 2, "Expected exactly 2 elements, got {}", elements.len());
   (&elements[0], &elements[1])
 }
 
-/// Asserts that a slice has exactly 3 elements and returns them.
 pub fn expect_3<T>(elements: &[T]) -> (&T, &T, &T) {
   assert_eq!(elements.len(), 3, "Expected exactly 3 elements, got {}", elements.len());
   (&elements[0], &elements[1], &elements[2])
 }
 
-/// Asserts that a slice has exactly 4 elements and returns them.
 pub fn expect_4<T>(elements: &[T]) -> (&T, &T, &T, &T) {
   assert_eq!(elements.len(), 4, "Expected exactly 4 elements, got {}", elements.len());
   (&elements[0], &elements[1], &elements[2], &elements[3])
 }
 
-/// Asserts that a slice has exactly 5 elements and returns them.
 pub fn expect_5<T>(elements: &[T]) -> (&T, &T, &T, &T, &T) {
   assert_eq!(elements.len(), 5, "Expected exactly 5 elements, got {}", elements.len());
   (&elements[0], &elements[1], &elements[2], &elements[3], &elements[4])
 }
 
-/// Asserts that a slice has exactly 6 elements and returns them.
 pub fn expect_6<T>(elements: &[T]) -> (&T, &T, &T, &T, &T, &T) {
   assert_eq!(elements.len(), 6, "Expected exactly 6 elements, got {}", elements.len());
   (&elements[0], &elements[1], &elements[2], &elements[3], &elements[4], &elements[5])
 }
 
-/// Unwraps an ESCCD-compliant enum (single field enum) and returns a reference to the thing
-/// inside. Intended for use in tests only.
 #[macro_export]
 macro_rules! cast {
   ($value:expr, $variant:path) => {{

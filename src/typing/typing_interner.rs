@@ -3,13 +3,6 @@ use std::collections::HashMap as StdHashMap;
 
 use bumpalo::Bump;
 
-/// Construction-witness token for interned types (per @SICZ). The inner
-/// unit field is private to this module, so only code in `typing_interner`
-/// can construct one (specifically, the `intern_*` methods). Stored as a
-/// `_must_intern` field on every TFITCX-Interned type, this makes it a
-/// compile error to build such a literal anywhere outside the interner —
-/// every instance is therefore canonical, which is what pointer-comparison
-/// equality semantics (e.g. `IdT::eq`) require.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MustIntern(());
 
@@ -25,7 +18,7 @@ use crate::typing::types::types::{
 use crate::utils::arena_index_map::ArenaIndexMap;
 use std::hash::Hash;
 
-/// Temporary state (see @TFITCX)
+
 pub struct TypingInterner<'s, 't>
 where
   's: 't,
@@ -46,7 +39,6 @@ where
     StdHashMap<InternedKindPayloadValT<'s, 't>, InternedKindPayloadT<'s, 't>>,
 }
 
-// --- Per-concrete wrapper macros (used below to generate ~75 thin wrappers) -
 
 macro_rules! impl_intern_name_wrapper_simple {
   ($method:ident, $variant:ident, $payload_ty:ident) => {
@@ -59,10 +51,6 @@ macro_rules! impl_intern_name_wrapper_simple {
   };
 }
 
-// Arity-trimmed variants of impl_intern_name_wrapper_simple, introduced by the
-// phantom-lifetime removal sweep. The original macro above still applies to
-// T-types that kept <'s, 't>; the two below cover the post-sweep arities
-// <'s> (most ex-`<'s,'t>` types) and `` (empty, no lifetimes).
 
 macro_rules! impl_intern_name_wrapper_simple_s_only {
   ($method:ident, $variant:ident, $payload_ty:ident) => {
@@ -136,7 +124,6 @@ where
     }
   }
 
-  // --- Arena access ---
   pub fn bump(&self) -> &'t Bump {
     self.bump
   }
@@ -150,7 +137,6 @@ where
     self.bump.alloc_slice_fill_iter(vec.into_iter())
   }
 
-  // Per @IIIOZ, arena maps use ArenaIndexMap (insertion-ordered) rather than HashMap for cross-run determinism.
   pub fn alloc_index_map<K: Hash + Eq + Clone, V>(&self) -> ArenaIndexMap<'t, K, V> {
     ArenaIndexMap::new_in(self.bump)
   }
@@ -163,9 +149,6 @@ where
     ArenaIndexMap::from_iter_in(iter, self.bump)
   }
 
-  // =========================================================================
-  // Family 1: Name interning
-  // =========================================================================
 
   pub fn intern_name<'tmp>(&self, val: INameValT<'s, 't, 'tmp>) -> INameT<'s, 't> {
     {
@@ -188,7 +171,6 @@ where
     use INameT as T;
     use INameValT as V;
     match val {
-      // 15 transient variants: promote slices, build canonical + stored_key.
       V::Impl(v) => {
         let template_args = self.bump.alloc_slice_copy(v.template_args);
         let canonical = ImplNameT {
@@ -358,7 +340,6 @@ where
         let key = AnonymousSubstructNameValT { template: v.template, template_args };
         (V::AnonymousSubstruct(key), T::AnonymousSubstruct(self.bump.alloc(canonical)))
       }
-      // 57 simple variants: payload is Copy, alloc + wrap directly.
       V::ExportTemplate(p) => (V::ExportTemplate(p), T::ExportTemplate(self.bump.alloc(p))),
       V::Export(p) => (V::Export(p), T::Export(self.bump.alloc(p))),
       V::ImplTemplate(p) => (V::ImplTemplate(p), T::ImplTemplate(self.bump.alloc(p))),
@@ -400,27 +381,16 @@ where
       V::TypingPassTemporaryVar(p) => {
         (V::TypingPassTemporaryVar(p), T::TypingPassTemporaryVar(self.bump.alloc(p)))
       }
-      // V::TypingPassPatternMember(p) => {
-      //   (V::TypingPassPatternMember(p), T::TypingPassPatternMember(self.bump.alloc(p)))
-      // }
-      // V::TypingPassPatternDestructuree(p) => {
-      //   (V::TypingPassPatternDestructuree(p), T::TypingPassPatternDestructuree(self.bump.alloc(p)))
-      // }
-      // V::UnnamedLocal(p) => (V::UnnamedLocal(p), T::UnnamedLocal(self.bump.alloc(p))),
       V::ClosureParam(p) => (V::ClosureParam(p), T::ClosureParam(self.bump.alloc(p))),
       V::ConstructingMember(p) => {
         (V::ConstructingMember(p), T::ConstructingMember(self.bump.alloc(p)))
       }
-      // V::WhileCondResult(p) => (V::WhileCondResult(p), T::WhileCondResult(self.bump.alloc(p))),
       V::Iterable(p) => (V::Iterable(p), T::Iterable(self.bump.alloc(p))),
       V::Iterator(p) => (V::Iterator(p), T::Iterator(self.bump.alloc(p))),
       V::IterationOption(p) => (V::IterationOption(p), T::IterationOption(self.bump.alloc(p))),
       V::MagicParam(p) => (V::MagicParam(p), T::MagicParam(self.bump.alloc(p))),
       V::Member(p) => (V::Member(p), T::Member(self.bump.alloc(p))),
       V::Local(p) => (V::Local(p), T::Local(self.bump.alloc(p))),
-      // V::AnonymousSubstructMember(p) => {
-      //   (V::AnonymousSubstructMember(p), T::AnonymousSubstructMember(self.bump.alloc(p)))
-      // }
       V::Primitive(p) => (V::Primitive(p), T::Primitive(self.bump.alloc(p))),
       V::PackageTopLevel(p) => (V::PackageTopLevel(p), T::PackageTopLevel(self.bump.alloc(p))),
       V::Project(p) => (V::Project(p), T::Project(self.bump.alloc(p))),
@@ -474,9 +444,6 @@ where
     }
   }
 
-  // =========================================================================
-  // Family 2-4: Id / Prototype / Signature (singletons, no dispatch needed)
-  // =========================================================================
 
   pub fn intern_id<'tmp>(&self, val: IdValT<'s, 't, 'tmp>) -> &'t IdT<'s, 't> {
     {
@@ -546,9 +513,6 @@ where
     canonical
   }
 
-  // =========================================================================
-  // Family 5: Kind-payload interning (all 6 variants simple)
-  // =========================================================================
 
   pub fn intern_kind_payload(
     &self,
@@ -604,11 +568,7 @@ where
     canonical
   }
 
-  // =========================================================================
-  // ~75 per-concrete wrappers (dispatch into family methods, unwrap).
-  // =========================================================================
 
-  // --- 15 transient name wrappers ---
   impl_intern_name_wrapper_transient!(intern_impl_name, Impl, ImplNameValT, ImplNameT);
   impl_intern_name_wrapper_transient!(
     intern_impl_bound_name,
@@ -690,7 +650,6 @@ where
     AnonymousSubstructNameT
   );
 
-  // --- 57 simple name wrappers ---
   impl_intern_name_wrapper_simple_s_only!(
     intern_export_template_name,
     ExportTemplate,
@@ -770,21 +729,6 @@ where
     TypingPassTemporaryVar,
     TypingPassTemporaryVarNameT
   );
-  // impl_intern_name_wrapper_simple_t_only!(
-  //   intern_typing_pass_pattern_member_name,
-  //   TypingPassPatternMember,
-  //   TypingPassPatternMemberNameT
-  // );
-  // impl_intern_name_wrapper_simple_t_only!(
-  //   intern_typing_pass_pattern_destructuree_name,
-  //   TypingPassPatternDestructuree,
-  //   TypingPassPatternDestructureeNameT
-  // );
-  // impl_intern_name_wrapper_simple_s_only!(
-  //   intern_unnamed_local_name,
-  //   UnnamedLocal,
-  //   UnnamedLocalNameT
-  // );
   impl_intern_name_wrapper_simple!(
     intern_closure_param_name,
     ClosureParam,
@@ -795,11 +739,6 @@ where
     ConstructingMember,
     ConstructingMemberNameT
   );
-  // impl_intern_name_wrapper_simple_s_only!(
-  //   intern_while_cond_result_name,
-  //   WhileCondResult,
-  //   WhileCondResultNameT
-  // );
   impl_intern_name_wrapper_simple!(intern_iterable_name, Iterable, IterableNameT);
   impl_intern_name_wrapper_simple!(intern_iterator_name, Iterator, IteratorNameT);
   impl_intern_name_wrapper_simple!(
@@ -810,11 +749,6 @@ where
   impl_intern_name_wrapper_simple!(intern_magic_param_name, MagicParam, MagicParamNameT);
   impl_intern_name_wrapper_simple!(intern_member_name, Member, MemberNameT);
   impl_intern_name_wrapper_simple!(intern_local_name, Local, LocalNameT);
-  // impl_intern_name_wrapper_simple_none!(
-  //   intern_anonymous_substruct_member_name,
-  //   AnonymousSubstructMember,
-  //   AnonymousSubstructMemberNameT
-  // );
   impl_intern_name_wrapper_simple_s_only!(intern_primitive_name, Primitive, PrimitiveNameT);
   impl_intern_name_wrapper_simple_none!(
     intern_package_top_level_name,
@@ -901,10 +835,6 @@ where
   impl_intern_name_wrapper_simple_none!(intern_resolving_env_name, ResolvingEnv, ResolvingEnvNameT);
   impl_intern_name_wrapper_simple_none!(intern_call_env_name, CallEnv, CallEnvNameT);
 
-  // --- 6 Kind-payload wrappers ---
-  // 5 sealed types take their `*ValT` mirror; the macro builds the canonical
-  // (with `_must_intern: MustIntern(())`) inside `intern_kind_payload`'s match.
-  // KindPlaceholderT is Value-type per @WVSBIZ — its "Val" is the canonical itself.
   impl_intern_kind_wrapper!(intern_struct_tt, StructTT, StructTTValT, StructTT);
   impl_intern_kind_wrapper!(intern_interface_tt, InterfaceTT, InterfaceTTValT, InterfaceTT);
   impl_intern_kind_wrapper!(

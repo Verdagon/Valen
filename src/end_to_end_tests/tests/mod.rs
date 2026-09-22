@@ -1,6 +1,3 @@
-// Per-category test modules. Each file holds the ported #[test]s for that
-// TesterRust grouping (one #[test] per program × region pair).
-
 pub mod arrays;
 pub mod debugger;
 pub mod downcast;

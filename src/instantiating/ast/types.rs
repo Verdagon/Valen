@@ -5,7 +5,7 @@ use crate::instantiating::ast::names::INameI;
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum SharednessI {
   Single,
@@ -13,36 +13,33 @@ pub enum SharednessI {
 }
 
 
-// The onion "wrap" layers. Ownership is which wrap surrounds the base kind — or none: an owned
-// value is a bare kind with zero wraps (an owned Ship is KindIT::StructIT(..) directly). Mirrors
-// typing's BorrowRefT/OwnRefT/ShareRefT/WeakRefT. Per BCHATZ there is no region/group here.
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BorrowRefIT<'s, 'i> where 's: 'i {
   pub inner: KindIT<'s, 'i>,
 }
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct OwnRefIT<'s, 'i> where 's: 'i {
   pub inner: KindIT<'s, 'i>,
 }
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ShareRefIT<'s, 'i> where 's: 'i {
   pub inner: KindIT<'s, 'i>,
 }
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct WeakRefIT<'s, 'i> where 's: 'i {
   pub inner: KindIT<'s, 'i>,
 }
 
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum KindIT<'s, 'i> where 's: 'i {
   NeverIT(NeverIT),
@@ -89,12 +86,7 @@ impl<'s, 'i> KindIT<'s, 'i> where 's: 'i {
       _ => panic!("expect_interface: not an interface"),
     }
   }
-
-
-  // VCOORD: clean up this comment
-  /// Strips every reference wrap layer, yielding the underlying citizen or primitive regardless of
-  /// how it is referenced. Total: a bare kind is returned unchanged. Mirrors typing's
-  /// `peel_all_references` (templata_compiler.rs) on the instantiated `KindIT` side.
+  
   pub fn peel_all_references(&self) -> KindIT<'s, 'i> {
     let mut current = *self;
     loop {
@@ -134,7 +126,7 @@ impl<'s, 'i> KindIT<'s, 'i> where 's: 'i {
 }
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct NeverIT {
   pub from_break: bool,
@@ -142,14 +134,14 @@ pub struct NeverIT {
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct VoidIT {
 }
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct IntIT {
   pub bits: i32,
@@ -157,35 +149,35 @@ pub struct IntIT {
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BoolIT {
 }
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StrIT {
 }
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FloatIT {
 }
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct USizeIT {
 }
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StaticSizedArrayIT<'s, 'i> where 's: 'i {
   pub name: IdI<'s, 'i>,
@@ -208,7 +200,7 @@ impl<'s, 'i> StaticSizedArrayIT<'s, 'i> where 's: 'i {
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct RuntimeSizedArrayIT<'s, 'i> where 's: 'i {
   pub name: IdI<'s, 'i>,
@@ -225,7 +217,7 @@ impl<'s, 'i> RuntimeSizedArrayIT<'s, 'i> where 's: 'i {
 
 
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ISubKindIT<'s, 'i> where 's: 'i {
   StructIT(&'i StructIT<'s, 'i>),
@@ -234,7 +226,7 @@ pub enum ISubKindIT<'s, 'i> where 's: 'i {
 
 
 
-/// Polyvalue (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ICitizenIT<'s, 'i> where 's: 'i {
   StructIT(&'i StructIT<'s, 'i>),
@@ -252,7 +244,7 @@ impl<'s, 'i> ICitizenIT<'s, 'i> where 's: 'i {
 }
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StructIT<'s, 'i> where 's: 'i {
   pub id: IdI<'s, 'i>,
@@ -260,7 +252,7 @@ pub struct StructIT<'s, 'i> where 's: 'i {
 
 
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct InterfaceIT<'s, 'i> where 's: 'i {
   pub id: IdI<'s, 'i>,

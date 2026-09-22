@@ -197,7 +197,7 @@ exported func main() int {
 
 
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn test_destructuring_a_shared() {
     let compilation_bump = bumpalo::Bump::new();

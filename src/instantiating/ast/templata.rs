@@ -30,10 +30,6 @@ pub fn expect_integer_templata<'s, 'i>(templata: ITemplataI<'s, 'i>) -> IntegerT
 }
 
 
-/// A coord is now just an onion kind, so there is no Coord templata — Kind carries it.
-/// Ownership/Location/Region templatas are gone: ownership is a wrap on the kind, and
-/// regions/groups are declaration-side (BCHATZ). Mirrors typing's ITemplataT.
-/// Polyvalue
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum ITemplataI<'s, 'i> {
   Kind(KindTemplataI<'s, 'i>),
@@ -65,7 +61,7 @@ impl<'s, 'i> ITemplataI<'s, 'i> {
 }
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct KindTemplataI<'s, 'i> {
   pub kind: KindIT<'s, 'i>,
@@ -73,21 +69,21 @@ pub struct KindTemplataI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct RuntimeSizedArrayTemplateTemplataI {
 }
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct StaticSizedArrayTemplateTemplataI {
 }
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct FunctionTemplataI<'s, 'i> {
   pub env_id: IdI<'s, 'i>,
@@ -103,7 +99,7 @@ impl<'s, 'i> FunctionTemplataI<'s, 'i> {
 }
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct StructDefinitionTemplataI<'s, 'i> {
   pub env_id: IdI<'s, 'i>,
@@ -112,7 +108,7 @@ pub struct StructDefinitionTemplataI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum CitizenDefinitionTemplataI<'s, 'i> {
   Struct(StructDefinitionTemplataI<'s, 'i>),
@@ -121,7 +117,7 @@ pub enum CitizenDefinitionTemplataI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct InterfaceDefinitionTemplataI<'s, 'i> {
   pub env_id: IdI<'s, 'i>,
@@ -130,7 +126,7 @@ pub struct InterfaceDefinitionTemplataI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct ImplDefinitionTemplataI<'s, 'i> {
   pub env_id: IdI<'s, 'i>,
@@ -138,10 +134,7 @@ pub struct ImplDefinitionTemplataI<'s, 'i> {
 
 
 
-/// Polyvalue
-/// The ceremonial group-param constant, instantiated. Like the typing pass's `GroupTemplataT` it is
-/// never read (a group param's value carries no payload), so it is empty. It exists only so a group
-/// generic parameter has a uniform instantiated value.
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct GroupTemplataI {}
 
@@ -152,7 +145,7 @@ pub struct BooleanTemplataI {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct IntegerTemplataI {
   pub value: i64,
@@ -160,7 +153,7 @@ pub struct IntegerTemplataI {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct StringTemplataI<'s> {
   pub value: StrI<'s>,
@@ -186,7 +179,7 @@ pub struct IsaTemplataI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct KindListTemplataI<'s, 'i> {
   pub kinds: &'i [KindIT<'s, 'i>],

@@ -6,9 +6,8 @@ use bumpalo::Bump;
 
 #[test]
 // V: unignore this
-#[ignore = "blocked - Rust parser produces TopLevelFunction for `func sum<T>() func moo(&T)void {3}` instead of ParseError::FuncBoundWithoutWhere."]
+#[ignore]
 fn func_with_func_bound_with_missing_where() {
-  // This test does not pass yet, use #[ignore].
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);

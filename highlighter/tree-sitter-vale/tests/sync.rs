@@ -1,19 +1,9 @@
-//! Parser-sync tests: keep this tree-sitter grammar in step with the real Vale
-//! compiler parser (`src/parsing/`) and lexer (`src/lexing/`).
-//!
-//! Two levels of guarantee:
-//!   L1 — the grammar parses everything the compiler accepts, with no `ERROR` or
-//!        `MISSING` nodes (see `driver_valen_parses_clean` and, later, the corpus test).
-//!   L2 — every keyword the compiler treats specially is actually highlighted by
-//!        the grammar's `queries/highlights.scm`.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use tree_sitter::{Node, Parser};
 
-/// Parse `src` with the Vale grammar, panicking only if the parser can't be
-/// constructed at all (a build/ABI problem, not a syntax problem).
 fn parse(src: &str) -> tree_sitter::Tree {
     let mut parser = Parser::new();
     parser
@@ -22,13 +12,10 @@ fn parse(src: &str) -> tree_sitter::Tree {
     parser.parse(src, None).expect("parser produced a tree")
 }
 
-/// The (row, column) of the first `ERROR` or `MISSING` node in a preorder walk,
-/// or `None` when the parse tree is clean. Zero-based, like tree-sitter positions.
 fn first_error(src: &str) -> Option<(usize, usize)> {
     all_errors(src).into_iter().next().map(|e| (e.row, e.col))
 }
 
-/// One error node found in a parse tree.
 struct ErrorNode {
     row: usize,
     col: usize,
@@ -36,9 +23,6 @@ struct ErrorNode {
     text: String,
 }
 
-/// Every `ERROR` or `MISSING` node in a preorder walk, with a one-line snippet of
-/// the offending source — the reporter used to triage which constructs a grammar
-/// change still needs to cover.
 fn all_errors(src: &str) -> Vec<ErrorNode> {
     fn walk(node: Node, src: &str, out: &mut Vec<ErrorNode>) {
         if node.is_error() || node.is_missing() {
@@ -70,7 +54,6 @@ fn all_errors(src: &str) -> Vec<ErrorNode> {
     out
 }
 
-/// Renders `all_errors` as a multi-line report for assertion messages.
 fn error_report(src: &str) -> String {
     all_errors(src)
         .iter()
@@ -90,7 +73,6 @@ fn harness_accepts_valid_source() {
 
 #[test]
 fn harness_flags_invalid_source() {
-    // Unbalanced `(` — a structural break the grammar cannot recover cleanly from.
     assert!(
         first_error("func main( { }\n").is_some(),
         "the harness should surface an error node for structurally broken source"
@@ -103,7 +85,6 @@ fn harness_flags_invalid_source() {
 
 #[test]
 fn driver_valen_parses_clean() {
-    // The Nobilia game driver — the concrete acceptance target for this grammar.
     let source = include_str!("fixtures/driver.valen");
     assert!(
         first_error(source).is_none(),
@@ -116,21 +97,6 @@ fn driver_valen_parses_clean() {
 // L2: every keyword the compiler treats specially is actually highlighted.
 // ---------------------------------------------------------------------------
 
-/// Reserved words the Vale compiler treats as keywords and that the highlighter
-/// must style. Source of truth: `src/keywords.rs` (`new_for_parse`) plus the inline
-/// `try_skip_complete_word("…")` literals in `src/lexing/lexer.rs`.
-///
-/// Deliberately EXCLUDED, with reasons:
-///   - Primitive type names (`int`, `bool`, `i64`, …) and metatypes (`Int`, `Kind`,
-///     `Region`, `RefList`, `Refs`): highlighted structurally via `(primitive_type)` /
-///     `(metatype)` captures, not per-literal — see `types_are_highlighted`.
-///   - Operator tokens (`+`, `==`, `..`, …): highlighted via the `@operator` list.
-///   - Builtin identifiers the `Keywords` struct also holds (`Opt`, `Some`, `List`,
-///     `freeGenerator`, `rust`, single letters, …): not surface keywords.
-///   - Compiler keywords the grammar does not yet tokenize (`held`, `exists`, `resolve`,
-///     `parallel`, `block`, `drop`, `free`): covering them needs `grammar.js` changes and
-///     a regenerate; tracked as a separate scope decision. Listing one here without a
-///     matching grammar token would make the highlight query fail to compile.
 const COMPILER_KEYWORDS: &[&str] = &[
     // declarations / structure
     "func", "import", "export", "impl", "struct", "interface", "for", "where",
@@ -146,19 +112,11 @@ const COMPILER_KEYWORDS: &[&str] = &[
     "true", "false", "self", "this",
 ];
 
-/// Keywords highlighted through a node-type capture rather than a bare string literal
-/// in highlights.scm — kept explicit so the subset check doesn't false-fail on them.
-///   - `(keyword_attribute) @keyword.modifier`
-///   - `(extern_attribute "extern" @keyword.modifier)`
-///   - `(boolean_literal) @boolean`
 const NODE_CAPTURED_KEYWORDS: &[&str] = &[
     "abstract", "pure", "unsafe", "weakable", "sealed", "linear", "additive", "exported", "extern",
     "true", "false",
 ];
 
-/// Every double-quoted token captured in highlights.scm (e.g. `"func"`, `"if"`).
-/// highlights.scm only quotes anonymous grammar tokens, so this is exactly the set of
-/// words highlighted by a bare literal.
 fn highlighted_literals() -> HashSet<String> {
     let scm = include_str!("../queries/highlights.scm");
     let mut out = HashSet::new();
@@ -202,11 +160,6 @@ fn every_compiler_keyword_is_highlighted() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// L1 (constructs): focused snippets for specific surface syntax, so a broken
-// construct gives a precise RED rather than a coarse corpus-count drop. Each
-// entry mirrors real syntax the compiler parser accepts.
-// ---------------------------------------------------------------------------
 
 const CONSTRUCTS: &[(&str, &str)] = &[
     // struct / interface headers: `share` sharedness, empty `;`/`{}` bodies,
@@ -252,7 +205,6 @@ fn language_constructs_parse() {
 // L1 (corpus): the grammar parses the compiler's own .vale test programs.
 // ---------------------------------------------------------------------------
 
-/// Repo root, relative to this crate (`highlighter/tree-sitter-vale`).
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")

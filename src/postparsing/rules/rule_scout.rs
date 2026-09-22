@@ -1,6 +1,3 @@
-// Per @DSAUIMZ, all borrow_val() calls in this file borrow from a stack-local
-// LocationInDenizenBuilder instead of arena-allocating. The slice is promoted
-// to permanent arena storage only inside intern_rune on a miss.
 
 use crate::keywords::Keywords;
 use crate::parsing::ast::{BuiltinCallPR, EqualsPR, IRulexPR, ITemplexPT, ITypePR};
@@ -15,9 +12,6 @@ use crate::postparsing::rules::rules::{EqualsSR, IRulexSR, ImplBoundS, RuneUsage
 use crate::postparsing::rules::templex_scout::{translate_func_templex, translate_templex};
 use crate::scout_arena::ScoutArena;
 
-/// Returns the translated versions of the given rules. Two things exit through out-params instead:
-/// `builder` collects rules produced on the side, and `impl_bounds` collects `implements(..)`
-/// clauses, which are declared bounds rather than rules — see ImplBoundS.
 pub fn translate_rulexes<'s, 'p>(
   scout_arena: &ScoutArena<'s>,
   keywords: &Keywords<'s>,
@@ -79,8 +73,6 @@ fn translate_rulex<'s, 'p>(
     }
     IRulexPR::Templex(templex) => {
       let mut child_lidb = lidb.child();
-      // A top-level `where func ..` bound is captured into func_bounds; every other templex (and any
-      // nested func-typed param, which is reached through translate_templex, not here) is not.
       match templex {
         ITemplexPT::Func(func) => translate_func_templex(
           scout_arena,
@@ -149,8 +141,6 @@ fn translate_rulex<'s, 'p>(
       panic!("POSTPARSER_TRANSLATE_RULEX_NOT_YET_IMPLEMENTED: Dot at {:?}", r.range)
     }
     IRulexPR::BuiltinCall(BuiltinCallPR { range, name, args }) => {
-      // Compare on content, not identity: `name` is interned in the parse arena while
-      // `keywords` here is the scout one, so a StrI comparison across them never matches.
       if name.str().as_str() != "implements" {
         panic!(
           "POSTPARSER_TRANSLATE_RULEX_BUILTINCALL_NOT_YET_IMPLEMENTED: {} at {:?}",
@@ -182,9 +172,6 @@ fn translate_rulex<'s, 'p>(
         &args[1],
       );
 
-      // The result rune joins this declared bound to the impl a caller supplies; the instantiator
-      // zips the two maps by it. Nothing solves it — the post-solve pass fills it in, which is why
-      // it is deliberately absent from every rune-usage list.
       let mut result_child_lidb = lidb.child();
       let result_rune = RuneUsage {
         range: PostParser::eval_range(file, *range),

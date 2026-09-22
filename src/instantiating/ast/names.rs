@@ -11,8 +11,6 @@ use std::marker::PhantomData;
 
 
 
-/// Value-type (see @TFITCX). Instantiateds are write-once/read-once and not interned, so
-/// identity is structural.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct IdI<'s, 'i> {
     pub package_coord: &'s PackageCoordinate<'s>,
@@ -20,25 +18,17 @@ pub struct IdI<'s, 'i> {
     pub local_name: INameI<'s, 'i>,
 }
 
-
-// (was cfg-gated)
 impl<'s, 'i> IdI<'s, 'i> {
     pub fn package_id(&self) -> IdI<'s, 'i> {
         panic!("Unimplemented: package_id");
         // IdI(packageCoord, Vector(), PackageTopLevelNameI())
     }
 
-
-// (was cfg-gated)
     pub fn init_id(&self) -> IdI<'s, 'i> {
         panic!("Unimplemented: init_id");
-        // if (initSteps.isEmpty) IdI(packageCoord, Vector(), PackageTopLevelNameI())
-        // else IdI(packageCoord, initSteps.init, initSteps.last)
     }
 }
 
-
-// (was cfg-gated)
 impl<'s, 'i> IdI<'s, 'i> {
     pub fn init_non_package_id(&self) -> Option<IdI<'s, 'i>> {
         if self.init_steps.is_empty() {
@@ -51,25 +41,18 @@ impl<'s, 'i> IdI<'s, 'i> {
 }
 
 
-// (was cfg-gated)
 impl<'s, 'i> IdI<'s, 'i> {
     pub fn steps(&self) -> &'i[INameI<'s, 'i>] {
         panic!("Unimplemented: steps");
-        // localName match {
-        //   case PackageTopLevelNameI() => initSteps
-        //   case _ => initSteps :+ localName
-        // }
     }
 }
 
 
-// (was cfg-gated)
 pub fn add_step<'s, 'i>(old: &IdI<'s, 'i>, new_last: INameI<'s, 'i>) -> IdI<'s, 'i> {
     IdI { package_coord: old.package_coord, init_steps: old.init_steps, local_name: new_last }
 }
 
 
-/// Polyvalue (see @TFITCX) — derive Eq/Hash; never hand-roll `ptr::eq` on the outer `&self` (see @PVECFPZ).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum INameI<'s, 'i> {
     RegionName(&'i RegionNameI<'s>),
@@ -151,9 +134,8 @@ pub enum INameI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum ITemplateNameI<'s, 'i> {
     ExportTemplate(&'i ExportTemplateNameI<'s>),
     ImplTemplate(&'i ImplTemplateNameI<'s>),
@@ -207,9 +189,8 @@ impl<'s, 'i> TryFrom<INameI<'s, 'i>> for ITemplateNameI<'s, 'i> where 's: 'i {
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IFunctionTemplateNameI<'s, 'i> {
     OverrideDispatcherTemplate(&'i OverrideDispatcherTemplateNameI<'s, 'i>),
     ExternFunction(&'i ExternFunctionNameI<'s, 'i>),
@@ -254,7 +235,7 @@ impl<'s, 'i> TryFrom<INameI<'s, 'i>> for IFunctionTemplateNameI<'s, 'i> where 's
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum IInstantiationNameI<'s, 'i> {
     Export(&'i ExportNameI<'s>),
@@ -379,9 +360,8 @@ impl<'s, 'i> TryFrom<INameI<'s, 'i>> for IInstantiationNameI<'s, 'i> where 's: '
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IFunctionNameI<'s, 'i> {
     OverrideDispatcher(&'i OverrideDispatcherNameI<'s, 'i>),
     ExternFunction(&'i ExternFunctionNameI<'s, 'i>),
@@ -466,18 +446,16 @@ impl<'s, 'i> From<IFunctionNameI<'s, 'i>> for INameI<'s, 'i> where 's: 'i {
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum ISuperKindTemplateNameI<'s, 'i> {
     InterfaceTemplate(&'i InterfaceTemplateNameI<'s>),
 }
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum ISubKindTemplateNameI<'s, 'i> {
     StaticSizedArrayTemplate(&'i StaticSizedArrayTemplateNameI),
     RuntimeSizedArrayTemplate(&'i RuntimeSizedArrayTemplateNameI),
@@ -489,9 +467,8 @@ pub enum ISubKindTemplateNameI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum ICitizenTemplateNameI<'s, 'i> {
     StaticSizedArrayTemplate(&'i StaticSizedArrayTemplateNameI),
     RuntimeSizedArrayTemplate(&'i RuntimeSizedArrayTemplateNameI),
@@ -503,9 +480,8 @@ pub enum ICitizenTemplateNameI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IStructTemplateNameI<'s, 'i> {
     LambdaCitizenTemplate(&'i LambdaCitizenTemplateNameI<'s>),
     StructTemplate(&'i StructTemplateNameI<'s>),
@@ -591,18 +567,16 @@ impl<'s, 'i> TryFrom<INameI<'s, 'i>> for IStructTemplateNameI<'s, 'i> where 's: 
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IInterfaceTemplateNameI<'s, 'i> {
     InterfaceTemplate(&'i InterfaceTemplateNameI<'s>),
 }
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum ISuperKindNameI<'s, 'i> {
     Interface(&'i InterfaceNameI<'s, 'i>),
 }
@@ -634,9 +608,8 @@ impl<'s, 'i> TryFrom<INameI<'s, 'i>> for ISuperKindNameI<'s, 'i> where 's: 'i {
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum ISubKindNameI<'s, 'i> {
     StaticSizedArray(&'i StaticSizedArrayNameI<'s, 'i>),
     RuntimeSizedArray(&'i RuntimeSizedArrayNameI<'s, 'i>),
@@ -696,9 +669,8 @@ impl<'s, 'i> TryFrom<INameI<'s, 'i>> for ISubKindNameI<'s, 'i> where 's: 'i {
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum ICitizenNameI<'s, 'i> {
     StaticSizedArray(&'i StaticSizedArrayNameI<'s, 'i>),
     RuntimeSizedArray(&'i RuntimeSizedArrayNameI<'s, 'i>),
@@ -770,9 +742,8 @@ impl<'s, 'i> From<ICitizenNameI<'s, 'i>> for INameI<'s, 'i> where 's: 'i {
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IStructNameI<'s, 'i> {
     Struct(&'i StructNameI<'s, 'i>),
     LambdaCitizen(&'i LambdaCitizenNameI<'s>),
@@ -870,9 +841,8 @@ impl<'s, 'i> From<ICitizenTemplateNameI<'s, 'i>> for INameI<'s, 'i> where 's: 'i
 }
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IInterfaceNameI<'s, 'i> {
     Interface(&'i InterfaceNameI<'s, 'i>),
 }
@@ -911,9 +881,8 @@ impl<'s, 'i> From<IInterfaceNameI<'s, 'i>> for INameI<'s, 'i> where 's: 'i {
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IImplTemplateNameI<'s, 'i> {
     ImplTemplate(&'i ImplTemplateNameI<'s>),
     ImplBoundTemplate(&'i ImplBoundTemplateNameI<'s>),
@@ -922,9 +891,8 @@ pub enum IImplTemplateNameI<'s, 'i> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IImplNameI<'s, 'i> {
     Impl(&'i ImplNameI<'s, 'i>),
     ImplBound(&'i ImplBoundNameI<'s, 'i>),
@@ -973,72 +941,63 @@ impl<'s, 'i> From<IImplNameI<'s, 'i>> for INameI<'s, 'i> where 's: 'i {
     }
 }
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IRegionNameI<'s, 'i> {
     _Phantom(PhantomData<(&'s (), &'i ())>),
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct RegionNameI<'s> {
     pub rune: IRuneS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct DenizenDefaultRegionNameI;
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ExportTemplateNameI<'s> {
     pub code_loc: CodeLocationS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ExportNameI<'s> {
     pub template: ExportTemplateNameI<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ExternTemplateNameI<'s> {
     pub code_loc: CodeLocationS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ExternNameI<'s> {
     pub template: ExternTemplateNameI<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ImplTemplateNameI<'s> {
     pub code_location: CodeLocationS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ImplNameI<'s, 'i> {
     pub template: IImplTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1046,17 +1005,15 @@ pub struct ImplNameI<'s, 'i> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ImplBoundTemplateNameI<'s> {
     pub code_location: CodeLocationS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ImplBoundNameI<'s, 'i> {
     pub template: ImplBoundTemplateNameI<'s>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1064,25 +1021,22 @@ pub struct ImplBoundNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct LetNameI<'s> {
     pub code_location: CodeLocationS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ExportAsNameI<'s> {
     pub code_location: CodeLocationS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct RawArrayNameI<'s, 'i> {
     pub element_type: KindIT<'s, 'i>,
     pub self_region: RegionT,
@@ -1090,23 +1044,20 @@ pub struct RawArrayNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ReachablePrototypeNameI {
     pub num: i32,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct StaticSizedArrayTemplateNameI;
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct StaticSizedArrayNameI<'s, 'i> {
     pub template: StaticSizedArrayTemplateNameI,
     pub size: i64,
@@ -1115,44 +1066,38 @@ pub struct StaticSizedArrayNameI<'s, 'i> {
 
 
 
-// (was cfg-gated)
 impl<'s, 'i> StaticSizedArrayNameI<'s, 'i> {
     pub fn template_args(&self) -> &'i[ITemplataI<'s, 'i>] { panic!("Unimplemented: template_args"); }
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct RuntimeSizedArrayTemplateNameI;
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct RuntimeSizedArrayNameI<'s, 'i> {
     pub template: RuntimeSizedArrayTemplateNameI,
     pub arr: RawArrayNameI<'s, 'i>,
 }
 
 
-// (was cfg-gated)
 impl<'s, 'i> RuntimeSizedArrayNameI<'s, 'i> {
     pub fn template_args(&self) -> &'i[ITemplataI<'s, 'i>] { panic!("Unimplemented: template_args"); }
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct OverrideDispatcherTemplateNameI<'s, 'i> {
     pub impl_id: IdI<'s, 'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct OverrideDispatcherNameI<'s, 'i> {
     pub template: OverrideDispatcherTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1161,18 +1106,16 @@ pub struct OverrideDispatcherNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct OverrideDispatcherCaseNameI<'s, 'i> {
     pub independent_impl_template_args: &'i[ITemplataI<'s, 'i>],
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct CaseFunctionFromImplNameI<'s, 'i> {
     pub template: CaseFunctionFromImplTemplateNameI<'s>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1181,9 +1124,8 @@ pub struct CaseFunctionFromImplNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct CaseFunctionFromImplTemplateNameI<'s> {
     pub human_name: StrI<'s>,
     pub rune_in_impl: IRuneS<'s>,
@@ -1192,9 +1134,8 @@ pub struct CaseFunctionFromImplTemplateNameI<'s> {
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum IVarNameI<'s, 'i> {
     TypingPassBlockResultVar(&'i TypingPassBlockResultVarNameI<'i>),
     TypingPassFunctionResultVar(&'i TypingPassFunctionResultVarNameI),
@@ -1269,126 +1210,108 @@ impl<'s, 'i> From<IVarNameI<'s, 'i>> for INameI<'s, 'i> where 's: 'i {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct TypingPassBlockResultVarNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct TypingPassFunctionResultVarNameI;
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct TypingPassTemporaryVarNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct TypingPassPatternMemberNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct TypingIgnoredParamNameI {
     pub num: i32,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct TypingPassPatternDestructureeNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct UnnamedLocalNameI<'s> {
     pub code_location: CodeLocationS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ClosureParamNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ConstructingMemberNameI<'s> {
     pub name: StrI<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct WhileCondResultNameI<'s> {
     pub range: RangeS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct IterableNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct IteratorNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct IterationOptionNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct MagicParamNameI<'i> {
     pub loci: LocI<'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct MemberNameI<'s> {
     pub name: StrI<'s>,
 }
 
-/// A user-declared local's instantiated name. Mirrors typing's `LocalNameT`: source `name` plus
-/// the `life` that makes it unique per function (@VCOORD). The VM keys locals on this.
-/// Temporary state
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct LocalNameI<'s, 'i> {
     pub name: StrI<'s>,
@@ -1396,64 +1319,56 @@ pub struct LocalNameI<'s, 'i> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct AnonymousSubstructMemberNameI {
     pub index: i32,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct PrimitiveNameI<'s> {
     pub human_name: StrI<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct PackageTopLevelNameI;
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ProjectNameI<'s> {
     pub name: StrI<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct PackageNameI<'s> {
     pub name: StrI<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct RuneNameI<'s> {
     pub rune: IRuneS<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct BuildingFunctionNameWithClosuredsI<'s, 'i> {
     pub template_name: IFunctionTemplateNameI<'s, 'i>,
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ExternFunctionNameI<'s, 'i> {
     pub human_name: StrI<'s>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1461,9 +1376,8 @@ pub struct ExternFunctionNameI<'s, 'i> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct FunctionNameIX<'s, 'i> {
     pub template: FunctionTemplateNameI<'s>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1472,9 +1386,8 @@ pub struct FunctionNameIX<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ForwarderFunctionNameI<'s, 'i> {
     pub template: ForwarderFunctionTemplateNameI<'s, 'i>,
     pub inner: IFunctionNameI<'s, 'i>,
@@ -1482,18 +1395,16 @@ pub struct ForwarderFunctionNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct FunctionBoundTemplateNameI<'s> {
     pub human_name: StrI<'s>,
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct FunctionBoundNameI<'s, 'i> {
     pub template: FunctionBoundTemplateNameI<'s>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1502,18 +1413,16 @@ pub struct FunctionBoundNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ReachableFunctionTemplateNameI<'s> {
     pub human_name: StrI<'s>,
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ReachableFunctionNameI<'s, 'i> {
     pub template: ReachableFunctionTemplateNameI<'s>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1522,20 +1431,14 @@ pub struct ReachableFunctionNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct FunctionTemplateNameI<'s> {
     pub human_name: StrI<'s>,
     pub code_location: CodeLocationS<'s>,
 }
 
-
-// Per @LAGTNGZ, paramTypes stays baked in (specialization happened earlier).
-
-/// Temporary state
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct LambdaCallFunctionTemplateNameI<'s, 'i> {
     pub code_location: CodeLocationS<'s>,
     pub param_types: &'i[KindIT<'s, 'i>],
@@ -1543,9 +1446,8 @@ pub struct LambdaCallFunctionTemplateNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct LambdaCallFunctionNameI<'s, 'i> {
     pub template: LambdaCallFunctionTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1554,9 +1456,8 @@ pub struct LambdaCallFunctionNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ForwarderFunctionTemplateNameI<'s, 'i> {
     pub inner: IFunctionTemplateNameI<'s, 'i>,
     pub index: i32,
@@ -1564,38 +1465,33 @@ pub struct ForwarderFunctionTemplateNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ConstructorTemplateNameI<'s> {
     pub code_location: CodeLocationS<'s>,
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct SelfNameI;
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ArbitraryNameI;
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum CitizenNameI<'s, 'i> {
     _Phantom(PhantomData<(&'s (), &'i ())>),
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct StructNameI<'s, 'i> {
     pub template: IStructTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1603,77 +1499,67 @@ pub struct StructNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct InterfaceNameI<'s, 'i> {
     pub template: IInterfaceTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
 }
 
 
-// Per @LAGTNGZ, closure struct isn't parameterized; one struct corresponds to many LambdaCallFunctionNameIs.
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct LambdaCitizenTemplateNameI<'s> {
     pub code_location: CodeLocationS<'s>,
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct LambdaCitizenNameI<'s> {
     pub template: LambdaCitizenTemplateNameI<'s>,
 }
 
 
 
-/// Polyvalue
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-// (was cfg-gated)
 pub enum CitizenTemplateNameI<'s, 'i> {
     _Phantom(PhantomData<(&'s (), &'i ())>),
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct StructTemplateNameI<'s> {
     pub human_name: StrI<'s>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct InterfaceTemplateNameI<'s> {
     pub human_namee: StrI<'s>,
 }
 
 
-// (was cfg-gated)
 impl<'s> InterfaceTemplateNameI<'s> {
     pub fn human_name(&self) -> StrI<'s> { panic!("Unimplemented: human_name"); }
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct AnonymousSubstructImplTemplateNameI<'s, 'i> {
     pub interface: IInterfaceTemplateNameI<'s, 'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct AnonymousSubstructImplNameI<'s, 'i> {
     pub template: AnonymousSubstructImplTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1682,26 +1568,23 @@ pub struct AnonymousSubstructImplNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct AnonymousSubstructTemplateNameI<'s, 'i> {
     pub interface: IInterfaceTemplateNameI<'s, 'i>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct AnonymousSubstructConstructorTemplateNameI<'s, 'i> {
     pub substruct: ICitizenTemplateNameI<'s, 'i>,
 }
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct AnonymousSubstructConstructorNameI<'s, 'i> {
     pub template: AnonymousSubstructConstructorTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1710,9 +1593,8 @@ pub struct AnonymousSubstructConstructorNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct AnonymousSubstructNameI<'s, 'i> {
     pub template: AnonymousSubstructTemplateNameI<'s, 'i>,
     pub template_args: &'i[ITemplataI<'s, 'i>],
@@ -1720,15 +1602,13 @@ pub struct AnonymousSubstructNameI<'s, 'i> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct ResolvingEnvNameI;
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-// (was cfg-gated)
 pub struct CallEnvNameI;
 

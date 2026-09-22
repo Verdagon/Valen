@@ -18,17 +18,6 @@ use crate::typing::typing_interner::TypingInterner;
 use std::any::Any;
 use std::marker::PhantomData;
 
-/// Arena-allocated (see @TFITCX)
-//
-// No `PartialEq`/`Hash` derive or impl — opts out of equality entirely. Getting
-// a compile-time error on `==` is strictly stronger than a runtime panic.
-//
-// Per @TFITCX this is `Arena-allocated` (lifetime/storage in the typing arena), but
-// per @IEOIBZ such types normally implement identity equality via `std::ptr::eq`.
-// The expression hierarchy is the exception: it's stored in the arena for memory
-// reasons (large, deeply nested trees with `&'t` child pointers) but has no
-// identity semantics — two distinct allocations of `ConstantIntTE { value: 5 }`
-// are neither `==` nor distinguishable by identity (no callers care).
 #[derive(Copy, Clone, Debug)]
 pub enum ExpressionTE<'s, 't> {
   LetAndLend(&'t LetAndLendTE<'s, 't>),
@@ -145,7 +134,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LetAndLendTE<'s, 't>
 where
@@ -158,8 +146,6 @@ where
   // Stored instead of computed because I dont want getters to allocate.
   pub result: &'t BorrowRefT<'s, 't>,
   // Always produces a borrow reference, though i can see a world where we go back on that decision.
-
-  // VCOORD: _sealed here
   _sealed: (),
 }
 
@@ -177,10 +163,7 @@ where
     let result = interner.alloc(BorrowRefT { inner: expr.result()});
     LetAndLendTE { range, loct, variable, expr, result, _sealed: () }
   }
-
-  // VCOORD: get rid of result(), just inline it into the enum's dispatcher
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LockWeakTE<'s, 't>
 where
@@ -222,7 +205,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BorrowToWeakTE<'s, 't>
 where
@@ -248,7 +230,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LetNormalTE<'s, 't>
 where
@@ -269,7 +250,6 @@ where
     LetNormalTE { range, variable, expr, result: KindT::Void(VoidT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct UnletTE<'s, 't> {
   pub range: RangeS<'s>,
@@ -287,7 +267,6 @@ where
     UnletTE { range, variable, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DiscardTE<'s, 't>
 where
@@ -307,7 +286,6 @@ where
     DiscardTE { range, expr, result: KindT::Void(VoidT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct IfTE<'s, 't>
 where
@@ -352,7 +330,6 @@ where
     IfTE { range, loct, condition, then_call, else_call, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct WhileTE<'s, 't>
 where
@@ -379,7 +356,6 @@ where
     WhileTE { range, loct, block, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct MutateTE<'s, 't>
 where
@@ -389,7 +365,6 @@ where
   pub loct: LocT<'t>,
   pub destination_expr: ExpressionTE<'s, 't>,
   pub source_expr: ExpressionTE<'s, 't>,
-  // VCOORD: the old value that was replaced; onion old-value semantics to confirm.
   pub result: KindT<'s, 't>,
   _sealed: (),
 }
@@ -419,7 +394,6 @@ where
     MutateTE { range, loct, destination_expr, source_expr, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct RestackifyTE<'s, 't>
 where
@@ -444,7 +418,6 @@ where
     RestackifyTE { range, variable, source_expr, result: KindT::Void(VoidT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ReturnTE<'s, 't>
 where
@@ -464,7 +437,6 @@ where
     ReturnTE { range, source_expr, result: KindT::Never(NeverT { from_break: false }), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BreakTE<'s, 't> {
   pub range: RangeS<'s>,
@@ -481,7 +453,6 @@ where
     BreakTE { range, region, result: KindT::Never(NeverT { from_break: true }), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct BlockTE<'s, 't>
 where
@@ -502,7 +473,6 @@ where
     BlockTE { range, inner, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConsecutorTE<'s, 't>
 where
@@ -533,7 +503,6 @@ where
   }
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct StaticArrayFromValuesTE<'s, 't>
 where
@@ -559,7 +528,6 @@ where
     StaticArrayFromValuesTE { range, elements, result, array_type, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ArraySizeTE<'s, 't>
 where
@@ -579,7 +547,6 @@ where
     ArraySizeTE { range, array, result: KindT::Int(IntT::I32), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct IsSameInstanceTE<'s, 't>
 where
@@ -600,7 +567,6 @@ where
     IsSameInstanceTE { range, left, right, result: KindT::Bool(BoolT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct AsSubtypeTE<'s, 't>
 where
@@ -647,7 +613,6 @@ where
     }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct VoidLiteralTE<'s, 't> {
   pub range: RangeS<'s>,
@@ -664,7 +629,6 @@ where
     VoidLiteralTE { range, region, result: KindT::Void(VoidT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantIntTE<'s, 't> {
   pub range: RangeS<'s>,
@@ -683,7 +647,6 @@ where
     ConstantIntTE { range, value, bits, region, result: KindT::Int(IntT { bits }), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantBoolTE<'s, 't> {
   pub range: RangeS<'s>,
@@ -701,13 +664,11 @@ where
     ConstantBoolTE { range, value, region, result: KindT::Bool(BoolT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantStrTE<'s, 't> {
   pub range: RangeS<'s>,
   pub value: StrI<'s>,
   pub region: RegionT,
-  // Str is share-flavored, so a string literal is a share reference.
   pub result: &'t ShareRefT<'s, 't>,
   _sealed: (),
 }
@@ -726,7 +687,6 @@ where
     ConstantStrTE { range, value, region, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstantFloatTE<'s, 't> {
   pub range: RangeS<'s>,
@@ -744,13 +704,11 @@ where
     ConstantFloatTE { range, value, region, result: KindT::Float(FloatT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct LocalLookupTE<'s, 't> {
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
   pub local_variable: &'t LocalVariable<'s, 't>,
-  // A local lookup is a borrow reference to the variable's value.
   pub result: &'t BorrowRefT<'s, 't>,
   _sealed: (),
 }
@@ -770,7 +728,6 @@ where
     LocalLookupTE { range, loct, local_variable, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ArgLookupTE<'s, 't> {
   pub range: RangeS<'s>,
@@ -788,7 +745,6 @@ where
     ArgLookupTE { range, loct, param_index, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct StaticSizedArrayLookupTE<'s, 't>
 where
@@ -799,7 +755,6 @@ where
   pub array_expr: ExpressionTE<'s, 't>,
   pub array_type: &'t StaticSizedArrayTT<'s, 't>,
   pub index_expr: ExpressionTE<'s, 't>,
-  // A borrow reference to the indexed element.
   pub result: &'t BorrowRefT<'s, 't>,
   _sealed: (),
 }
@@ -821,7 +776,6 @@ where
     StaticSizedArrayLookupTE { range, loct, array_expr, array_type, index_expr, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct RuntimeSizedArrayLookupTE<'s, 't>
 where
@@ -832,7 +786,6 @@ where
   pub array_expr: ExpressionTE<'s, 't>,
   pub array_type: &'t RuntimeSizedArrayTT<'s, 't>,
   pub index_expr: ExpressionTE<'s, 't>,
-  // See RMLRMO why the result is a borrow reference to the element type.
   pub result: &'t BorrowRefT<'s, 't>,
   _sealed: (),
 }
@@ -854,7 +807,6 @@ where
     RuntimeSizedArrayLookupTE { range, loct, array_expr, array_type, index_expr, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ArrayLengthTE<'s, 't>
 where
@@ -874,7 +826,6 @@ where
     ArrayLengthTE { range, array_expr, result: KindT::Int(IntT::I32), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct MemberLookupTE<'s, 't>
 where
@@ -884,7 +835,6 @@ where
   pub loct: LocT<'t>,
   pub struct_expr: ExpressionTE<'s, 't>,
   pub member_name: IVarNameT<'s, 't>,
-  // See RMLRMO why the result is a borrow reference to the member.
   pub result: &'t BorrowRefT<'s, 't>,
   _sealed: (),
 }
@@ -905,7 +855,6 @@ where
     MemberLookupTE { range, loct, struct_expr, member_name, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DerefTE<'s, 't>
 where
@@ -936,7 +885,6 @@ where
     DerefTE { range, loct, inner, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct InterfaceFunctionCallTE<'s, 't>
 where
@@ -971,8 +919,6 @@ where
     }
   }
 }
-/// Arena-allocated (see @TFITCX)
-/// A method call on placeholder, using the interface we know it implements.
 #[derive(Debug)]
 pub struct BoundFunctionCallTE<'s, 't>
 where
@@ -1014,13 +960,12 @@ where
   }
 }
 
-/// Value-type (see @TFITCX)
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct GenericParametersInheritance {
   pub num_inherited_generic_parameters: i32,
 }
 
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ExternFunctionCallTE<'s, 't>
 where
@@ -1046,19 +991,15 @@ where
     ExternFunctionCallTE { range, prototype2, args, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct FunctionCallTE<'s, 't>
 where
   's: 't,
 {
   pub loct: LocT<'t>,
-  /// The call's source range(s), for diagnostics that point at the call itself (e.g. the borrow
-  /// checker locating a held-register use whose reference is this call's unnamed result).
   pub range: &'t [RangeS<'s>],
   pub callable: &'t PrototypeT<'s, 't>,
   pub args: &'t [ExpressionTE<'s, 't>],
-  // VCOORD: rename to return_type
   pub result: KindT<'s, 't>,
   _sealed: (),
 }
@@ -1077,7 +1018,6 @@ where
     FunctionCallTE { loct, range, callable, args, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ReinterpretTE<'s, 't>
 where
@@ -1097,11 +1037,9 @@ where
     ReinterpretTE { range, expr, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct CopyPrimTE<'s, 't> {
   pub range: RangeS<'s>,
-  /// This load's location, so the borrow checker can name it as a restrict-region access site.
   pub loct: LocT<'t>,
   pub inner: ExpressionTE<'s, 't>,
   pub result: KindT<'s, 't>,
@@ -1120,7 +1058,6 @@ where
     CopyPrimTE { range, loct, inner, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct ConstructTE<'s, 't>
 where
@@ -1153,7 +1090,6 @@ where
     ConstructTE { range, struct_tt, result, args, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct NewRuntimeSizedArrayTE<'s, 't>
 where
@@ -1181,7 +1117,6 @@ where
     NewRuntimeSizedArrayTE { range, array_type, region, capacity_expr, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct StaticArrayFromCallableTE<'s, 't>
 where
@@ -1219,7 +1154,6 @@ where
     }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyStaticSizedArrayIntoFunctionTE<'s, 't>
 where
@@ -1256,7 +1190,6 @@ where
     }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyStaticSizedArrayIntoLocalsTE<'s, 't>
 where
@@ -1290,7 +1223,6 @@ where
     }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyRuntimeSizedArrayTE<'s, 't>
 where
@@ -1310,7 +1242,6 @@ where
     DestroyRuntimeSizedArrayTE { range, array_expr, result: KindT::Void(VoidT), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct RuntimeSizedArrayCapacityTE<'s, 't>
 where
@@ -1330,7 +1261,6 @@ where
     RuntimeSizedArrayCapacityTE { range, array_expr, result: KindT::Int(IntT::I32), _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct PushRuntimeSizedArrayTE<'s, 't>
 where
@@ -1361,7 +1291,6 @@ where
     }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct PopRuntimeSizedArrayTE<'s, 't>
 where
@@ -1385,7 +1314,6 @@ where
     PopRuntimeSizedArrayTE { range, array_expr, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct InterfaceToInterfaceUpcastTE<'s, 't>
 where
@@ -1407,11 +1335,9 @@ where
     inner_expr: ExpressionTE<'s, 't>,
     target_interface: &'t InterfaceTT<'s, 't>,
   ) -> InterfaceToInterfaceUpcastTE<'s, 't> {
-    // VCOORD: preserve the inner wrap and swap the innermost citizen to target_interface.
     unimplemented!("InterfaceToInterfaceUpcastTE onion result")
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct UpcastInterfaceTE<'s, 't>
 where
@@ -1440,9 +1366,6 @@ where
     UpcastInterfaceTE { range, inner_expr, target_super_kind, impl_name, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
-/// An upcast of a placeholder to one of the interfaces that it implements.
-/// The instantiator should make this evaporate.
 #[derive(Debug)]
 pub struct UpcastGenericTE<'s, 't>
 where
@@ -1471,7 +1394,6 @@ where
     UpcastGenericTE { range, inner_expr, target_super_kind, impl_name, result, _sealed: () }
   }
 }
-/// Arena-allocated (see @TFITCX)
 #[derive(Debug)]
 pub struct DestroyTE<'s, 't>
 where

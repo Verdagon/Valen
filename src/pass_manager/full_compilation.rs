@@ -1,5 +1,3 @@
-// Coordinates the full compilation pipeline
-
 use bumpalo::Bump;
 use crate::compile_options::GlobalOptions;
 use crate::scout_arena::ScoutArena;
@@ -26,10 +24,6 @@ pub struct FullCompilationOptions {
   pub debug_out: Arc<dyn Fn(&str) + Send + Sync>,
 }
 
-
-// A thin wrapper over InstantiatedCompilation (typing -> instantiating -> HinputsI). The
-// simplifying/hammer stage and its ProgramH ('h) output are gone; HinputsI (in the 'i
-// instantiating arena) is the sole backend contract, so there is no longer an 'h lifetime.
 pub struct FullCompilation<'s, 'ctx, 't, 'i, 'p>
 where
   's: 't,
@@ -51,7 +45,6 @@ where
     typing_interner: &'ctx TypingInterner<'s, 't>,
     keywords: &'ctx Keywords<'s>,
     parser_keywords: &'ctx Keywords<'p>,
-    // VV: crate::
     parse_arena: &'ctx ParseArena<'p>,
     packages_to_build: Vec<&'p PackageCoordinate<'p>>,
     code_source: &'ctx CodeSource<'p>,

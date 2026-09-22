@@ -32,14 +32,10 @@ use std::marker::PhantomData;
 
 pub struct IntegrationTestsA;
 
-// Ignored: roguelike.vale uses HashMap<int, Goblin, IntHasher, IntEquator> heavily,
-// which fails the `K Ref imm` bound now that int is Own (not Share). Blocks on the
-// same hash_map_tests::* root cause — revive in lockstep with hashmap solver work.
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "passes in isolation, fails in full-suite (test-interaction; suspected shared state)"]
+#[ignore]
 fn roguelike_typing_pass() {
-    unimplemented!(); // ZONION-deferred+reasoned: needs get_compiler_outputs harness method
+    unimplemented!();
     /*
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -65,8 +61,6 @@ fn roguelike_typing_pass() {
     */
 }
 
-// The one live integration test back on the onion path: compile a trivial program end to end
-// (source -> typing -> instantiate -> TestVM) and assert its VON return value.
 #[test]
 fn simple_program_returning_an_int() {
     let compilation_bump = bumpalo::Bump::new();
@@ -236,8 +230,7 @@ fn simple_program_with_arrays() {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "deferred: borrow-shape backend arc (vcoord Phase 2 / *int_ptr)"]
+#[ignore]
 fn simple_program_with_mainargs() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -430,7 +423,7 @@ fn simple_program_with_sameinstance() {
 }
 
 #[test]
-#[ignore = "weaks disabled for now"]
+#[ignore]
 fn simple_program_with_weak() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -821,8 +814,7 @@ fn test_multiple_invocations_of_generic() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // VCOORD: revisit the below
-        // TSUGAR: binary form auto-borrows operands → sig flipped to `&T` with clone bound; calls use `&x bork &y` and body uses `clone(a)`
+        // VCOORD: revisit the below, so many & things
         r"
 func bork<T>(a &T, b &T) T where func drop(T)void, func clone(&T)T { return clone(a); }
 exported func main() int {&true bork &false; &2 bork &2; return &3 bork &3;}
@@ -879,7 +871,7 @@ fn test_returning_a_local_mutable_var() {
     }
 }
 
-#[ignore = "waiting on auto-borrow or not decision"]
+#[ignore]
 #[test]
 fn test_taking_callable_arg_value_into_ref_param() {
     // One day we want this to work, because it would be nice and convenient. Right now it
@@ -1178,8 +1170,7 @@ fn simple_extern_function() {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "blocked on opaque-extern-drop design — auto-derived drop for extern struct panics; see todo/opaque-extern-drop.md"]
+#[ignore]
 fn extern_function_returning_extern_struct() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -1195,7 +1186,6 @@ fn extern_function_returning_extern_struct() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share
         r"
 extern struct Vec<T>;
 extern func VecOuterNew<T>() Vec<T>;
@@ -1212,8 +1202,7 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "blocked on opaque-extern-drop design — auto-derived drop for extern struct panics; see todo/opaque-extern-drop.md"]
+#[ignore]
 fn extern_rust_vec() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -1229,7 +1218,6 @@ fn extern_rust_vec() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share
         r"
 extern struct Vec<T> {
   extern func new() Vec<T>;
@@ -1247,8 +1235,7 @@ exported func main() int {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "blocked on opaque-extern-drop design — auto-derived drop for extern struct panics; see todo/opaque-extern-drop.md"]
+#[ignore]
 fn extern_rust_vec_capacity() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -1264,7 +1251,6 @@ fn extern_rust_vec_capacity() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share
         r"
 extern struct Vec<T> {
   extern func with_capacity(c i64) Vec<T>;
@@ -1283,8 +1269,7 @@ exported func main() i64 {
 }
 
 #[test]
-// ZONION: re-enable for onion
-#[ignore = "blocked on opaque-extern-drop design — auto-derived drop for extern struct panics; see todo/opaque-extern-drop.md"]
+#[ignore]
 fn extern_method_on_generic_extern_struct_returns_expected_value() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -1300,7 +1285,6 @@ fn extern_method_on_generic_extern_struct_returns_expected_value() {
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
-        // TSUGAR: imm → share
         r"
 extern struct Vec<T> {
   extern func with_capacity(c i64) Vec<T>;

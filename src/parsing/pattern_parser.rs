@@ -21,7 +21,6 @@ where
     PatternParser { parse_arena, keywords }
   }
 
-  /// Parse a parameter
   pub fn parse_parameter(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -38,7 +37,6 @@ where
       return Err(ParseError::EmptyPattern(pattern_begin));
     }
 
-    // Check for 'virtual' keyword (lines 21-29)
     let maybe_virtual = match iter.peek_cloned() {
       None => return Err(ParseError::EmptyParameter(pattern_range.begin())),
       Some(INodeLEEnum::Word(WordLE { range, str })) if str == self.keywords.r#virtual => {
@@ -48,7 +46,6 @@ where
       Some(_) => None,
     };
 
-    // Check for '&self' (lines 31-41)
     let maybe_self_borrow = match iter.peek_n(2).as_slice() {
       [] => return Err(ParseError::EmptyParameter(pattern_range.begin())),
       [None] => return Err(ParseError::EmptyParameter(pattern_range.begin())),
@@ -65,7 +62,6 @@ where
       _ => None,
     };
 
-    // If we have self borrow, return early (lines 42-45)
     if let Some(_) = maybe_self_borrow {
       return Ok(ParameterP {
         range: pattern_range,
@@ -75,14 +71,11 @@ where
       });
     }
 
-    // Parse optional name (lines 47-62)
     let maybe_name = match iter.peek2_cloned() {
       (Some(INodeLEEnum::Squared(_)), _) => {
-        // Destructure parameter with no name or type, like func moo([a, b, c])
         None
       }
       (Some(INodeLEEnum::Word(_)), Some(INodeLEEnum::Squared(_))) => {
-        // Destructure parameter with type but no name, like func moo(Vec3[a, b, c])
         None
       }
       (Some(INodeLEEnum::Word(w)), _) => {
@@ -93,7 +86,6 @@ where
       _ => return Err(ParseError::BadLocalName(iter.get_pos())),
     };
 
-    // Parse the pattern (lines 66-69)
     let pattern = self.parse_pattern(
       iter,
       templex_parser,
@@ -114,7 +106,6 @@ where
     })
   }
 
-  /// Parse a pattern
   pub fn parse_pattern(
     &self,
     iter: &mut ScrambleIterator<'p, '_>,
@@ -131,10 +122,8 @@ where
       if maybe_name_from_parameter.is_none() {
         return Err(ParseError::EmptyPattern(pattern_begin));
       }
-      // Fall through to validation logic below
     }
 
-    // Check for 'self.' prefix for constructing members (lines 90-99)
     let is_constructing = match iter.peek2_cloned() {
       (
         Some(INodeLEEnum::Word(WordLE { str: self_str, .. })),
@@ -147,7 +136,6 @@ where
       _ => false,
     };
 
-    // Check for 'set' keyword (lines 101-104)
     let maybe_mutate = iter.try_skip_word(self.keywords.set);
     if maybe_mutate.is_some() && !iter.has_next() {
       return Err(ParseError::CantUseThatLocalName {
@@ -156,7 +144,6 @@ where
       });
     }
 
-    // Parse destination local (lines 106-151)
     let maybe_destination_local = match maybe_name_from_parameter {
       Some(WordLE { range, str }) => {
         if str == self.keywords.underscore {
@@ -172,7 +159,6 @@ where
         }
       }
       None => {
-        // Determine if the next thing is a name (lines 116-129)
         let name_is_next = match iter.peek2_cloned() {
           (None, None) => {
             panic!("Impossible: peek2 should not return (None, None) when has_next is true")
@@ -180,7 +166,6 @@ where
           (None, Some(_)) => panic!("Impossible: peek2 should not return (None, Some(_))"),
           (Some(_), None) => true,
           (Some(first), Some(second)) => {
-            // There's a space after the first thing if ranges don't touch
             first.range().end() < second.range().begin()
           }
         };
@@ -217,37 +202,29 @@ where
       }
     };
 
-    // Stop if we see 'in' keyword (lines 153-158)
     match iter.peek_cloned() {
       Some(INodeLEEnum::Word(WordLE { str, .. })) if str == self.keywords.r#in => {
-        // Don't consume it, just stop processing
       }
       _ => {}
     }
 
-    // Determine if next thing is a type (lines 160-174)
     let next_is_type = match iter.peek2_cloned() {
       (None, None) => false,
       (None, Some(_)) => panic!("Impossible: peek2 should not return (None, Some(_))"),
       (Some(INodeLEEnum::Squared(_)), maybe_after) => {
-        // If there's something after the squared brackets, it's an array type
         maybe_after.is_some()
       }
       (Some(_), _) => {
-        // There's something that's not square-braced, so it's a type
         true
       }
     };
 
-    // Parse optional type (lines 175-194)
     let maybe_type: Option<ITemplexPT<'p>> = if next_is_type {
       Some(templex_parser.parse_templex(iter)?)
     } else {
       if is_in_lambda {
-        // Allow it, lambdas can figure out their type from the callee
         None
       } else if is_in_citizen {
-        // Allow it, just assume it's the containing struct
         None
       } else if is_in_function {
         return Err(ParseError::LightFunctionMustHaveParamTypes {
@@ -260,13 +237,10 @@ where
       }
     };
 
-    // A `mut` after a parameter's type is a placeholder for a future per-parameter borrow-checker
-    // modifier. Recognize and discard it; nothing stores it yet.
     if is_parameter {
       let _ = iter.try_skip_word(self.keywords.r#mut);
     }
 
-    // Parse optional destructure (lines 196-215)
     let maybe_destructure = match iter.peek_cloned() {
       Some(INodeLEEnum::Squared(SquaredLE {
         range: destructure_range,
@@ -304,7 +278,6 @@ where
       None => None,
     };
 
-    // Return the complete pattern (lines 217-220)
     Ok(PatternPP::<'p> {
       range: RangeL::new(pattern_begin, iter.get_prev_end_pos()),
       destination: maybe_destination_local,

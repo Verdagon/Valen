@@ -1,4 +1,3 @@
-// cargo test --manifest-path Cargo.toml --lib parsing::tests::expression_tests
 
 use crate::interner::StrI;
 use crate::keywords::Keywords;
@@ -290,7 +289,7 @@ fn double_borrow_expression() {
         }),
       ..
     }) => {}
-    _ => panic!("expected &&x → nested Borrow(Borrow(x)) structure"),
+    _ => panic!("expected &&x to become nested Borrow(Borrow(x)) structure"),
   }
 }
 
@@ -309,7 +308,7 @@ fn weak_expression() {
         }),
       ..
     }) => {}
-    _ => panic!("expected weak x → Weak(x) structure"),
+    _ => panic!("expected weak x to become Weak(x) structure"),
   }
 }
 
@@ -693,8 +692,6 @@ fn single_arg_brace_lambda() {
   }
 }
 
-// A typed lambda param takes the same trailing `mut` placeholder as a header param, and drops it the
-// same way: the params are exactly `w &Win` and `input &Inp`.
 #[test]
 fn lambda_param_trailing_mut_is_ignored() {
   let parse_bump = Bump::new();

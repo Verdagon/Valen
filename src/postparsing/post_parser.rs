@@ -1,7 +1,3 @@
-// Coordinates the Scout (post-parsing) pass
-
-// AFTERM: rename Denizen to Definition, and maybe Citizen to TypeDefinition
-// AFTERM: rename ScoutCompilation to PostParserCompilation
 
 use crate::code_source::CodeSource;
 use crate::compile_options::GlobalOptions;
@@ -85,8 +81,6 @@ pub enum ICompileErrorS<'s> {
   RangedInternalErrorS(RangedInternalErrorS<'s>),
   CantOwnershipInterfaceInImpl(CantOwnershipInterfaceInImpl<'s>),
   CantOwnershipStructInImpl(CantOwnershipStructInImpl<'s>),
-  /// A parameter uses destructure syntax but the function has no body block to
-  /// prepend the desugared LetSE into (extern / abstract / generated bodies).
   ParamDestructureRequiresBody {
     range: RangeS<'s>,
   },
@@ -177,7 +171,6 @@ pub struct RangedInternalErrorS<'s> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-// SPORK
 pub enum IEnvironmentS<'s> {
   Environment(EnvironmentS<'s>),
   FunctionEnvironment(FunctionEnvironmentS<'s>),
@@ -310,8 +303,6 @@ impl<'s> StackFrame<'s> {
   }
 }
 
-// MIGALLOW: noVariableUses -> no_variable_uses
-// MIGALLOW: noDeclarations -> no_declarations
 impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
   pub fn no_variable_uses() -> VariableUses<'s> {
     VariableUses::<'s>::empty()
@@ -337,7 +328,6 @@ pub(crate) fn translate_imprecise_name<'s, 'p>(
   name: &IImpreciseNameP<'p>,
 ) -> IImpreciseNameS<'s> {
   match name {
-    // Re-intern string from 'p into 's
     IImpreciseNameP::LookupName(n) => {
       scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS {
         name: scout_arena.intern_str(n.str().as_str()),
@@ -473,11 +463,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           IRulexSR::Resolve(_) => {
             rules_to_leave_in_default_argument.push(&*self.scout_arena.alloc(r))
           }
-          // Per @DRSINI, this EqualsSR aliases the param rune to the default's resultRune.
-          // We KEEP it in the default's rules (rather than hoisting) so the default is fully
-          // self-contained — it travels intact when GenericParameterS is inherited (e.g. by
-          // struct internal methods). At default-fire time, the typing pass registers the
-          // default-only runes via solverState.registerRunes(default.runeToType.keys).
           IRulexSR::Equals(_) => {
             rules_to_leave_in_default_argument.push(&*self.scout_arena.alloc(r))
           }
@@ -507,8 +492,8 @@ pub struct PostParser<'s, 'p, 'ctx> {
   pub global_options: GlobalOptions,
   pub scout_arena: &'ctx ScoutArena<'s>,
   pub keywords: &'ctx Keywords<'s>,
-  pub keywords_p: &'ctx Keywords<'p>, // Per @PPSPASTNZ, synthetic parser nodes need 'p-interned keyword strings
-  pub parse_arena: &'ctx ParseArena<'p>, // Per @PPSPASTNZ, for allocating synthetic parser AST nodes
+  pub keywords_p: &'ctx Keywords<'p>,
+  pub parse_arena: &'ctx ParseArena<'p>,
 }
 
 impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
@@ -620,8 +605,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       })
       .unwrap_or_default();
 
-    // Mirrors:
-    // RulePUtils.getOrderedRuneDeclarationsFromRulexesWithDuplicates(templateRulesP)
     let runes_from_rules =
       get_ordered_rune_declarations_from_rulexes_with_duplicates(template_rules_p)
         .into_iter()
@@ -1038,8 +1021,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           ))
         })
         .collect::<Vec<_>>();
-    // Put back in when we have regions
-    // let generic_parameters_s = struct_user_specified_generic_parameters_s ++ maybe_region_generic_param ++ user_specified_runes_implicit_region_runes_s;
     let generic_parameters_s = struct_user_specified_generic_parameters_s;
 
     let mut header_impl_bounds = Vec::new();
@@ -1067,7 +1048,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         IStructContent::NormalStructMember(member) => {
           let member_tree =
             translate_templex_into_type_st(self.scout_arena, struct_env.clone(), &member.tyype);
-          // The @PFVSZ split, so a constructor param built from this member matches a user-written one.
           let (member_full_rune, member_value_rune, outer_ref_rules_vec, value_rules_vec) =
             translate_signature_type_st(
               self.scout_arena,
@@ -1354,7 +1334,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
 }
 
 pub use scout_compilation::ScoutCompilation;
-// Wrapped in a private submodule for _sealed to work.
 mod scout_compilation {
   use super::*;
 
@@ -1444,7 +1423,6 @@ mod scout_compilation {
         let program_s = post_parser.scout_program(file_coordinate_s, file_p)?;
         scoutput.put(file_coordinate_s, program_s);
       }
-      // Re-intern package_coord_to_file_coords from 'p to 's
       for (pkg_p, files_p) in &parseds.package_coord_to_file_coords {
         let pkg_s = self.scout_arena.intern_package_coordinate(
           self.scout_arena.intern_str(pkg_p.module.as_str()),

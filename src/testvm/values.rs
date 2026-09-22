@@ -19,7 +19,7 @@ use std::io::Write;
 
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct RRReferenceV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -29,7 +29,7 @@ where 's: 'i, 'i: 'v,
 }
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct RRKindV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -40,21 +40,16 @@ where 's: 'i, 'i: 'v,
 
 
 impl<'v, 'i, 's> RRKindV<'v, 'i, 's> where 's: 'i, 'i: 'v {
-  /// See the free `strip_outer_references`.
   pub fn strip_outer_references(self) -> RRKindV<'v, 'i, 's> {
     RRKindV { hamut: strip_outer_references(self.hamut), _phantom: PhantomData }
   }
 
-  /// See the free `outer_ownership`.
   pub fn outer_ownership(self) -> OwnershipV {
     outer_ownership(self.hamut)
   }
 }
 
 
-/// Peel off any `BorrowRef`/`OwnRef`/`ShareRef`/`WeakRef` wraps down to the bare underlying kind.
-/// A borrow and its owner must strip to the same bare kind so they share one allocation identity
-/// (@identity-trap).
 pub fn strip_outer_references<'s, 'i>(mut kind: KindIT<'s, 'i>) -> KindIT<'s, 'i> where 's: 'i {
   loop {
     match kind {
@@ -69,9 +64,6 @@ pub fn strip_outer_references<'s, 'i>(mut kind: KindIT<'s, 'i>) -> KindIT<'s, 'i
 }
 
 
-/// The ownership denoted by a kind's outermost wrap: a `BorrowRef`/`ShareRef`/`WeakRef` wrap is
-/// Borrow/Share/Weak; a bare kind (or an `OwnRef`) is owned. Callers derive this from the wrapped
-/// kind and hand it to `ReferenceV::new`, since `ReferenceV` stores kinds stripped.
 pub fn outer_ownership<'s, 'i>(kind: KindIT<'s, 'i>) -> OwnershipV where 's: 'i {
   match kind {
     KindIT::BorrowRefIT(_) => OwnershipV::Borrow,
@@ -83,10 +75,6 @@ pub fn outer_ownership<'s, 'i>(kind: KindIT<'s, 'i>) -> OwnershipV where 's: 'i 
 }
 
 
-/// The VM's derived ownership tag. Onion typing expresses ownership structurally (as ref-wraps
-/// around a bare kind), but `ReferenceV` stores its kinds stripped, so it carries this tag —
-/// derived from the wrap at construction — to answer borrow-vs-weak-vs-owned later (drives
-/// weak-vs-strong referrer registration and the dealloc/cleanup rules).
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum OwnershipV {
   Own,
@@ -96,7 +84,7 @@ pub enum OwnershipV {
 }
 
 
-/// Temporary state
+
 pub struct AllocationV<'v, 'i, 's> {
   pub reference: ReferenceV<'v, 'i, 's>,
   pub kind: KindV<'v, 'i, 's>,
@@ -150,7 +138,6 @@ impl<'v, 'i, 's> AllocationV<'v, 'i, 's> {
     panic!("Unimplemented: get_ref_count");
   }
 
-  /// `is_weak_filter`: None counts all referrers; Some(true) counts weak only; Some(false) counts strong only.
   pub fn ensure_ref_count(&self, scout_arena: &ScoutArena<'s>, is_weak_filter: Option<bool>, expected_num: i32) -> Result<(), VmRuntimeErrorV<'s>> {
     if matches!(self.kind, KindV::Void(_)) {
       // Void has no RC
@@ -181,7 +168,6 @@ impl<'v, 'i, 's> AllocationV<'v, 'i, 's> {
     }
   }
 
-  /// `is_weak_filter`: None counts all referrers; Some(true) counts weak only; Some(false) counts strong only.
   pub fn get_total_ref_count(&self, is_weak_filter: Option<bool>) -> i32 {
     if matches!(self.kind, KindV::Void(_)) {
       return 1;
@@ -201,7 +187,7 @@ impl<'v, 'i, 's> AllocationV<'v, 'i, 's> {
 
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, Debug)]
 pub enum KindV<'v, 'i, 's> {
   Void(VoidV),
@@ -231,7 +217,7 @@ impl<'v, 'i, 's> KindV<'v, 'i, 's> where 's: 'i, 'i: 'v {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone)]
 pub enum PrimitiveKindV<'v, 'i, 's> {
   Void(VoidV),
@@ -265,7 +251,7 @@ impl VoidV {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct IntV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -283,7 +269,7 @@ impl<'v, 'i, 's> IntV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BoolV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -300,7 +286,7 @@ impl<'v, 'i, 's> BoolV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct FloatV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -317,7 +303,7 @@ impl<'v, 'i, 's> FloatV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StrV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -334,11 +320,6 @@ impl<'v, 'i, 's> StrV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
-///
-/// The VM's stand-in for an opaque extern citizen (e.g. the test-only `Vec`). Onion typing has no
-/// dedicated opaque kind, so we carry the citizen's onion `KindIT` directly. Step 3 (externs)
-/// decides how the Vec externs build this.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct OpaqueV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -355,7 +336,7 @@ impl<'v, 'i, 's> OpaqueV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 pub struct StructInstanceV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
 {
@@ -363,8 +344,6 @@ where 's: 'i, 'i: 'v,
   pub members: Cell<Option<&'v [ReferenceV<'v, 'i, 's>]>>,
 }
 
-// `StructDefinitionI` has no `Debug` (its `ArenaIndexMap` bound maps don't), so print the struct by
-// its instantiated type rather than recursing into the whole definition.
 impl<'v, 'i, 's> Debug for StructInstanceV<'v, 'i, 's> {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("StructInstanceV")
@@ -401,7 +380,7 @@ impl<'v, 'i, 's> StructInstanceV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Debug)]
 pub struct ArrayInstanceV<'v, 'i, 's> {
   pub type_h: KindIT<'s, 'i>,
@@ -463,7 +442,7 @@ impl<'v, 'i, 's> ArrayInstanceV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct AllocationIdV<'v, 'i, 's> {
   pub tyype: RRKindV<'v, 'i, 's>,
@@ -471,27 +450,18 @@ pub struct AllocationIdV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct ReferenceV<'v, 'i, 's> {
   pub actual_kind: RRKindV<'v, 'i, 's>,
   pub seen_as_kind: RRKindV<'v, 'i, 's>,
-  /// Derived from the reference's outer wrap at construction (the kinds are stored stripped). Reads
-  /// borrow-vs-weak-vs-owned for referrer-strength and dealloc/cleanup decisions.
   pub ownership: OwnershipV,
   pub num: i32,
-  /// Module-private; forces construction via `ReferenceV::new(...)` so the wrap-strip runs.
-  /// External code can destructure with `..`.
   _sealed: (),
 }
 
 
 impl<'v, 'i, 's> ReferenceV<'v, 'i, 's> {
-  /// Construct a ReferenceV. Both `actual_kind` and `seen_as_kind` must already be stripped of their
-  /// outer ref-wraps: `actual_kind` is the bare underlying kind that keys `alloc_id` (so a borrow and
-  /// its owner share one allocation identity), and `seen_as_kind` is the bare viewed kind (`IShip`
-  /// for an upcast, else the bare concrete kind). `ownership` is the borrow/own/share/weak the caller
-  /// derived from the wrap (via `RRKindV::outer_ownership`) before stripping (@identity-trap).
   pub fn new(
     actual_kind: RRKindV<'v, 'i, 's>,
     seen_as_kind: RRKindV<'v, 'i, 's>,
@@ -510,7 +480,6 @@ impl<'v, 'i, 's> ReferenceV<'v, 'i, 's> {
   }
 
   pub fn alloc_id(&self) -> AllocationIdV<'v, 'i, 's> {
-    // Strip ref-wraps so a borrow and its owner share one key (see `RRKindV::strip_outer_references`, @identity-trap).
     AllocationIdV { tyype: self.actual_kind.strip_outer_references(), num: self.num }
   }
 
@@ -530,7 +499,7 @@ impl<'v, 'i, 's> ReferenceV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum IObjectReferrerV<'v, 'i, 's> {
   VariableToObjectReferrer(VariableToObjectReferrerV<'v, 'i, 's>),
@@ -542,57 +511,54 @@ pub enum IObjectReferrerV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VariableToObjectReferrerV<'v, 'i, 's> {
   pub var_addr: VariableAddressV<'v, 'i, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct MemberToObjectReferrerV<'v, 'i, 's> {
   pub member_addr: MemberAddressV<'v, 'i, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ElementToObjectReferrerV<'v, 'i, 's> {
   pub element_addr: ElementAddressV<'v, 'i, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegisterToObjectReferrerV<'v, 'i, 's> {
   pub call_id: CallIdV<'v, 'i, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegisterHoldToObjectReferrerV<'v, 'i, 's> {
   pub expression_id: ExpressionIdV<'v, 'i, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ArgumentToObjectReferrerV<'v, 'i, 's> {
   pub argument_id: ArgumentIdV<'v, 'i, 's>,
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VariableAddressV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
 {
   pub call_id: CallIdV<'v, 'i, 's>,
-  // A local's identity is its name, which the typing pass makes unique per function (@VCOORD). The
-  // instantiator reallocates a fresh `LocalVariableI` per mention, so the pointer is NOT a stable
-  // key — the name is.
   pub name: IVarNameI<'s, 'i>,
 }
 
@@ -604,7 +570,7 @@ impl<'v, 'i, 's> Display for VariableAddressV<'v, 'i, 's> where 's: 'i, 'i: 'v {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct MemberAddressV<'v, 'i, 's> {
   pub struct_id: AllocationIdV<'v, 'i, 's>,
@@ -619,7 +585,7 @@ impl<'v, 'i, 's> MemberAddressV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ElementAddressV<'v, 'i, 's> {
   pub array_id: AllocationIdV<'v, 'i, 's>,
@@ -634,7 +600,7 @@ impl<'v, 'i, 's> ElementAddressV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct CallIdV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
@@ -658,7 +624,7 @@ impl<'v, 'i, 's> Display for CallIdV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ArgumentIdV<'v, 'i, 's> {
   pub call_id: CallIdV<'v, 'i, 's>,
@@ -666,7 +632,7 @@ pub struct ArgumentIdV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Clone)]
 pub struct VariableV<'v, 'i, 's> {
   pub id: VariableAddressV<'v, 'i, 's>,
@@ -675,7 +641,7 @@ pub struct VariableV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExpressionIdV<'v, 'i, 's> {
   pub call_id: CallIdV<'v, 'i, 's>,
@@ -694,7 +660,7 @@ impl<'v, 'i, 's> ExpressionIdV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 pub enum RegisterV<'v, 'i, 's> {
   ReferenceRegister(&'v ReferenceRegisterV<'v, 'i, 's>),
 }
@@ -707,13 +673,13 @@ impl<'v, 'i, 's> RegisterV<'v, 'i, 's> {
 }
 
 
-/// Temporary state
+
 pub struct ReferenceRegisterV<'v, 'i, 's> {
   pub reference: ReferenceV<'v, 'i, 's>,
 }
 
 
-/// Temporary state
+
 pub struct VivemPanicV<'v, 'i, 's>
 where 's: 'i, 'i: 'v,
 {

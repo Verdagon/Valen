@@ -71,7 +71,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "strings not implemented yet (R3 @str->&str share-peel via print(int)->str(int), trips VM transmute at heap.rs:656)"]
+#[ignore]
 #[test]
 fn tests_a_while_loop_with_a_complex_condition() {
     let compilation_bump = bumpalo::Bump::new();
@@ -107,7 +107,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "strings not implemented yet (R3 @str->&str share-peel via print(int)->str(int), trips VM transmute at heap.rs:656)"]
+#[ignore]
 #[test]
 fn tests_a_while_loop_with_a_set_in_it() {
     let compilation_bump = bumpalo::Bump::new();
@@ -144,7 +144,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "strings not implemented yet (R3 @str->&str share-peel via print(int)->str(int), trips VM transmute at heap.rs:656)"]
+#[ignore]
 #[test]
 fn tests_a_while_loop_with_a_declaration_in_it() {
     let compilation_bump = bumpalo::Bump::new();
@@ -436,7 +436,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch (foreach's next() returns an Opt interface)"]
+#[ignore]
 #[test]
 fn each_on_int_range() {
     let compilation_bump = bumpalo::Bump::new();
@@ -471,7 +471,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "strings not implemented yet (str share-peel via println on the collected list)"]
+#[ignore]
 #[test]
 fn parallel_foreach() {
     let compilation_bump = bumpalo::Bump::new();
@@ -508,7 +508,7 @@ exported func main() {
     assert_eq!(compile.eval_for_stdout(Vec::new()).unwrap().trim(), "[1, 2, 3, 4, 5]");
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch"]
+#[ignore]
 #[test]
 fn mutable_foreach() {
     let compilation_bump = bumpalo::Bump::new();
@@ -563,7 +563,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch (foreach's next() returns an Opt interface)"]
+#[ignore]
 #[test]
 fn each_on_int_range_with_conditional_break() {
     let compilation_bump = bumpalo::Bump::new();
@@ -603,7 +603,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch (foreach's next() returns an Opt interface)"]
+#[ignore]
 #[test]
 fn each_on_int_range_with_unconditional_break() {
     let compilation_bump = bumpalo::Bump::new();
@@ -638,7 +638,7 @@ exported func main() int {
     }
 }
 
-#[ignore = "interface dispatch/upcast/downcast — owned by the interfaces branch (foreach's next() returns an Opt interface)"]
+#[ignore]
 #[test]
 fn each_on_int_range_with_conditional_break_from_both_branches() {
     let compilation_bump = bumpalo::Bump::new();

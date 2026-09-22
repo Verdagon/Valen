@@ -30,9 +30,6 @@ use crate::utils::fx::IndexMap;
 use crate::utils::range::RangeS;
 use std::marker::PhantomData;
 
-/// Per @ENECCLZ, a bound like `where func clone(&T)T` is satisfied by searching each rune's
-/// concluded value's namespace, unpeeled: at `T=Ship` search `Ship`'s env (ship.vale), at
-/// `T=&Ship` search `&Ship`'s env (borrow.vale).
 // VCOORD: inline?
 pub(crate) fn collect_bound_search_kinds<'s, 't>(
   c: &ResolveSR<'s>, // VCOORD: this raw & is weird
@@ -53,13 +50,13 @@ pub(crate) fn collect_bound_search_kinds<'s, 't>(
   kinds
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct CompleteResolveSolve<'s, 't> {
   pub conclusions: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>>,
   pub rune_to_bound: &'t InstantiationBoundArgumentsT<'s, 't>,
 }
 
-/// Temporary state (see @TFITCX)
+
 pub struct CompleteDefineSolve<'s, 't> {
   pub conclusions: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>>,
   pub rune_to_bound: &'t InstantiationBoundArgumentsT<'s, 't>,
@@ -120,14 +117,10 @@ pub struct InitialKnown<'s, 't> {
   pub templata: ITemplataT<'s, 't>,
 }
 
-// deleted: delegate trait removed per god-struct refactor (Compiler now holds all methods directly)
-
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't>
 where
   's: 't,
 {
-  /// `impl_bounds` are the denizen's `where implements(..)` declarations. We conjure an
-  /// `Isa` for each declared relation so the body typechecks against it.
   pub fn solve_for_defining(
     &self,
     envs: InferEnv<'s, 't>,
@@ -168,8 +161,6 @@ where
   }
 
   // Per @DRSINI, defaults are added incrementally for unsolved runes rather than eagerly.
-  /// `impl_bounds` are the callee's `where implements(..)` declarations, that we check at
-  /// the callsite.
   pub fn solve_for_resolving(
     &self,
     envs: InferEnv<'s, 't>,
@@ -254,16 +245,6 @@ where
   }
 
   // VCOORD: doublecheck this
-  // Per @ECSIIOSZ, each call-site in source is resolved by a fresh SimpleSolverState built here;
-  // the caller is responsible for the per-call-site setup contract (MKRFA preprocessing, SROACSD
-  // filtering, CSSNCE env threading, DRSINI incremental defaults).
-  // ⚠ CALLER CONTRACT: if `rules` come from an expression-level postparser output,
-  // they must have had RuneParentEnvLookupSR rules stripped into `initial_knowns` before
-  // being passed here (the MKRFA contract — see the canonical fold in overload_resolver).
-  // This is NOT enforced at the type level; violations produce silent
-  // "couldn't solve" errors at dependent rules rather than faulting at the MKRFA rule.
-  // See the historical MKRFA notes for the queued enforcement work
-  // (extract shared helper + replace the no-op handler with vwat).
   pub fn make_solver_state(
     &self,
     envs: InferEnv<'s, 't>,
@@ -300,12 +281,9 @@ where
     (),
     FailedSolve<IRulexSR<'s>, IRuneS<'s>, ITemplataT<'s, 't>, ITypingPassSolverError<'s, 't>>,
   > {
-    //   compilerSolver.continue(envs, state, solver)
     self.continue_solver(envs, state, solver)
   }
 
-  /// Wraps a rule-level failure discovered *after* the solve finished, so it reads the same as
-  /// one the solver itself raised.
   fn resolving_rule_error(
     &self,
     solver_state: &SimpleSolverState<IRulexSR<'s>, IRuneS<'s>, ITemplataT<'s, 't>>,
@@ -394,7 +372,7 @@ where
       let citizen_tt = match citizen {
         KindT::Struct(s) => ICitizenTT::Struct(s),
         KindT::Interface(i) => ICitizenTT::Interface(i),
-        _ => panic!("implement: reachableBounds — unexpected citizen kind"),
+        _ => panic!("implement: reachableBounds"),
       };
       let (reachable, citizen_rune_to_search_kinds) = self.get_reachable_bounds(
         self.opts.global_options.sanity_check,
@@ -418,9 +396,6 @@ where
         let function_name = self
           .scout_arena
           .intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS { name: func_name }));
-        // Per @ENECCLZ / plan §5: search the environments of the values the bound's generic
-        // runes concluded to (the closure's env for `func __call(&Lam)T` at Lam=closure), not
-        // the whole parameter type `&closure`, which contributes no namespace.
         let search_kinds: &[KindT<'s, 't>] = citizen_rune_to_search_kinds
           .get(citizen_rune)
           .map(|kinds| kinds.as_slice())
@@ -476,7 +451,7 @@ where
       reachable_bounds.push((rune, result));
     }
 
-    // Per IIIOZ: `import_reachable_bounds` only does lookups, not iteration-into-output, so a transient HashMap is fine here.
+    // VCOORD: hash map
     let reachable_bounds_map: HashMap<
       IRuneS<'s>,
       &'t InstantiationReachableBoundArgumentsT<'s, 't>,
@@ -551,7 +526,6 @@ where
       }
     }
 
-    // Check that all the impl bounds are satisfied.
     let mut runes_and_impls: Vec<(IRuneS<'s>, IdT<'s, 't>)> = vec![];
     for impl_bound in impl_bounds {
       let sub_kind = expect_kind_templata(
@@ -658,9 +632,6 @@ where
     }
   }
 
-  // Counter to @BDPFWDZ: this harvests bound prototypes from citizen-typed param inner envs
-  // for the caller to push into its near-env. Pull-aligned replacement is to walk the citizen's
-  // env at lookup time instead.
   pub fn check_defining_conclusions_and_resolve(
     &self,
     envs: InferEnv<'s, 't>,
@@ -707,8 +678,6 @@ where
                 .resolve_citizen_bounds(state, envs.original_calling_env, envs.parent_ranges, envs.call_location, template_id, args)
                 .into_iter()
                 .map(|(rune, (func_bound, bound_name, return_type))| {
-                  // Import re-anchors the bound under this compiling denizen and registers its
-                  // FunctionS there (Some(func_bound)).
                   let subst_prototype = Compiler::import_function_bound(
                     state,
                     self.opts.global_options.sanity_check,
@@ -756,7 +725,6 @@ where
     Ok(instantiation_bound_args)
   }
 
-  // The postparsed `func_bounds` of a denizen, given its already-template id.
   // VLAZY: move this into coutputs or compiler
   fn func_bounds_of(
     &self,
@@ -770,7 +738,6 @@ where
         .func_bounds,
       INameT::StructTemplate(_) => coutputs.get_postparsed_struct(denizen_template_id).func_bounds,
       INameT::InterfaceTemplate(_) => coutputs.get_postparsed_interface(denizen_template_id).func_bounds,
-      // Lambdas (and anything else) declare no where-clause bounds.
       _ => &[],
     }
   }
@@ -920,22 +887,12 @@ where
         _ => None,
       })
       .collect();
-    // VIOLATES @IIIOZ: still HashMap because the downstream make() consumer takes HashMap (cascade through ~6 files).
-    // Deferred with site 5 main offender (line 861 conclusions).
     let rune_to_prototype: HashMap<IRuneS<'s>, &'t PrototypeT<'s, 't>> =
       runes_and_prototypes.iter().cloned().collect();
     if rune_to_prototype.len() < runes_and_prototypes.len() {
       panic!("resolve_conclusions_for_define: duplicate rune in runesAndPrototypes");
     }
 
-    // VCOORD: clean up this comment
-    // Harvest the denizen's own impl bounds (`where implements(..)`).
-    // conjure_impl_bounds_for_defining already deposited an Isa into conclusions for each declared
-    // relation, keyed by the bound's result_rune — the same rune the call site keys its impl-bound arg
-    // by (see the runes_and_impls loop in check_resolving_conclusions_and_resolve), so the instantiator
-    // can pair this define-side param against that arg. We record the bound's placeholder impl id
-    // (isa.impl_name), the parallel of the func-bound FunctionBound placeholder recorded above.
-    // Iterating the IndexMap conclusions in insertion order keeps this deterministic.
     let runes_and_impls: Vec<(IRuneS<'s>, IdT<'s, 't>)> = conclusions
       .iter()
       .filter_map(|(rune, templata)| match templata {
@@ -1187,42 +1144,21 @@ where
     FailedSolve<IRulexSR<'s>, IRuneS<'s>, ITemplataT<'s, 't>, ITypingPassSolverError<'s, 't>>,
   > {
     // See IRAGP for why we have this incremental solving/placeholdering.
-    //   while ( {
     loop {
-      //     continue(envs, coutputs, solverState) match {
-      //       case Ok(()) =>
-      //       case Err(f) => return Err(f)
-      //     }
       self.r#continue(envs, coutputs, solver_state)?;
 
-      //     // During the solve, we postponed resolving structs and interfaces, see SFWPRL.
-      //     // Caller should remember to do that!
-      //     if (!solverState.isComplete()) {
       if !solver_state.is_complete() {
-        //       val continue = onIncompleteSolve(solverState)
         let should_continue = on_incomplete_solve(coutputs, solver_state);
-        //       if (!continue) {
-        //         return Ok(false)
-        //       }
         if !should_continue {
           return Ok(false);
         }
-        //       true
       } else {
-        //     } else {
-        //       return Ok(true)
         return Ok(true);
       }
     }
-    //   }) {}
-    //   vfail() // Shouldnt get here
   }
 }
 
-// Per @SROACSD, DefinitionFuncSR and DefinitionCoordIsaSR are excluded from
-// call-site solves so that ResolveSR and its siblings can't see callee-internal
-// prototype declarations. @BRRZ depends on this filter: the relaxed ResolveSR's
-// real-lookup branch assumes no sibling DefinitionFuncSR in the same solve.
 pub fn include_rule_in_call_site_solve(rule: &IRulexSR) -> bool {
   match rule {
     IRulexSR::DefinitionFunc(_) => false,
@@ -1231,9 +1167,6 @@ pub fn include_rule_in_call_site_solve(rule: &IRulexSR) -> bool {
   }
 }
 
-// Per @SROACSD, ResolveSR, CallSiteFuncSR, and CallSiteCoordIsaSR are excluded
-// from definition solves — a function's own definition should not resolve
-// its callers' prototypes.
 pub fn include_rule_in_definition_solve(rule: &IRulexSR) -> bool {
   match rule {
     // IRulexSR::CallSiteCoordIsa(_) => false,
