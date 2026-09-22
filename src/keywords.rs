@@ -145,7 +145,6 @@ pub struct Keywords<'a> {
   pub err: StrI<'a>,
   pub functor1: StrI<'a>,
   pub my_module: StrI<'a>,
-  pub rust: StrI<'a>,
   pub implicit_clone: StrI<'a>,
 }
 
@@ -306,7 +305,6 @@ impl<'a> Keywords<'a> {
       err: parse_arena.intern_str("Err"),
       functor1: parse_arena.intern_str("Functor1"),
       my_module: parse_arena.intern_str("my_module"),
-      rust: parse_arena.intern_str("rust"),
       implicit_clone: parse_arena.intern_str("implicit_clone"),
     }
   }
@@ -467,7 +465,6 @@ impl<'a> Keywords<'a> {
       err: scout_arena.intern_str("Err"),
       functor1: scout_arena.intern_str("Functor1"),
       my_module: scout_arena.intern_str("my_module"),
-      rust: scout_arena.intern_str("rust"),
       implicit_clone: scout_arena.intern_str("implicit_clone"),
     }
   }

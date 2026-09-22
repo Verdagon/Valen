@@ -4,11 +4,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
-  println!("cargo:rerun-if-env-changed=CARGO_FEATURE_RUST_INTEROP");
   println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NO_BACKEND");
-  if env::var_os("CARGO_FEATURE_RUST_INTEROP").is_some() {
-    emit_rustc_private_rpath();
-  }
 
   if env::var_os("CARGO_FEATURE_NO_BACKEND").is_some() {
     emit_allow_unresolved_backend_symbols();
@@ -20,11 +16,9 @@ fn main() {
   let llvm_config = locate_llvm_config();
   let llvm_dir = run(&llvm_config, &["--cmakedir"]);
 
-  let rust_interop = env::var_os("CARGO_FEATURE_RUST_INTEROP").is_some();
   let dst = cmake::Config::new(&backend_dir)
     .define("LLVM_DIR", &llvm_dir)
     .define("CMAKE_BUILD_TYPE", "Debug")
-    .define("VALE_RUST_INTEROP", if rust_interop { "ON" } else { "OFF" })
     .build_target("backend_lib")
     .build();
 
@@ -91,35 +85,6 @@ fn main() {
   println!("cargo:rerun-if-env-changed=LLVM_DIR");
 }
 
-fn emit_rustc_private_rpath() {
-  let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-  let out = Command::new(&rustc).args(["--print", "sysroot"]).output();
-  let sysroot = match out {
-    Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
-    _ => {
-      println!(
-        "cargo:warning=could not determine rustc sysroot; rustc_private artifacts \
-                      will need DYLD_LIBRARY_PATH set to <sysroot>/lib"
-      );
-      return;
-    }
-  };
-  let lib_dir = PathBuf::from(&sysroot).join("lib");
-  println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
-
-  match Command::new(&rustc).args(["--print", "target-libdir"]).output() {
-    Ok(o) if o.status.success() => {
-      let target_libdir = String::from_utf8_lossy(&o.stdout).trim().to_string();
-      println!("cargo:rustc-link-arg=-Wl,-rpath,{}", target_libdir);
-    }
-    _ => println!(
-      "cargo:warning=could not determine rustc target-libdir; rustc_private artifacts may need \
-                    DYLD_LIBRARY_PATH set to <sysroot>/lib/rustlib/<target>/lib"
-    ),
-  }
-  println!("cargo:rerun-if-env-changed=RUSTC");
-}
-
 fn emit_allow_unresolved_backend_symbols() {
   let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
   if target_os == "macos" {
@@ -173,8 +138,7 @@ fn locate_llvm_config() -> PathBuf {
   }
   panic!(
     "no LLVM 21 llvm-config found. Set $LLVM_CONFIG to an LLVM 21 llvm-config, or install one \
-     (macOS: `brew install llvm@21`). A stock-nightly dev build needs a standalone LLVM 21; the \
-     Vale rustc fork supplies its own only for `--features rust_interop`."
+     (macOS: `brew install llvm@21`)."
   );
 }
 

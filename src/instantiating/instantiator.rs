@@ -17,8 +17,6 @@ use crate::typing::types::types::*;
 use crate::typing::hinputs_t::*;
 use crate::typing::compiler::Compiler;
 use crate::utils::vassert::vassert_one;
-#[cfg(feature = "rust_interop")]
-use crate::typing::rust_interop::reserved::is_rust_backed;
 use crate::postparsing::names::{IImpreciseNameS, IRuneS};
 use crate::postparsing::post_parser_error_humanizer::humanize_imprecise_name;
 use crate::scout_arena::ScoutArena;
@@ -230,8 +228,6 @@ pub struct InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
     pub new_functions: Vec<(PrototypeT<'s, 't>, PrototypeI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>, Option<DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>>)>,
     pub kind_externs: Vec<KindExternI<'s, 'i>>,
     pub function_externs: Vec<FunctionExternI<'s, 'i>>,
-    #[cfg(feature = "rust_interop")]
-    pub rust_instantiation_requests: IndexMap<IdI<'s, 'i>, &'i PrototypeI<'s, 'i>>,
 }
 
 
@@ -262,8 +258,6 @@ impl<'s, 't, 'i> InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
       new_functions: Vec::new(),
       kind_externs: Vec::new(),
       function_externs: Vec::new(),
-      #[cfg(feature = "rust_interop")]
-      rust_instantiation_requests: IndexMap::default(),
     }
   }
 
@@ -1625,12 +1619,6 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 //    _ => {}
                 // }
 
-                #[cfg(feature = "rust_interop")]
-                if is_rust_backed(&prototype2.id) {
-                    monouts.rust_instantiation_requests
-                        .entry(prototype.id)
-                        .or_insert_with(|| self.interner.alloc(prototype));
-                }
                 result_ce
             }
             ExpressionTE::FunctionCall(fc) => {

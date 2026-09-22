@@ -13,8 +13,6 @@ mod compiler_tests;
 mod compiler_virtual_tests;
 pub(crate) mod humanize_helper;
 mod in_progress_tests;
-#[cfg(feature = "rust_interop")]
-mod rust_interop;
 mod todo_tests;
 pub mod traverse;
 pub(crate) mod borrow_checker;

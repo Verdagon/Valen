@@ -5,15 +5,7 @@ edition = "2021"
 build = "build.rs"
 links = "vale_backend"
 
-[package.metadata.rust-analyzer]
-rustc_private = true
-
 [features]
-# Enables rust interop. Take this out to get a standalone Valen compiler.
-rust_interop = []
-
-borrow_checker_experimental = []
-
 # Runs all tests without the C++ backend. Delete this soon.
 no_backend = []
 
@@ -40,16 +32,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "valec"
 path = "src/bin/valec/main.rs"
-
-[[bin]]
-name = "valenc-rs"
-path = "src/typing/rust_interop/driver/main.rs"
-required-features = ["rust_interop"]
-
-[[bin]]
-name = "valen"
-path = "src/typing/rust_interop/valen/main.rs"
-required-features = ["rust_interop"]
 
 [profile.profiling]
 inherits = "release"

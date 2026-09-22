@@ -142,12 +142,8 @@ RawFuncPtrLE declareExternFunction(
     Prototype* prototypeM) {
   auto sig = buildBoundarySignature(globalState, prototypeM);
 
-  std::string abiFuncNameL;
-  if (package->packageCoordinate->projectName == "rust") {
-    abiFuncNameL = package->getFunctionExternName(prototypeM);
-  } else {
-    abiFuncNameL = std::string("vale_abi_") + package->packageCoordinate->projectName + "_" + package->getFunctionExternName(prototypeM);
-  }
+  std::string abiFuncNameL =
+      std::string("vale_abi_") + package->packageCoordinate->projectName + "_" + package->getFunctionExternName(prototypeM);
 
   RawFuncPtrLE functionL =
       addRawFunction(globalState->mod, abiFuncNameL.c_str(), sig.returnLT, sig.paramTypesL);

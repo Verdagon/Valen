@@ -26,8 +26,6 @@ use crate::typing::names::names::IInterfaceTemplateNameT;
 use crate::typing::names::names::*;
 use crate::typing::names::names::{MemberNameT, IVarNameT};
 use crate::typing::names::names::{IInstantiationNameT, INameT, IStructTemplateNameT, IdValT};
-#[cfg(feature = "rust_interop")]
-use crate::typing::rust_interop::is_rust_backed;
 use crate::typing::templata::templata::FunctionTemplataT;
 use crate::typing::templata::templata::ITemplataT;
 use crate::typing::templata::templata::*;
@@ -133,15 +131,6 @@ where
     for (name, entry) in outer_env.templatas().name_to_entry.iter() {
       match entry {
         IEnvEntryT::Function(FunctionEnvEntry { template_id: id }) => {
-          // Lazily compile rust structs' methods.
-          // VRI: Soon, we should lazily compile vale's internal methods too,
-          // getting rid of this whole loop.
-          #[cfg(feature = "rust_interop")]
-          {
-            if is_rust_backed(id) {
-              continue;
-            }
-          }
           let deferred_name = outer_env.id().add_step(self.typing_interner, *name);
           coutputs.defer_evaluating_function(
             DeferredActionT::EvaluateFunction { function_id: deferred_name });
@@ -239,21 +228,6 @@ where
     let mut internal_methods: Vec<(PrototypeT<'s, 't>, usize)> = Vec::new();
     for (_name, entry) in outer_env.templatas().name_to_entry.iter() {
       if let IEnvEntryT::Function(FunctionEnvEntry { template_id: id }) = entry {
-        // Lazily compile a rust enum's methods
-        // VRI: Soon, we should lazily compile vale's internal methods too,
-        // getting rid of this whole loop.
-        // VRI: this is basically saying, dont skip interface methods for rust traits, because
-        // interface methods must be listed in internal methods, so that ... look_for_override can
-        // see them.
-        #[cfg(feature = "rust_interop")]
-        {
-          let is_abstract_interface_method = coutputs
-            .peek_postparsed_function(id)
-            .map_or(false, |f| matches!(f.body, IBodyS::AbstractBody(_)));
-          if is_rust_backed(id) && !is_abstract_interface_method {
-            continue;
-          }
-        }
         let outer_env_ienv = IEnvironmentT::from(outer_env);
         let header = self.evaluate_generic_function_from_non_call_for_header(
           coutputs,

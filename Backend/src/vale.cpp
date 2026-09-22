@@ -30,9 +30,6 @@
 #include "error.h"
 #include "translatetype.h"
 #include "externs.h"
-#ifdef VALE_RUST_INTEROP
-#include "rust_interop/rust_interop.h"
-#endif
 
 #include <cstring>
 
@@ -1333,41 +1330,6 @@ static int32_t compileStandalone(
 typedef struct MetalCacheHandle MetalCacheHandle;
 extern "C" MetalCache* metal_cache_ffi_inner(MetalCacheHandle*);
 
-static int32_t compileIntoModuleFromRustc(
-    MetalCache* metalCache, Program* program,
-    const BackendCompileOptionsFFI* ffi_opts,
-    void* context, void* mod, const char* entrySymbol,
-    const CallbackFFI* callbacks, size_t numCallbacks,
-    const SourceFilePathFFI* sourcePaths, size_t numSourcePaths) {
-  ValeOptions valeOptions;
-  int ok = loadFromFfi(&valeOptions, ffi_opts);
-  if (ok <= 0) {
-    return ok == 0 ? 0 : (int32_t)ExitCode::BadOpts;
-  }
-  auto modRef = reinterpret_cast<LLVMModuleRef>(mod);
-  LLVMTargetDataRef dataLayout = LLVMGetModuleDataLayout(modRef);
-  GlobalState globalState(
-      &valeOptions,
-      reinterpret_cast<LLVMContextRef>(context),
-      modRef,
-      /*machine=*/nullptr,
-      dataLayout);
-  loadSourcePaths(program, sourcePaths, numSourcePaths);
-  Prototype* valeMainPrototype = compileValeCode(&globalState, metalCache, program);
-  if (valeMainPrototype != nullptr) {
-    std::string entryName =
-        (entrySymbol != nullptr && entrySymbol[0] != '\0') ? std::string(entrySymbol) : "__vale_main";
-    makeEntryFunction(&globalState, valeMainPrototype, entryName, /*emitLibcShim=*/false);
-  }
-#ifdef VALE_RUST_INTEROP
-  for (size_t i = 0; i < numCallbacks; i++) {
-    emitInboundCallbackWrapper(
-        &globalState, program, callbacks[i].symbol, callbacks[i].vale_name);
-  }
-#endif
-  return finalizeCompile(&globalState);
-}
-
 extern "C" __attribute__((visibility("default")))
 int32_t backend_compile(const BackendInputsFFI* in) {
   MetalCache* cache = metal_cache_ffi_inner(reinterpret_cast<MetalCacheHandle*>(in->cache));
@@ -1376,12 +1338,6 @@ int32_t backend_compile(const BackendInputsFFI* in) {
     case BACKEND_MODE_STANDALONE:
       return compileStandalone(
           cache, program, &in->options, in->source_paths, in->num_source_paths);
-    case BACKEND_MODE_INTEROP:
-      return compileIntoModuleFromRustc(
-          cache, program, &in->options,
-          in->interop.context, in->interop.module, in->interop.entry_symbol,
-          in->interop.callbacks, in->interop.num_callbacks,
-          in->source_paths, in->num_source_paths);
     default:
       return -1;
   }

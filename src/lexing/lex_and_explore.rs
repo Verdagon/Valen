@@ -82,18 +82,10 @@ where
               Some(imports_accum) => imports_accum.push(im.clone()),
             }
 
-            if im.module_name.str == keywords.rust {
-              #[cfg(not(feature = "rust_interop"))]
-              panic!(
-                "`import {}.…` needs the `rust_interop` feature, which is not enabled in this build",
-                keywords.rust.0
-              );
-            } else {
-              packages_to_explore.push((
-                im.module_name.str.to_string(),
-                im.package_steps.iter().map(|x| x.str.to_string()).collect(),
-              ));
-            }
+            packages_to_explore.push((
+              im.module_name.str.to_string(),
+              im.package_steps.iter().map(|x| x.str.to_string()).collect(),
+            ));
 
             let denizen_result = denizen_handler(file_coord, &code, &[], &denizen);
             result_acc.push(denizen_result);

@@ -7,8 +7,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 use self::backend_inputs::{
-    BackendInputs, BackendInputsFFIRaw, BackendMode, CallbackFFIRaw, InteropInputsFFIRaw,
-    SourceFilePathFFIRaw, BACKEND_MODE_INTEROP, BACKEND_MODE_STANDALONE,
+    BackendInputs, BackendInputsFFIRaw, BackendMode, SourceFilePathFFIRaw, BACKEND_MODE_STANDALONE,
 };
 
 pub const BACKEND_OPT_LEVEL_O0: i32 = 0;
@@ -104,41 +103,9 @@ pub fn compile(inputs: BackendInputs) -> i32 {
         suppress_alias_metadata: opts.suppress_alias_metadata as u8,
     };
 
-    let (mode, context, module, entry_symbol_c) = match &inputs.mode {
-        BackendMode::Standalone(_) => (
-            BACKEND_MODE_STANDALONE,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            CString::new("").expect("empty string is NUL-free"),
-        ),
-        BackendMode::Interop(interop) => (
-            BACKEND_MODE_INTEROP,
-            interop.context,
-            interop.module,
-            CString::new(interop.entry_symbol.unwrap_or("")).expect("entry_symbol contains NUL"),
-        ),
+    let mode = match &inputs.mode {
+        BackendMode::Standalone(_) => BACKEND_MODE_STANDALONE,
     };
-
-    let callback_cstrings: Vec<(CString, CString)> = match &inputs.mode {
-        BackendMode::Interop(interop) => interop
-            .callbacks
-            .iter()
-            .map(|c| {
-                (
-                    CString::new(c.symbol).expect("callback symbol contains NUL"),
-                    CString::new(c.vale_name).expect("callback vale_name contains NUL"),
-                )
-            })
-            .collect(),
-        BackendMode::Standalone(_) => Vec::new(),
-    };
-    let callbacks_raw: Vec<CallbackFFIRaw> = callback_cstrings
-        .iter()
-        .map(|(symbol, vale_name)| CallbackFFIRaw {
-            symbol: symbol.as_ptr(),
-            vale_name: vale_name.as_ptr(),
-        })
-        .collect();
 
     let source_path_cstrings: Vec<(CString, CString)> = inputs
         .absolute_source_paths
@@ -163,13 +130,6 @@ pub fn compile(inputs: BackendInputs) -> i32 {
         program: inputs.program.raw(),
         options,
         mode,
-        interop: InteropInputsFFIRaw {
-            context,
-            module,
-            entry_symbol: entry_symbol_c.as_ptr(),
-            callbacks: callbacks_raw.as_ptr(),
-            num_callbacks: callbacks_raw.len(),
-        },
         source_paths: if source_paths_raw.is_empty() {
             ptr::null()
         } else {

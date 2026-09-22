@@ -734,7 +734,6 @@ where
     match denizen_template_id.local_name {
       INameT::FunctionTemplate(_) => self
         .illuminate_function(coutputs, denizen_template_id)
-        .expect("an already-resolved function cannot decline")
         .func_bounds,
       INameT::StructTemplate(_) => coutputs.get_postparsed_struct(denizen_template_id).func_bounds,
       INameT::InterfaceTemplate(_) => coutputs.get_postparsed_interface(denizen_template_id).func_bounds,

@@ -38,20 +38,6 @@ typedef struct BackendCompileOptionsFFI {
 
 // Compile mode selector for BackendInputsFFI.mode.
 #define BACKEND_MODE_STANDALONE 0
-#define BACKEND_MODE_INTEROP    1
-
-typedef struct CallbackFFI {
-  const char* symbol;
-  const char* vale_name;
-} CallbackFFI;
-
-typedef struct InteropInputsFFI {
-  void* context;
-  void* module;
-  const char* entry_symbol;
-  const CallbackFFI* callbacks;   // num_callbacks-long array, or null when none
-  size_t num_callbacks;
-} InteropInputsFFI;
 
 typedef struct SourceFilePathFFI {
   const char* basename;
@@ -63,7 +49,6 @@ typedef struct BackendInputsFFI {
   void* program;                   // ProgramHandle*
   BackendCompileOptionsFFI options;
   int32_t mode;                    // BACKEND_MODE_*
-  InteropInputsFFI interop;        // read only when mode == BACKEND_MODE_INTEROP
   const SourceFilePathFFI* source_paths;
   size_t num_source_paths;
 } BackendInputsFFI;

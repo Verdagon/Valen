@@ -22,7 +22,7 @@ use crate::typing::ast::expressions::{ConsecutorTE, ExpressionTE, VoidLiteralTE}
 use crate::typing::citizen::struct_compiler::IResolveOutcome;
 use crate::typing::citizen::struct_compiler::UncheckedDefiningConclusions;
 use crate::typing::compilation::TypingPassOptions;
-use crate::typing::compiler_error_reporter::{CouldNotPostparseReason, ICompileErrorT};
+use crate::typing::compiler_error_reporter::ICompileErrorT;
 use crate::typing::compiler_outputs::{CompilerOutputs, DeferredActionT};
 use crate::typing::env::environment::ExportEnvironmentT;
 use crate::typing::env::environment::ExternEnvironmentT;
@@ -57,11 +57,6 @@ use crate::typing::names::names::{
 use crate::typing::names::names::{PredictedFunctionNameValT, PredictedFunctionTemplateNameT};
 use crate::typing::oracles::Oracles;
 use crate::typing::overload_resolver::FindFunctionFailure;
-#[cfg(feature = "rust_interop")]
-use crate::typing::rust_interop::{
-  create_postparsed_function, declare_rust_import, is_rust_backed, RustImportSeed,
-  RUST_TRAIT_ANON_MODULE,
-};
 use crate::typing::templata::templata::ImplDefinitionTemplataT;
 use crate::typing::templata::templata::{
   FunctionTemplataT, ITemplataT, InterfaceDefinitionTemplataT, KindTemplataT, PlaceholderTemplataT,
@@ -489,23 +484,9 @@ where
     &self,
     coutputs: &mut CompilerOutputs<'s, 't>,
     template_id: &'t IdT<'s, 't>,
-  ) -> Result<&'s FunctionS<'s>, CouldNotPostparseReason> {
+  ) -> &'s FunctionS<'s> {
     if let Some(f) = coutputs.peek_postparsed_function(template_id) {
-      return Ok(f);
-    }
-    #[cfg(feature = "rust_interop")]
-    {
-      match create_postparsed_function(self, coutputs, template_id) {
-        Some(Ok(f)) => {
-          coutputs.register_postparsed_function(template_id, f);
-          coutputs.defer_evaluating_function(DeferredActionT::EvaluateFunction {
-            function_id: template_id,
-          });
-          return Ok(f);
-        }
-        Some(Err(reason)) => return Err(reason),
-        None => {}
-      }
+      return f;
     }
     panic!("vfail: no postparsed function for {:?}", template_id);
   }
@@ -783,143 +764,6 @@ where
       }
     }
     let builtins = builtins_builder.build_in(self.typing_interner);
-
-    // Handle `import rust.whatever` imports.
-    // VCOORD: this tries to only run the anon interface macro if its the first sighting.
-    // thatll need to grow into a more general mechanism soon, before/when we switch to
-    // lazy compiling valen too.
-    #[cfg(feature = "rust_interop")]
-    {
-      if let Some((id, _)) =
-        namespace_name_to_templatas_vec.iter().find(|(id, _)| is_rust_backed(id))
-      {
-        panic!("Overlap, a Vale package claimed the reserved `rust` module: {id:?}");
-      }
-      let mut per_crate: IndexMap<
-        &'s PackageCoordinate<'s>,
-        Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
-      > = IndexMap::default();
-      let mut anon_denizen_entries: Vec<(&'t IdT<'s, 't>, IEnvEntryT<'s, 't>)> = Vec::new();
-      for program in file_to_program_s.file_coord_to_contents.values() {
-        for import in program.imports {
-          if import.module_name != self.keywords.rust {
-            continue;
-          }
-          let oracle = self
-            .oracles
-            .rust
-            // VCOORD: make this into an error?
-            .expect("an `import rust.…` statement, but no Rust oracle was provided");
-          let name = match oracle.resolve_import(import) {
-            Some(name) => name,
-            None => {
-              let mut path =
-                import.package_names.iter().map(|s| format!("{}.", s.0)).collect::<String>();
-              path.push_str(import.importee_name.0);
-              return Err(ICompileErrorT::UnresolvableRustImport {
-                range: self.typing_interner.alloc_slice_from_vec(vec![import.range]),
-                path,
-              });
-            }
-          };
-          let (local_name, entry, seed) = declare_rust_import(self, name);
-          match seed {
-            Some(RustImportSeed::Struct(id, s)) => {
-              template_id_to_postparsed_struct.insert(id, s);
-            }
-            Some(RustImportSeed::Interface(id, i, anon_eligible)) => {
-              let first_sighting = template_id_to_postparsed_interface.insert(id, i).is_none();
-              for internal_method in i.internal_methods.iter() {
-                let (_, method_template_id) = self.internal_method_template_id(id, internal_method);
-                template_id_to_postparsed_function.insert(method_template_id, internal_method);
-              }
-              if first_sighting && anon_eligible {
-                let anon_pkg_coord = self
-                  .scout_arena
-                  .intern_package_coordinate(self.scout_arena.intern_str(RUST_TRAIT_ANON_MODULE), &[]);
-                let anon_pkg_id = self.typing_interner.intern_id(IdValT {
-                  package_coord: anon_pkg_coord,
-                  init_steps: &[],
-                  local_name: INameT::PackageTopLevel(
-                    self.typing_interner.intern_package_top_level_name(PackageTopLevelNameT {}),
-                  ),
-                });
-                let native_iface_id = anon_pkg_id.add_step(self.typing_interner, id.local_name);
-                for aht_denizen in
-                  self.get_interface_sibling_entries_anonymous_interface(*native_iface_id, i)
-                {
-                  let denizen_id = aht_denizen.template_id();
-                  match aht_denizen {
-                    GeneratedAhtDenizen::Function(fid, f) => {
-                      template_id_to_postparsed_function.insert(fid, f);
-                    }
-                    GeneratedAhtDenizen::Struct(sid, s) => {
-                      template_id_to_postparsed_struct.insert(sid, s);
-                    }
-                    GeneratedAhtDenizen::Impl(iid, im) => {
-                      template_id_to_postparsed_impl.insert(iid, im);
-                    }
-                  }
-                  anon_denizen_entries.push((denizen_id, aht_denizen.env_entry()));
-                }
-              }
-            }
-            None => {}
-          }
-          let coord =
-            self.scout_arena.intern_package_coordinate(name.module_name, name.package_names);
-          per_crate.entry(coord).or_default().push((local_name, entry));
-        }
-      }
-      if let Some(oracle) = self.oracles.rust {
-        for name in oracle.deref_target_imports() {
-          let coord =
-            self.scout_arena.intern_package_coordinate(name.module_name, name.package_names);
-          let (local_name, entry, seed) = declare_rust_import(self, name);
-          match seed {
-            Some(RustImportSeed::Struct(id, s)) => {
-              template_id_to_postparsed_struct.insert(id, s);
-            }
-            Some(RustImportSeed::Interface(id, i, _)) => {
-              template_id_to_postparsed_interface.insert(id, i);
-            }
-            None => {}
-          }
-          per_crate.entry(coord).or_default().push((local_name, entry));
-        }
-      }
-      for (coord, entries) in per_crate {
-        let package_id = self.typing_interner.intern_id(IdValT {
-          package_coord: coord,
-          init_steps: &[],
-          local_name: INameT::PackageTopLevel(
-            self.typing_interner.intern_package_top_level_name(PackageTopLevelNameT {}),
-          ),
-        });
-        let mut store = TemplatasStoreBuilder::new(package_id);
-        store.add_entries(self.scout_arena, entries);
-        namespace_name_to_templatas_vec.push((package_id, store.build_in(self.typing_interner)));
-      }
-
-      // VCOORD: this probably shouldnt stay here long term.
-      let mut anon_ns_to_entries: IndexMap<
-        &'t IdT<'s, 't>,
-        Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
-      > = IndexMap::default();
-      for (name, env_entry) in &anon_denizen_entries {
-        let package_id = self.typing_interner.intern_id(IdValT {
-          package_coord: name.package_coord,
-          init_steps: name.init_steps,
-          local_name: pkg_top_level_for_group,
-        });
-        anon_ns_to_entries.entry(package_id).or_default().push((name.local_name, *env_entry));
-      }
-      for (package_id, entries) in anon_ns_to_entries {
-        let mut store = TemplatasStoreBuilder::new(package_id);
-        store.add_entries(self.scout_arena, entries);
-        namespace_name_to_templatas_vec.push((package_id, store.build_in(self.typing_interner)));
-      }
-    }
 
     let name_to_top_level_environment =
       self.typing_interner.alloc_slice_from_vec(namespace_name_to_templatas_vec);
@@ -1249,23 +1093,6 @@ where
       if !package_id.init_steps.is_empty() {
         continue;
       }
-      // Skip the whole `rust` package, because we lazily postparse rust methods
-      // when their postparseds are requested.
-      // VRI: consider some other thing to loop over?
-      // VRI: consider making vale lazy in some way too.
-      // VRI: the problem here is that we're not actually *compiling* the rust-generated function
-      // ever, we're only calling it. symptom: since it's not compiled, the rust sig is never added
-      // to the externs list in the coutput. i think the right call here is to:
-      //  * add it to the deferreds when we lazily make postparseds for it
-      //  * later on, unify the two things that make a function compiled. in other words, we should
-      //    make the below just add it to the deferred queue. then there will be only one place
-      //    indirectly calling evaluate_generic_function_from_non_call.
-      #[cfg(feature = "rust_interop")]
-      {
-        if is_rust_backed(package_id) {
-          continue;
-        }
-      }
       let global_namespaces: Vec<&TemplatasStoreT<'s, 't>> =
         global_env.name_to_top_level_environment.iter().map(|(_, ts)| *ts).collect();
       let global_namespaces = self.typing_interner.alloc_slice_from_vec(global_namespaces);
@@ -1286,9 +1113,7 @@ where
               LocationInDenizen { path: &[] },
               *id,
             )?;
-            let function_a = self
-              .illuminate_function(&mut coutputs, id)
-              .expect("an already-resolved function cannot decline");
+            let function_a = self.illuminate_function(&mut coutputs, id);
             let maybe_export = function_a.attributes.iter().find_map(|a| match a {
               IFunctionAttributeS::Export(e) => Some(e),
               _ => None,
@@ -2055,12 +1880,6 @@ where
   ) -> ICitizenDenizenS<'s> {
     // VLAZY: someday lazily generate both
     if let Some(c) = coutputs.peek_postparsed_type(template_id) { return c; }
-    #[cfg(feature = "rust_interop")]
-    {
-      // VLAZY: lazy rust-interop citizen illumination not implemented yet
-      panic!("Unimplemented: lazy rust-interop citizen illumination for {:?}", template_id);
-    }
-    #[cfg(not(feature = "rust_interop"))]
     panic!("vfail: no postparsed citizen for {:?}", template_id);
   }
 }

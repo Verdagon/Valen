@@ -1,11 +1,4 @@
-#[cfg(feature = "borrow_checker_experimental")]
-pub mod experimental;
-#[cfg(feature = "borrow_checker_experimental")]
-pub use experimental::errors::humanize_borrow_error;
-
-#[cfg(not(feature = "borrow_checker_experimental"))]
 pub mod symphony;
-#[cfg(not(feature = "borrow_checker_experimental"))]
 pub use symphony::errors::humanize_borrow_error;
 
 pub mod copy_aliasing_info;

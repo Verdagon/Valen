@@ -29,7 +29,5 @@ pub mod macros;
 pub mod rule_runes;
 pub mod rune_typing;
 pub mod oracles;
-#[cfg(feature = "rust_interop")]
-pub mod rust_interop;
 #[cfg(test)]
 pub mod test;
