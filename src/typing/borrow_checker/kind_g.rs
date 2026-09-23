@@ -39,6 +39,7 @@ pub struct OwnRefGT<'s, 't, 'g> {
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ShareRefGT<'s, 't, 'g> {
   pub inner: KindGT<'s, 't, 'g>,
+  pub group: GroupTemplataG<'s, 't, 'g>,
 }
 
 

@@ -20,6 +20,7 @@ use crate::postparsing::rules::rules::{
   BoolLiteralSL, CallSR, EqualsSR, ILiteralSL, IRulexSR, IntLiteralSL, LiteralSR, LookupSR,
   RegionSR, StringLiteralSL,
 };
+use crate::postparsing::rules::types::GroupS;
 use crate::postparsing::rules::{ImplBoundS, RuneUsage};
 
 pub enum NodeRefS<'s> {
@@ -795,8 +796,8 @@ where
     IRulexSR::BorrowRef(x) => {
       visit_rune_usage(pred, out, &x.result_rune);
       visit_rune_usage(pred, out, &x.inner_rune);
-      if let RegionSR::Rune(ref r) = x.region {
-        visit_rune_usage(pred, out, r);
+      if let RegionSR::Group(group) = x.region {
+        visit_group_s(pred, out, group);
       }
     }
     IRulexSR::WeakRef(x) => {
@@ -896,6 +897,24 @@ where
 {
   collect_if(pred, out, NodeRefS::RuneUsage(rune_usage));
   visit_rune(pred, out, &rune_usage.rune);
+}
+
+fn visit_group_s<'s, T, F>(pred: &F, out: &mut Vec<T>, group: &'s GroupS<'s>)
+where
+  F: Fn(NodeRefS<'s>) -> Option<T>,
+{
+  match *group {
+    GroupS::Rune(rune_usage) => visit_rune_usage(pred, out, rune_usage),
+    GroupS::Local(_) => {}
+    GroupS::Member { base, .. } => visit_group_s(pred, out, base),
+    GroupS::Elements { base } => visit_group_s(pred, out, base),
+    GroupS::Ellipsis { base } => visit_group_s(pred, out, base),
+    GroupS::Union { members } => {
+      for &member in members {
+        visit_group_s(pred, out, member);
+      }
+    }
+  }
 }
 
 fn visit_impl_bound<'s, T, F>(pred: &F, out: &mut Vec<T>, impl_bound: &'s ImplBoundS<'s>)

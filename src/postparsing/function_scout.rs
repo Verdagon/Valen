@@ -20,7 +20,7 @@ use crate::postparsing::expressions::{
 use crate::postparsing::itemplatatype::{
   FunctionTemplataType, ITemplataType, KindTemplataType, TemplateTemplataType,
 };
-use crate::postparsing::names::CodeNameValS;
+use crate::postparsing::names::{CodeNameValS, ImplicitGroupRuneS};
 use crate::postparsing::names::{
   ClosureParamImpreciseNameS, ClosureParamNameDeclarationS, CodeNameS, CodeRuneS, CodeVarNameS,
   ConstructingMemberImpreciseNameS, ConstructingMemberNameDeclarationS,
@@ -44,7 +44,7 @@ use crate::postparsing::rules::templex_scout::{
   translate_effects_p_into_effects_s, translate_maybe_type_into_maybe_rune,
   translate_signature_type_st, translate_templex_into_type_st,
 };
-use crate::postparsing::rules::types::{CallST, ITypeST, NameST, RuneUsageST};
+use crate::postparsing::rules::types::{CallST, GroupS, ITypeST, NameST, RuneUsageST};
 use crate::postparsing::variable_uses::{VariableDeclarationS, VariableDeclarations, VariableUses};
 use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::utils::code_hierarchy::FileCoordinate;
@@ -978,10 +978,17 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       range: closure_param_range.clone(),
       result_rune: closure_param_type_rune.clone(),
       inner_rune: RuneUsage { range: closure_param_range.clone(), rune: closure_struct_kind_rune },
-      region: RegionSR::Rune(RuneUsage {
-        range: closure_param_range.clone(),
-        rune: closure_struct_region_rune,
-      }),
+      region:
+      RegionSR::Group(
+        self.scout_arena.alloc(
+          GroupS::Rune(
+            self.scout_arena.alloc(
+              RuneUsage {
+                range: closure_param_range.clone(),
+                rune: self.scout_arena.intern_rune(
+                  IRuneValS::ImplicitGroupRune(
+                    ImplicitGroupRuneS{ range: closure_param_range.clone() })),
+              }))))
     }));
     let closure_param_tyype =
       ITypeST::Rune(self.scout_arena.alloc(RuneUsageST { rune: closure_param_type_rune.clone() }));

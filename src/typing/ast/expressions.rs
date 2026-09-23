@@ -667,6 +667,7 @@ where
 #[derive(Debug)]
 pub struct ConstantStrTE<'s, 't> {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub value: StrI<'s>,
   pub region: RegionT,
   pub result: &'t ShareRefT<'s, 't>,
@@ -680,11 +681,12 @@ where
   pub fn new(
     interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
+    loct: LocT<'t>,
     value: StrI<'s>,
     region: RegionT,
   ) -> ConstantStrTE<'s, 't> {
     let result = interner.alloc(ShareRefT { inner: KindT::Str(StrT) });
-    ConstantStrTE { range, value, region, result, _sealed: () }
+    ConstantStrTE { range, loct, value, region, result, _sealed: () }
   }
 }
 #[derive(Debug)]

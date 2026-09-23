@@ -52,6 +52,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
         // self.insert_new_variable(group_tree, RefKey::Named(variable.name), variable.tyype);
       }
+      ExpressionGE::LetAndLend(LetAndLendGE { range, loct, variable, expr, result }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
+      }
       ExpressionGE::LocalLookup(LocalLookupGE { range, local_variable, result, .. }) => {
         // self.check_variable_still_valid(group_tree, *range, RefKey::Named(local_variable.name), local_variable.tyype)?;
 
@@ -85,10 +88,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         // Do nothing
       }
       ExpressionGE::ConstantBool(ConstantBoolGE { range, value, .. }) => {
-        unimplemented!()
+        // Do nothing
       }
       ExpressionGE::ConstantFloat(ConstantFloatGE { range, value, .. }) => {
-        unimplemented!()
+        // Do nothing
       }
       ExpressionGE::ArgLookup(ArgLookupGE { range, param_index, result, .. }) => {
         // Do nothing
@@ -119,7 +122,6 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           self.note_mut_effect(group_tree, mel, mut_effect.steps);
         }
       }
-      ExpressionGE::LetAndLend(_) => unimplemented!(),
       ExpressionGE::LockWeak(_) => unimplemented!(),
       ExpressionGE::BorrowToWeak(_) => unimplemented!(),
       ExpressionGE::If(_) => unimplemented!(),
@@ -134,11 +136,15 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::VoidLiteral(_) => {
         // Do nothing
       }
-      ExpressionGE::ConstantStr(_) => unimplemented!(),
+      ExpressionGE::ConstantStr(_) => {
+        // Do nothing
+      }
       ExpressionGE::InterfaceFunctionCall(_) => unimplemented!(),
       ExpressionGE::ExternFunctionCall(_) => unimplemented!(),
       ExpressionGE::BoundFunctionCall(_) => unimplemented!(),
-      ExpressionGE::Reinterpret(_) => unimplemented!(),
+      ExpressionGE::Reinterpret(ReinterpretGE { range, expr: source_ge, result }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *source_ge, next_held_num)?;
+      }
       ExpressionGE::Construct(_) => unimplemented!(),
       ExpressionGE::NewRuntimeSizedArray(_) => unimplemented!(),
       ExpressionGE::StaticArrayFromCallable(_) => unimplemented!(),
@@ -361,6 +367,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             GroupRootG::Rune(rune) => GroupStep::Rune(rune),
             GroupRootG::ParamAnonymousGroup(_) => unimplemented!(),
             GroupRootG::Local(var_name) => GroupStep::Local(var_name),
+            GroupRootG::AmbientMulti() => GroupStep::AmbientMulti { }
           };
       let subroot =
       group_tree.name_to_child

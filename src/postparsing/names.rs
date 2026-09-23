@@ -882,12 +882,14 @@ pub enum IRuneS<'s> {
   FunctorReturnRuneName(&'s FunctorReturnRuneNameS),
   DispatcherRuneFromImpl(&'s DispatcherRuneFromImplS<'s>),
   CaseRuneFromImpl(&'s CaseRuneFromImplS<'s>),
+  ImplicitGroupRune(&'s ImplicitGroupRuneS<'s>),
 }
 
 impl<'s> IRuneS<'s> {
   pub fn canonical_ptr(&self) -> *const () {
     match self {
       IRuneS::CodeRune(r) => *r as *const _ as *const (),
+      IRuneS::ImplicitGroupRune(r) => *r as *const _ as *const (),
       IRuneS::ImplDropKindRune(r) => *r as *const _ as *const (),
       IRuneS::ImplDropVoidRune(r) => *r as *const _ as *const (),
       IRuneS::ImplicitRune(r) => *r as *const _ as *const (),
@@ -1115,6 +1117,7 @@ pub enum IRuneValS<'s, 'tmp> {
   FunctorReturnRuneName(FunctorReturnRuneNameS),
   DispatcherRuneFromImpl(DispatcherRuneFromImplValS<'s>),
   CaseRuneFromImpl(CaseRuneFromImplValS<'s>),
+  ImplicitGroupRune(ImplicitGroupRuneS<'s>),
 }
 
 pub struct RuneValQuery<'a, 's, 'tmp>(pub &'a IRuneValS<'s, 'tmp>);
@@ -1219,6 +1222,11 @@ impl<'a, 's, 'tmp> hashbrown::Equivalent<IRuneValS<'s, 's>> for RuneValQuery<'a,
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CodeRuneS<'s> {
   pub name: StrI<'s>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ImplicitGroupRuneS<'s> {
+  pub range: RangeS<'s>
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

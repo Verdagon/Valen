@@ -31,6 +31,7 @@ use crate::postparsing::names::{
     IFunctionImpreciseNameValS,
     IImplDeclarationNameS,
     IImpreciseNameValS,
+    ImplicitGroupRuneS,
     INameS,
     IRuneS,
     IRuneValS,
@@ -44,7 +45,7 @@ use crate::postparsing::patterns::patterns::{AtomSP, CaptureS};
 use crate::postparsing::rules::rules::{BorrowRefSR, CallSR, CallSiteFuncSR, DefinitionFuncSR, EqualsSR, IRulexSR, KindListSR, LiteralSR, LookupSR, OwnRefSR, RegionSR, ResolveSR, RuneParentEnvLookupSR, RuneUsage, WeakRefSR};
 use crate::parsing::ast::ast::LoadAsP;
 use crate::postparsing::rules::templex_scout::map_runes_in_type_st;
-use crate::postparsing::rules::types::{BorrowRefST, CallST, ITypeST, NameST, RegionS, RuneUsageST};
+use crate::postparsing::rules::types::{BorrowRefST, CallST, GroupS, ITypeST, NameST, RegionS, RuneUsageST};
 use crate::typing::compiler::Compiler;
 use crate::typing::macros::macros::GeneratedAhtDenizen;
 use crate::typing::names::names::*;
@@ -214,6 +215,32 @@ where 's: 't,
         generated_aht_denizens
     }
 
+    fn implicit_group_region(&self, range: RangeS<'s>) -> &'s GroupS<'s> {
+        self.scout_arena.alloc(GroupS::Rune(self.scout_arena.alloc(RuneUsage {
+            range,
+            rune: self.scout_arena.intern_rune(IRuneValS::ImplicitGroupRune(ImplicitGroupRuneS { range })),
+        })))
+    }
+
+    fn map_runes_in_group_s<F>(&self, group: &'s GroupS<'s>, func: &F) -> &'s GroupS<'s>
+    where
+        F: Fn(IRuneS<'s>) -> IRuneS<'s>,
+    {
+        let mapped = match *group {
+            GroupS::Rune(ru) => GroupS::Rune(self.scout_arena.alloc(RuneUsage { range: ru.range, rune: func(ru.rune) })),
+            GroupS::Local(name) => GroupS::Local(name),
+            GroupS::Member { base, member_name } => GroupS::Member { base: self.map_runes_in_group_s(base, func), member_name },
+            GroupS::Elements { base } => GroupS::Elements { base: self.map_runes_in_group_s(base, func) },
+            GroupS::Ellipsis { base } => GroupS::Ellipsis { base: self.map_runes_in_group_s(base, func) },
+            GroupS::Union { members } => {
+                let mapped_members: Vec<&'s GroupS<'s>> =
+                    members.iter().map(|&m| self.map_runes_in_group_s(m, func)).collect();
+                GroupS::Union { members: self.scout_arena.alloc_slice_from_vec(mapped_members) }
+            }
+        };
+        self.scout_arena.alloc(mapped)
+    }
+
     pub fn map_runes_anonymous_interface(
         &self,
         rule: IRulexSR<'s>,
@@ -348,8 +375,8 @@ where 's: 't,
                 result_rune: RuneUsage { range: x.result_rune.range, rune: func(x.result_rune.rune) },
                 inner_rune: RuneUsage { range: x.inner_rune.range, rune: func(x.inner_rune.rune) },
                 region: match x.region {
-                    RegionSR::Rune(r) => RegionSR::Rune(RuneUsage { range: r.range, rune: func(r.rune) }),
-                    other_region => other_region,
+                    RegionSR::Group(group) => RegionSR::Group(self.map_runes_in_group_s(group, &func)),
+                    RegionSR::Held => RegionSR::Held,
                 },
             }),
             IRulexSR::WeakRef(x) => IRulexSR::WeakRef(WeakRefSR {
@@ -466,7 +493,7 @@ where 's: 't,
                     range: internal_method.range,
                     result_rune: RuneUsage { range: internal_method.range, rune: self_borrow_kind_rune_s },
                     inner_rune: *member_rune,
-                    region: RegionSR::Unspecified,
+                    region: RegionSR::Group(self.implicit_group_region(internal_method.range)),
                 }));
 
                 let mut param_runes: Vec<RuneUsage<'s>> = Vec::new();
@@ -573,7 +600,7 @@ where 's: 't,
                             range: internal_method.range,
                             inner: self.scout_arena.alloc(ITypeST::Rune(
                                 self.scout_arena.alloc(RuneUsageST { rune: *member_rune }))),
-                            region: RegionS::Unspecified,
+                            region: RegionS::Group(self.implicit_group_region(internal_method.range)),
                         })),
                         None => ITypeST::Rune(self.scout_arena.alloc(RuneUsageST {
                             rune: RuneUsage {
@@ -610,7 +637,7 @@ where 's: 't,
                                 ITypeST::BorrowRef(self.scout_arena.alloc(BorrowRefST {
                                     range: internal_method.range,
                                     inner: member_type,
-                                    region: RegionS::Unspecified,
+                                    region: RegionS::Group(self.implicit_group_region(internal_method.range)),
                                 })),
                                 RuneUsage { range: internal_method.range, rune: self_borrow_kind_rune_s },
                                 *member_rune,
@@ -618,7 +645,7 @@ where 's: 't,
                                     range: internal_method.range,
                                     result_rune: RuneUsage { range: internal_method.range, rune: self_borrow_kind_rune_s },
                                     inner_rune: *member_rune,
-                                    region: RegionSR::Unspecified,
+                                    region: RegionSR::Group(self.implicit_group_region(internal_method.range)),
                                 })]),
                                 &[],
                             )
