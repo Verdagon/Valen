@@ -55,7 +55,7 @@ Our plans for Valen:
         return d.num_seconds();
       }
       ```
- 2. Install and compile the [patched version of rustc](https://github.com/valen-lang/rust). WARNING: This is a version of rustc that we modified, it is _NOT_ the official rustc!
+ 2. Install and compile the [patched version of rustc](https://github.com/verdagon/rust). WARNING: This is a version of rustc that we modified, it is _NOT_ the official rustc!
     * `git clone https://github.com/valen-lang/rust ~/rust`
     * `cd rust`
     * `git checkout per-instance-mir` (This is the branch with our rustc patches)
@@ -70,7 +70,7 @@ Our plans for Valen:
     * `rustup toolchain link rustc-for-valen ~/rust/build/host/stage1`
     * `ln -sf ~/rust/build/host/stage0/bin/cargo ~/rust/build/host/stage1/bin/cargo`
  3. Build the Valen compiler:
-    * Clone the repo, `git clone https://github.com/valen-lang/valen`
+    * Clone the repo, `git clone --single-branch --branch experimental https://github.com/verdagon/valen` (Note, this is the experimental branch on my personal fork. It'll get into valen-lang/valen once it's rewritten and stabilized, around mid-November)
     * `cd valen`
     * `cargo +rustc-for-valen build --features rust_interop --bin valenc-rs --bin valen`
  4. Compile and run your Valen project:
