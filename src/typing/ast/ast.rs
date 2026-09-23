@@ -332,7 +332,7 @@ impl<'s, 't> FunctionHeaderT<'s, 't> {
           ParameterT { virtuality: Some(AbstractT), tyype, .. } => {
             // VCOORD: doublecheck this peel
             match peel_all_references(*tyype) {
-              KindT::Interface(ir) => Some(*ir),
+              KindT::RawInterface(ir) => Some(*ir.inner),
               _ => None,
             }
           }

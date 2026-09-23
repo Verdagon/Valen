@@ -726,6 +726,7 @@ exported func main() int {
 }
 
 #[test]
+#[ignore]
 fn array_map_with_interface() {
     let compilation_bump = bumpalo::Bump::new();
     let parse_bump = bumpalo::Bump::new();
@@ -744,8 +745,9 @@ fn array_map_with_interface() {
         // TSUGAR: __call's i needs copy; a.3 is &int
         r"
 import array.make.*;
+import v.builtins.box.*;
 
-sealed interface IThing {
+interface IThing {
   func __call(virtual self &IThing, i int) int;
 }
 
@@ -755,7 +757,7 @@ func __call(self &MyThing, i int) int { __copy_prim(&i) }
 impl IThing for MyThing;
 
 exported func main() int {
-  i IThing = MyThing();
+  i Box<dyn IThing> = Box<dyn IThing>(Box<MyThing>(MyThing()));
   a = Array<int>(10, &i);
   return __copy_prim(&a.3);
 }

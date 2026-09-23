@@ -97,6 +97,7 @@ pub enum ExpressionGE<'s, 't, 'g> {
   InterfaceToInterfaceUpcast(&'g InterfaceToInterfaceUpcastGE<'s, 't, 'g>),
   UpcastInterface(&'g UpcastInterfaceGE<'s, 't, 'g>),
   UpcastGeneric(&'g UpcastGenericGE<'s, 't, 'g>),
+  NarrowInterface(&'g NarrowInterfaceGE<'s, 't, 'g>),
   Destroy(&'g DestroyGE<'s, 't, 'g>),
   CopyPrim(&'g CopyPrimGE<'s, 't, 'g>),
   LocalLookup(&'g LocalLookupGE<'s, 't, 'g>),
@@ -635,6 +636,16 @@ where
 }
 
 #[derive(Debug)]
+pub struct NarrowInterfaceGE<'s, 't, 'g>
+where
+    's: 't,
+{
+  pub range: RangeS<'s>,
+  pub inner_expr: ExpressionGE<'s, 't, 'g>,
+  pub result: KindGT<'s, 't, 'g>,
+}
+
+#[derive(Debug)]
 pub struct DestroyGE<'s, 't, 'g>
 where
     's: 't,
@@ -696,6 +707,7 @@ where
       ExpressionGE::InterfaceToInterfaceUpcast(e) => e.result,
       ExpressionGE::UpcastInterface(e) => e.result,
       ExpressionGE::UpcastGeneric(e) => e.result,
+      ExpressionGE::NarrowInterface(e) => e.result,
       ExpressionGE::Destroy(e) => e.result,
       ExpressionGE::CopyPrim(e) => e.result,
       ExpressionGE::LocalLookup(e) => KindGT::BorrowRef(e.result),
@@ -750,6 +762,7 @@ where
       ExpressionGE::InterfaceToInterfaceUpcast(e) => e.range,
       ExpressionGE::UpcastInterface(e) => e.range,
       ExpressionGE::UpcastGeneric(e) => e.range,
+      ExpressionGE::NarrowInterface(e) => e.range,
       ExpressionGE::Destroy(e) => e.range,
       ExpressionGE::CopyPrim(e) => e.range,
       ExpressionGE::LocalLookup(e) => e.range,

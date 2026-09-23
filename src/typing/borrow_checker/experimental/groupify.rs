@@ -1005,6 +1005,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           result: self.cast_result(coutputs, bump_g, local_rune_to_templata, local_to_type_g, e.result, inner_expr.result()),
         })))
       }
+      ExpressionTE::NarrowInterface(e) => {
+        let inner_expr = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, e.inner_expr, local_rune_to_templata, local_to_type_g)?;
+        Ok(ExpressionGE::NarrowInterface(bump_g.alloc(NarrowInterfaceGE {
+          range: e.range,
+          inner_expr,
+          result: self.cast_result(coutputs, bump_g, local_rune_to_templata, local_to_type_g, e.result, inner_expr.result()),
+        })))
+      }
       ExpressionTE::CopyPrim(CopyPrimTE { range, loct, inner: source_te, result, .. }) => {
         let source_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *source_te, local_rune_to_templata, local_to_type_g)?;
         // A primitive copy reads a value through its reference — a real load into the base's group.

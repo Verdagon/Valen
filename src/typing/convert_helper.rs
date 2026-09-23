@@ -77,6 +77,7 @@ target:
     if source_kind == target_pointer_type {
       return Ok(source_expr);
     }
+
     // `Never` converts to anything.
     if matches!(source_kind, KindT::Never(_)) {
       return Ok(source_expr);
@@ -87,6 +88,17 @@ target:
 
     match (source_kind, target_pointer_type) {
       (KindT::BorrowRef(source_borrow), KindT::BorrowRef(target_borrow)) => {
+        // When calling virtual methods, we cast a argument &dyn MyInterface to a param &MyInterface.
+        match (source_borrow.inner, target_borrow.inner) {
+          (KindT::DynInterface(DynInterfaceTT{ inner: di, ..}), KindT::RawInterface(i))
+          if *di == i.inner => {
+            return Ok(ExpressionTE::NarrowInterface(
+              self.typing_interner.alloc(NarrowInterfaceTE::new(range[0], source_expr, target_pointer_type)),
+            ));
+          }
+          _ => {}
+        }
+
         if source_borrow.inner == target_borrow.inner {
           Ok(source_expr)
         } else if matches!(source_borrow.inner, KindT::ShareRef(ss) if ss.inner == target_borrow.inner)
@@ -166,8 +178,15 @@ target:
     target_kind: KindT<'s, 't>,
   ) -> Result<ExpressionTE<'s, 't>, ICompileErrorT<'s, 't>> {
     let range_alloc = self.typing_interner.alloc_slice_copy(range);
+    // Resolve the impl by the target's interface identity: a `dyn X` target resolves through the
+    // bare `X`, since impls are declared against the bare interface. The Upcast's result keeps the
+    // written target's form (`dyn X` stays `dyn X`) — passed as result_value_kind below.
+    let target_kind_without_dyn = match target_kind.interface_tt() {
+      Some(i) => self.typing_interner.raw_interface_kind(i),
+      None => target_kind,
+    };
     let (source_sub_kind, target_super_kind) =
-      match (ISubKindTT::try_from(source_kind), ISuperKindTT::try_from(target_kind)) {
+      match (ISubKindTT::try_from(source_kind), ISuperKindTT::try_from(target_kind_without_dyn)) {
         (Ok(source_sub_kind), Ok(target_super_kind)) => (source_sub_kind, target_super_kind),
         _ => {
           // One of them isn't a citizen, e.g. converting an `int` to a `bool`. No impl could
@@ -213,6 +232,12 @@ target:
             ))))
           }
           IImplNameT::Impl(_) | IImplNameT::AnonymousSubstructImpl(_) => {
+            if matches!(target_kind, KindT::RawInterface(_)) {
+              return Err(ICompileErrorT::BareInterfaceUseInDynMigrationT {
+                range: range_alloc,
+                ty: target_kind,
+              });
+            }
             Ok(ExpressionTE::UpcastInterface(self.typing_interner.alloc(UpcastInterfaceTE::new(
               self.typing_interner,
               range[0],

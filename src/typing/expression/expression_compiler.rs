@@ -1093,8 +1093,8 @@ where
           KindT::Struct(s) => {
             assert!(coutputs.get_instantiation_bounds(self.typing_interner, *s.id).is_some());
           }
-          KindT::Interface(i) => {
-            assert!(coutputs.get_instantiation_bounds(self.typing_interner, *i.id).is_some());
+          KindT::RawInterface(i) => {
+            assert!(coutputs.get_instantiation_bounds(self.typing_interner, *i.inner.id).is_some());
           }
           _ => {}
         }
@@ -1259,7 +1259,7 @@ where
                   let _ = range_with_parent;
                   panic!("CompileErrorExceptionT RangedInternalErrorT: More than one common ancestor of two branches of if:\n{:?}\n{:?}", a_c, b_c);
                 } else {
-                  KindT::from(common_ancestors[0])
+                  self.typing_interner.super_kind_to_kind(common_ancestors[0])
                 }
               }
               _ => {
@@ -1997,8 +1997,8 @@ where
               self.typing_interner.alloc_slice_from_vec(destination_locals),
             )))
           }
-          KindT::Interface(_) => {
-            panic!("implement: evaluate_expression Destruct");
+          KindT::RawInterface(_) => {
+            panic!("implement: evaluate_expression Destruct — Interface");
             // destructorCompiler.drop(nenv.snapshot, coutputs, range :: parentRanges, outerCallLocation, region, innerExpr2)
           }
           _ => panic!("vfail: Can't destruct type: {:?}", inner_expr_2.result()),
@@ -2270,7 +2270,7 @@ where
     };
     let opt_interface_ref =
       self.typing_interner.intern_interface_tt(InterfaceTTValT { id: *opt_interface_val.id });
-    let own_opt_coord = KindT::Interface(opt_interface_ref);
+    let own_opt_coord = self.typing_interner.raw_interface_kind(opt_interface_ref);
 
     let some_name = self
       .scout_arena
@@ -2400,7 +2400,7 @@ where
     };
     let result_interface_ref =
       self.typing_interner.intern_interface_tt(InterfaceTTValT { id: *result_interface_val.id });
-    let own_result_coord = KindT::Interface(result_interface_ref);
+    let own_result_coord = self.typing_interner.raw_interface_kind(result_interface_ref);
 
     let ok_name = self
       .scout_arena
@@ -2512,8 +2512,8 @@ where
           return Err(ICompileErrorT::TookWeakRefOfNonWeakableError { range: parent_ranges });
         }
       }
-      KindT::Interface(ir) => {
-        let interface_def = coutputs.lookup_interface(*ir.id, self);
+      KindT::RawInterface(ir) => {
+        let interface_def = coutputs.lookup_interface(*ir.inner.id, self);
         if interface_def.sharedness != SharednessT::Shared {
           return Err(ICompileErrorT::TookWeakRefOfNonWeakableError { range: parent_ranges });
         }

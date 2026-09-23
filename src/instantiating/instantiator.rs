@@ -66,7 +66,8 @@ use crate::instantiating::ast::expressions::RuntimeSizedArrayLookupIE;
 use crate::instantiating::ast::expressions::StaticArrayFromCallableIE;
 use crate::instantiating::ast::expressions::StaticArrayFromValuesIE;
 use crate::instantiating::ast::expressions::StaticSizedArrayLookupIE;
-use crate::instantiating::ast::expressions::UpcastIE;
+use crate::instantiating::ast::expressions::UpcastInterfaceIE;
+use crate::instantiating::ast::expressions::NarrowInterfaceIE;
 use crate::instantiating::ast::names::AnonymousSubstructConstructorNameI;
 use crate::instantiating::ast::names::AnonymousSubstructConstructorTemplateNameI;
 use crate::instantiating::ast::names::AnonymousSubstructImplNameI;
@@ -107,6 +108,7 @@ use crate::instantiating::ast::types::IntIT;
 use crate::instantiating::ast::types::KindIT;
 use crate::instantiating::ast::types::StrIT;
 use crate::instantiating::ast::types::BorrowRefIT;
+use crate::instantiating::ast::types::DynInterfaceIT;
 use crate::instantiating::ast::types::OwnRefIT;
 use crate::instantiating::ast::types::ShareRefIT;
 use crate::instantiating::ast::types::WeakRefIT;
@@ -886,7 +888,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
 
         let typed_interface_id =
             match peel_all_references(desired_abstract_prototype_t.param_types()[virtual_index]) {
-                KindT::Interface(ir) => ir.id,
+                KindT::RawInterface(ir) => ir.inner.id,
                 other => panic!("abstract func virtual param is not an interface: {:?}", other),
             };
         let interface_template_id =
@@ -1574,7 +1576,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 }).collect();
                 let typed_interface_id =
                     match peel_all_references(super_function_prototype_t.param_types()[virtual_param_index as usize]) {
-                        KindT::Interface(ir) => ir.id,
+                        KindT::RawInterface(ir) => ir.inner.id,
                         other => panic!("InterfaceFunctionCall virtual param is not an interface: {:?}", other),
                     };
                 let interface_template_id =
@@ -1833,7 +1835,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 let impl_id = self.translate_impl_id(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &untranslated_impl_id);
                 let (inner_it, inner_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &inner_expr_unsubstituted);
                 let super_kind = self.translate_super_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &target_super_kind);
-                ExpressionIE::Upcast(self.interner.bump().alloc(UpcastIE {
+                ExpressionIE::UpcastInterface(self.interner.bump().alloc(UpcastInterfaceIE {
                     range: u.range,
                     inner_expr: inner_ce,
                     source_type: inner_it,
@@ -1847,12 +1849,21 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 let impl_id = self.translate_impl_id(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &untranslated_impl_id);
                 let (inner_it, inner_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &inner_expr_unsubstituted);
                 let super_kind = self.translate_super_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &target_super_kind);
-                ExpressionIE::Upcast(self.interner.bump().alloc(UpcastIE {
+                ExpressionIE::UpcastInterface(self.interner.bump().alloc(UpcastInterfaceIE {
                     range: u.range,
                     inner_expr: inner_ce,
                     source_type: inner_it,
                     target_interface: super_kind,
                     impl_name: impl_id,
+                    result: result_it,
+                }))
+            }
+            ExpressionTE::NarrowInterface(n) => {
+                let (inner_it, inner_ce) = self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &n.inner_expr);
+                ExpressionIE::NarrowInterface(self.interner.bump().alloc(NarrowInterfaceIE {
+                    range: n.range,
+                    inner_expr: inner_ce,
+                    source_type: inner_it,
                     result: result_it,
                 }))
             }
@@ -2223,11 +2234,19 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 let struct_it = self.translate_struct(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, s, &bound_args);
                 KindIT::StructIT(self.interner.alloc(struct_it))
             }
-            KindT::Interface(s) => {
+            KindT::RawInterface(raw) => {
+                let s = raw.inner;
                 let bound_args = self.translate_bound_args_for_callee(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &self.hinputs.get_instantiation_bound_args(*s.id));
                 let interface_it = self.translate_interface(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, s, &bound_args);
                 KindIT::InterfaceIT(self.interner.alloc(interface_it))
             }
+            // `dyn X` translates its interface exactly like Interface, then wraps in DynInterfaceIT.
+            KindT::DynInterface(s) => {
+                let bound_args = self.translate_bound_args_for_callee(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &self.hinputs.get_instantiation_bound_args(*s.inner.id));
+                let interface_it = self.translate_interface(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, s.inner, &bound_args);
+                KindIT::DynInterfaceIT(self.interner.alloc(DynInterfaceIT { id: interface_it.id }))
+            }
+            KindT::EnumInterface(_) => panic!("EnumInterface instantiation is not yet implemented (backend enum lowering is out of scope for the typing-pass slice)"),
             KindT::StaticSizedArray(a) => KindIT::StaticSizedArrayIT(self.interner.alloc(self.translate_static_sized_array(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, a))),
             KindT::RuntimeSizedArray(a) => KindIT::RuntimeSizedArrayIT(self.interner.alloc(self.translate_runtime_sized_array(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, a))),
             KindT::BorrowRef(r) => {

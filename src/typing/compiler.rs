@@ -201,8 +201,22 @@ where
           self.get_placeholders_in_templata(accum, *arg);
         }
       }
-      KindT::Interface(i) => {
-        let inst_name = IInstantiationNameT::try_from(i.id.local_name)
+      KindT::RawInterface(i) => {
+        let inst_name = IInstantiationNameT::try_from(i.inner.id.local_name)
+          .expect("InterfaceTT id local_name must be an IInstantiationNameT");
+        for arg in inst_name.template_args() {
+          self.get_placeholders_in_templata(accum, *arg);
+        }
+      }
+      KindT::DynInterface(i) => {
+        let inst_name = IInstantiationNameT::try_from(i.inner.id.local_name)
+          .expect("InterfaceTT id local_name must be an IInstantiationNameT");
+        for arg in inst_name.template_args() {
+          self.get_placeholders_in_templata(accum, *arg);
+        }
+      }
+      KindT::EnumInterface(i) => {
+        let inst_name = IInstantiationNameT::try_from(i.inner.id.local_name)
           .expect("InterfaceTT id local_name must be an IInstantiationNameT");
         for arg in inst_name.template_args() {
           self.get_placeholders_in_templata(accum, *arg);
@@ -336,7 +350,7 @@ where
           envs.original_calling_env,
           s,
         ) {
-          result.insert(KindT::from(parent));
+          result.insert(self.typing_interner.super_kind_to_kind(parent));
         }
       }
       Err(_) => {}
@@ -1194,7 +1208,7 @@ where
                 let export_name = interface_a.name.name;
                 coutputs.add_kind_export(
                   interface_a.range,
-                  KindT::Interface(export_placeholdered_kind),
+                  self.typing_interner.raw_interface_kind(export_placeholdered_kind),
                   placeholdered_export_id,
                   export_name,
                   self.typing_interner,
@@ -1841,9 +1855,8 @@ where
               .attributes
               .iter()
               .any(|a| matches!(a, ICitizenAttributeT::Extern(_))),
-            // VCOORD: add a test for this case
-            KindT::Interface(i) => coutputs
-                .lookup_interface(*i.id, self)
+            KindT::RawInterface(i) => coutputs
+                .lookup_interface(*i.inner.id, self)
                 .attributes
                 .iter()
                 .any(|a| matches!(a, ICitizenAttributeT::Extern(_))),
@@ -1925,9 +1938,9 @@ where
               });
             }
           }
-
-          // VCOORD: an exported interface's dependencies are checked nowhere
-          KindT::Interface(_) => {}
+          KindT::RawInterface(_) => {}
+          KindT::DynInterface(_) => {}
+          KindT::EnumInterface(_) => {}
           KindT::KindPlaceholder(_)
           | KindT::OverloadSet(_)
           | KindT::Void(_)
@@ -2027,7 +2040,9 @@ where
       | KindT::USize(_) => true,
       KindT::KindPlaceholder(_) => false,
       KindT::Struct(_) => false,
-      KindT::Interface(_) => false,
+      KindT::RawInterface(_) => false,
+      KindT::DynInterface(_) => false,
+      KindT::EnumInterface(_) => false,
       KindT::StaticSizedArray(_) => false,
       KindT::RuntimeSizedArray(_) => false,
       KindT::OverloadSet(_) => false,

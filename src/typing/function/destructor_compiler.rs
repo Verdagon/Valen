@@ -98,7 +98,9 @@ where
         ExpressionTE::Discard(self.typing_interner.alloc(DiscardTE::new(call_range[0], undestructed_expr_2)))
       }
       KindT::Struct(_)
-      | KindT::Interface(_)
+      | KindT::RawInterface(_)
+      | KindT::DynInterface(_)
+      | KindT::EnumInterface(_)
       | KindT::StaticSizedArray(_)
       | KindT::RuntimeSizedArray(_)
       | KindT::KindPlaceholder(_) => {

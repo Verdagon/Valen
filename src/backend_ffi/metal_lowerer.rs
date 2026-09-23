@@ -165,6 +165,7 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             KindIT::USizeIT(_) => c.get_usize(c.mut_region_id()),
             KindIT::StructIT(s) => c.get_struct_kind(self.lower_id_to_name(&s.id)),
             KindIT::InterfaceIT(i) => c.get_interface_kind(self.lower_id_to_name(&i.id)),
+            KindIT::DynInterfaceIT(i) => c.get_dyn_interface_kind(self.lower_id_to_name(&i.id)),
             KindIT::StaticSizedArrayIT(a) => c.get_static_sized_array(self.lower_id_to_name(&a.name)),
             KindIT::RuntimeSizedArrayIT(a) => c.get_runtime_sized_array(self.lower_id_to_name(&a.name)),
             KindIT::BorrowRefIT(r) => c.get_borrow_ref(self.lower_kind(r.inner)),
@@ -490,7 +491,7 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
                 c.expr_copy_prim(inner, self.lower_kind(x.source_type), self.lower_kind(x.result), access_facts, loc)
             }
 
-            ExpressionIE::Upcast(x) => c.expr_struct_to_interface_upcast(
+            ExpressionIE::UpcastInterface(x) => c.expr_struct_to_interface_upcast(
                 self.lower_expression(&x.inner_expr),
                 self.lower_kind(x.source_type),
                 self.lower_interface_kind(x.target_interface),
@@ -501,6 +502,12 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             ExpressionIE::InterfaceToInterfaceUpcast(x) => c.expr_interface_to_interface_upcast(
                 self.lower_expression(&x.inner_expr),
                 self.lower_interface_kind(x.target_interface),
+                self.lower_kind(x.result),
+                loc,
+            ),
+            ExpressionIE::NarrowInterface(x) => c.expr_narrow_interface(
+                self.lower_expression(&x.inner_expr),
+                self.lower_kind(x.source_type),
                 self.lower_kind(x.result),
                 loc,
             ),

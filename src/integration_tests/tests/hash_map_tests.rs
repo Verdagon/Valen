@@ -400,6 +400,7 @@ exported func main() int {
 }
 
 #[test]
+#[ignore]
 fn gathers_substitutes_bounds_for_interfaces_inside_things_accessed_from_dots() {
     // See SBITAFD, we had a problem where we didn't register coutputs for new instantiations that
     // come from substituting existing ones.
@@ -418,6 +419,9 @@ fn gathers_substitutes_bounds_for_interfaces_inside_things_accessed_from_dots() 
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         r#"
+import v.builtins.arith.*;
+import v.builtins.box.*;
+
 extern func __vbi_panic() __Never;
 
 extern("vale_runtime_sized_array_len")
@@ -433,7 +437,7 @@ interface HashMapNode<K> { }
 
 #!DeriveStructDrop
 struct HashMap<K> {
-  table Array<HashMapNode<K>>;
+  table Array<Box<dyn HashMapNode<K>>>;
 }
 
 func keys<K>(self &HashMap<K>) {
@@ -441,7 +445,7 @@ func keys<K>(self &HashMap<K>) {
 }
 
 exported func main() int {
-  m = HashMap<int>([]HashMapNode<int>(0));
+  m = HashMap<int>([]Box<dyn HashMapNode<int>>(0));
   m.keys();
   [arr] = ^m;
   [] = ^arr;

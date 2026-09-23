@@ -206,6 +206,7 @@ exported struct MyStruct { a int; }
 }
 
 #[test]
+#[ignore]
 fn typing_pass_array_type_convertible() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

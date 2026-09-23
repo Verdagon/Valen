@@ -518,7 +518,7 @@ impl<'tcx, 's> TyCtxtOracle<'tcx, 's> {
         init_steps: &[],
         local_name: INameT::Interface(interface_name),
       });
-      Ok(KindT::Interface(interner.intern_interface_tt(InterfaceTTValT { id: *id })))
+      Ok(interner.raw_interface_kind(interner.intern_interface_tt(InterfaceTTValT { id: *id })))
     } else {
       let template_name =
         interner.intern_struct_template_name(StructTemplateNameT { human_name: item.human_name });

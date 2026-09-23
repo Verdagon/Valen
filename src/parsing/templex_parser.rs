@@ -235,6 +235,14 @@ where
       })));
     }
 
+    if iter.try_skip_word(self.keywords.r#dyn).is_some() {
+      let inner = self.parse_templex_atom_and_call_and_prefixes(iter)?;
+      return Ok(Some(ITemplexPT::DynInterface(DynInterfacePT {
+        range: RangeL::new(begin, iter.get_prev_end_pos()),
+        inner: &*self.parse_arena.alloc(inner),
+      })));
+    }
+
     if iter.try_skip_symbol('&') {
       let inner = self.parse_templex_atom_and_call_and_prefixes(iter)?;
       let region = self.parse_trailing_group_clause(iter)?;

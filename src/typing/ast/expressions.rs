@@ -62,6 +62,8 @@ pub enum ExpressionTE<'s, 't> {
   InterfaceToInterfaceUpcast(&'t InterfaceToInterfaceUpcastTE<'s, 't>),
   UpcastInterface(&'t UpcastInterfaceTE<'s, 't>),
   UpcastGeneric(&'t UpcastGenericTE<'s, 't>),
+  // UpcastEnum(&'t UpcastEnumTE<'s, 't>),
+  NarrowInterface(&'t NarrowInterfaceTE<'s, 't>),
   Destroy(&'t DestroyTE<'s, 't>),
   CopyPrim(&'t CopyPrimTE<'s, 't>),
   LocalLookup(&'t LocalLookupTE<'s, 't>),
@@ -119,6 +121,8 @@ where
       ExpressionTE::InterfaceToInterfaceUpcast(e) => e.result,
       ExpressionTE::UpcastInterface(e) => e.result,
       ExpressionTE::UpcastGeneric(e) => e.result,
+      // ExpressionTE::UpcastEnum(e) => e.result,
+      ExpressionTE::NarrowInterface(e) => e.result,
       ExpressionTE::Destroy(e) => e.result,
       ExpressionTE::CopyPrim(e) => e.result,
       ExpressionTE::LocalLookup(e) => KindT::BorrowRef(e.result),
@@ -1038,6 +1042,29 @@ where
   }
 }
 #[derive(Debug)]
+pub struct NarrowInterfaceTE<'s, 't>
+where
+  's: 't,
+{
+  pub range: RangeS<'s>,
+  pub inner_expr: ExpressionTE<'s, 't>,
+  pub result: KindT<'s, 't>,
+  _sealed: (),
+}
+impl<'s, 't> NarrowInterfaceTE<'s, 't>
+where
+  's: 't,
+{
+  pub fn new(
+    range: RangeS<'s>,
+    inner_expr: ExpressionTE<'s, 't>,
+    result: KindT<'s, 't>,
+  ) -> NarrowInterfaceTE<'s, 't> {
+    NarrowInterfaceTE { range, inner_expr, result, _sealed: () }
+  }
+}
+
+#[derive(Debug)]
 pub struct CopyPrimTE<'s, 't> {
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
@@ -1362,7 +1389,13 @@ where
     target_super_kind: ISuperKindTT<'s, 't>,
     impl_name: IdT<'s, 't>,
   ) -> UpcastInterfaceTE<'s, 't> {
-    let result = replace_value_type_in_ref(interner, inner_expr.result(), target_super_kind.into());
+    let value_kind = match target_super_kind {
+      ISuperKindTT::Interface(i) => {
+        KindT::DynInterface(interner.intern_dyn_interface_tt(DynInterfaceTTValT { inner: i }))
+      }
+      other => panic!("Non-interface target_super_kind in UpcastInterfaceTE: {:?}", other),
+    };
+    let result = replace_value_type_in_ref(interner, inner_expr.result(), value_kind);
     UpcastInterfaceTE { range, inner_expr, target_super_kind, impl_name, result, _sealed: () }
   }
 }
@@ -1390,7 +1423,7 @@ where
     target_super_kind: ISuperKindTT<'s, 't>,
     impl_name: IdT<'s, 't>,
   ) -> UpcastGenericTE<'s, 't> {
-    let result = replace_value_type_in_ref(interner, inner_expr.result(), target_super_kind.into());
+    let result = replace_value_type_in_ref(interner, inner_expr.result(), interner.super_kind_to_kind(target_super_kind));
     UpcastGenericTE { range, inner_expr, target_super_kind, impl_name, result, _sealed: () }
   }
 }

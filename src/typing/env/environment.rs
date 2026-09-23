@@ -458,7 +458,6 @@ pub fn entry_matches_filter<'s, 't>(
       ITemplataT::Kind(_) => contexts.contains(&ILookupContext::TemplataLookupContext),
       ITemplataT::CoordList(_) => contexts.contains(&ILookupContext::TemplataLookupContext),
       ITemplataT::Prototype(_) => true,
-      ITemplataT::Kind(_) => contexts.contains(&ILookupContext::TemplataLookupContext),
       ITemplataT::StructDefinition(_) => contexts.contains(&ILookupContext::TemplataLookupContext),
       ITemplataT::InterfaceDefinition(_) => {
         contexts.contains(&ILookupContext::TemplataLookupContext)
@@ -714,14 +713,14 @@ where
         IEnvEntryT::Templata(ITemplataT::Isa(isa)) => {
           let sub_local_name = match isa.sub_kind {
             KindT::Struct(stt) => stt.id.local_name,
-            KindT::Interface(itt) => itt.id.local_name,
+            KindT::RawInterface(itt) => itt.inner.id.local_name,
             KindT::KindPlaceholder(kp) => kp.id.local_name,
             _ => {
               panic!("vwat: unexpected sub_kind in IsaTemplataT add_entries: {:?}", isa.sub_kind)
             }
           };
           let super_local_name = match isa.super_kind {
-            KindT::Interface(itt) => itt.id.local_name,
+            KindT::RawInterface(itt) => itt.inner.id.local_name,
             KindT::KindPlaceholder(kp) => kp.id.local_name,
             _ => panic!(
               "vwat: unexpected super_kind in IsaTemplataT add_entries: {:?}",
@@ -883,14 +882,14 @@ where
           IEnvEntryT::Templata(ITemplataT::Isa(isa)) => {
             let sub_local_name = match isa.sub_kind {
               KindT::Struct(stt) => stt.id.local_name,
-              KindT::Interface(itt) => itt.id.local_name,
+              KindT::RawInterface(itt) => itt.inner.id.local_name,
               KindT::KindPlaceholder(kp) => kp.id.local_name,
               _ => {
                 panic!("vwat: unexpected sub_kind in IsaTemplataT add_entries: {:?}", isa.sub_kind)
               }
             };
             let super_local_name = match isa.super_kind {
-              KindT::Interface(itt) => itt.id.local_name,
+              KindT::RawInterface(itt) => itt.inner.id.local_name,
               KindT::KindPlaceholder(kp) => kp.id.local_name,
               _ => panic!(
                 "vwat: unexpected super_kind in IsaTemplataT add_entries: {:?}",

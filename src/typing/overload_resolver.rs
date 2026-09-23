@@ -219,7 +219,7 @@ where
           // val structEnv = coutputs.getOuterEnvForType(range, TemplataCompiler.getStructTemplate(sr.id))
           // getCandidateBannersInner(structEnv, coutputs, range, interner.intern(CodeNameS(keywords.underscoresCall)), searchedEnvs, results)
         }
-        ITemplataT::Kind(KindTemplataT { kind: KindT::Interface(_) }) => {
+        ITemplataT::Kind(KindTemplataT { kind: KindT::RawInterface(_) }) => {
           panic!("implement: get_candidate_banners_inner Interface");
           // val interfaceEnv = coutputs.getOuterEnvForType(range, TemplataCompiler.getInterfaceTemplate(sr.id))
           // getCandidateBannersInner(interfaceEnv, coutputs, range, interner.intern(CodeNameS(keywords.underscoresCall)), searchedEnvs, results)
@@ -648,8 +648,11 @@ where
           KindT::Struct(sr) => {
             vec![coutputs.get_outer_env_for_type(self.get_struct_template(*sr.id))]
           }
-          KindT::Interface(ir) => {
-            vec![coutputs.get_outer_env_for_type(get_interface_template(self.typing_interner, *ir.id))]
+          KindT::RawInterface(ir) => {
+            vec![coutputs.get_outer_env_for_type(get_interface_template(self.typing_interner, *ir.inner.id))]
+          }
+          KindT::DynInterface(ir) => {
+            vec![coutputs.get_outer_env_for_type(get_interface_template(self.typing_interner, *ir.inner.id))]
           }
           KindT::KindPlaceholder(kp) => {
             vec![coutputs.get_outer_env_for_type(*self.get_placeholder_template(&kp.id))]
@@ -693,8 +696,8 @@ where
           );
           for m in matching {
             match m {
-              ITemplataT::Isa(&IsaTemplataT { super_kind: KindT::Interface(super_id), .. }) => {
-                let template_id = get_interface_template(self.typing_interner, *super_id.id);
+              ITemplataT::Isa(&IsaTemplataT { super_kind: KindT::RawInterface(super_id), .. }) => {
+                let template_id = get_interface_template(self.typing_interner, *super_id.inner.id);
                 if !seen.contains(&template_id) {
                   seen.insert(template_id);
                   collected.push(coutputs.get_outer_env_for_type(template_id));

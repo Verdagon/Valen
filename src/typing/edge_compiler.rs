@@ -373,14 +373,14 @@ where
         impl_t.template_id,
         &dispatcher_placeholders,
         IBoundArgumentsSource::InheritBoundsFromTypeItself,
-        KindT::Interface(super_interface_ref),
+        self.typing_interner.raw_interface_kind(super_interface_ref),
       );
       substituted.expect_interface()
     };
     let dispatcher_placeholdered_abstract_param_type = replace_value_type_in_ref(
       self.typing_interner,
       abstract_param_unsubstituted_type,
-      KindT::Interface(dispatcher_placeholdered_interface),
+      self.typing_interner.raw_interface_kind(dispatcher_placeholdered_interface),
     );
 
     // Step 2: Compile Dispatcher Function Given Interface, see CDFGI
@@ -526,7 +526,7 @@ where
             vec![InitialKnown {
               rune: RuneUsage { range, rune: impl_a.interface_kind_rune.rune },
               templata: ITemplataT::Kind(KindTemplataT {
-                kind: KindT::Interface(dispatcher_placeholdered_interface),
+                kind: self.typing_interner.raw_interface_kind(dispatcher_placeholdered_interface),
               }),
             }];
           for (rune, templata) in impl_independent_rune_to_case_placeholder.iter() {
@@ -620,7 +620,9 @@ where
         let mut knowns = vec![InitialKnown {
           rune: RuneUsage { range, rune: impl_a.interface_kind_rune.rune },
           templata: ITemplataT::Kind(
-            KindTemplataT { kind: KindT::Interface(dispatcher_placeholdered_interface) },
+            KindTemplataT {
+              kind: self.typing_interner.raw_interface_kind(dispatcher_placeholdered_interface),
+            },
           ),
         }];
         for (rune, templata) in impl_independent_rune_to_case_placeholder.iter() {
@@ -674,7 +676,7 @@ where
     let overriding_param_coord = replace_value_type_in_ref(
       self.typing_interner,
       dispatcher_placeholdered_abstract_param_type,
-      KindT::from(dispatcher_case_placeholdered_sub_citizen),
+      self.typing_interner.citizen_to_kind(dispatcher_case_placeholdered_sub_citizen),
     );
 
     let mut override_function_param_types: Vec<KindT<'s, 't>> =

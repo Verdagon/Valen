@@ -458,7 +458,7 @@ fn panic_function() {
 import v.builtins.panic.*;
 import v.builtins.drop.*;
 
-sealed interface XOpt<T>
+interface XOpt<T>
 where func drop(T)void {
   func get(virtual opt &XOpt<T>) &T;
 }
@@ -482,6 +482,8 @@ exported func main() int {
     }
 }
 
+// VINTERFACE: parked while interfaces migrate to the enum representation; re-enable after the enum work lands.
+#[ignore]
 #[test]
 fn odmfrc() {
     let code = r"

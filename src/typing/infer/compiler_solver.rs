@@ -56,6 +56,9 @@ pub enum ITypingPassSolverError<'s, 't> {
   KindIsNotOwnRef {
     kind: KindT<'s, 't>,
   },
+  KindIsNotDynInterface {
+    kind: KindT<'s, 't>,
+  },
   KindIsNotFromATemplate {
     kind: KindT<'s, 't>,
   },
@@ -168,10 +171,10 @@ pub fn get_puzzles<'s>(rule: IRulexSR<'s>) -> Vec<Vec<IRuneS<'s>>> {
     IRulexSR::BorrowRef(r) => vec![vec![r.inner_rune.rune], vec![r.result_rune.rune]],
     IRulexSR::WeakRef(r) => vec![vec![r.inner_rune.rune], vec![r.result_rune.rune]],
     IRulexSR::OwnRef(r) => vec![vec![r.inner_rune.rune], vec![r.result_rune.rune]],
+    IRulexSR::DynInterface(r) => vec![vec![r.inner_rune.rune], vec![r.result_rune.rune]],
     IRulexSR::KindList(r) => {
       vec![vec![r.result_rune.rune], r.members.iter().map(|m| m.rune).collect()]
     }
-    other => panic!("get_puzzles: unhandled rule {:?}", other),
   }
 }
 
@@ -531,8 +534,8 @@ where
                                 match kt.kind {
                                     KindT::Struct(sr) => rune_value_envs.push(
                                         state.get_outer_env_for_type(self.get_struct_template(*sr.id))),
-                                    KindT::Interface(ir) => rune_value_envs.push(
-                                        state.get_outer_env_for_type(get_interface_template(self.typing_interner, *ir.id))),
+                                    KindT::RawInterface(ir) => rune_value_envs.push(
+                                        state.get_outer_env_for_type(get_interface_template(self.typing_interner, *ir.inner.id))),
                                     KindT::KindPlaceholder(kp) => rune_value_envs.push(
                                         state.get_outer_env_for_type(*self.get_placeholder_template(&kp.id))),
                                     _ => {}
@@ -781,6 +784,41 @@ where
                       }
                   }
               }
+              // `dyn X`: the erased (fat-pointer) kind of interface X. Unlike the onion wraps above,
+              // DynInterface holds an InterfaceTT directly (a sibling of Interface), so wrap requires
+              // the inner to be an interface and peel yields the bare interface kind back.
+              IRulexSR::DynInterface(r) => {
+                  let mut conclusions: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>> = IndexMap::default();
+                  match (solver_state.get_conclusion(&r.result_rune.rune), solver_state.get_conclusion(&r.inner_rune.rune)) {
+                      (Some(ITemplataT::Kind(KindTemplataT { kind: result_kind })), _) => {
+                          match result_kind {
+                              KindT::DynInterface(iface) => {
+                                  conclusions.insert(r.inner_rune.rune, ITemplataT::Kind(KindTemplataT { kind: self.typing_interner.raw_interface_kind(iface.inner) }));
+                              }
+                              _ => return Err(ITypingPassSolverError::KindIsNotDynInterface { kind: result_kind }),
+                          }
+                      },
+                      (_, Some(ITemplataT::Kind(KindTemplataT { kind: inner }))) => {
+                          match inner {
+                              KindT::RawInterface(iface) => {
+                                  let wrap = KindT::DynInterface(self.typing_interner.intern_dyn_interface_tt(DynInterfaceTTValT { inner: iface.inner }));
+                                  conclusions.insert(r.result_rune.rune, ITemplataT::Kind(KindTemplataT { kind: wrap }));
+                              }
+                              _ => return Err(ITypingPassSolverError::KindIsNotInterface { kind: inner }),
+                          }
+                      },
+                      _ => panic!("Neither result nor inner rune solved in DynInterface"),
+                  }
+                  match solver_state.commit_step::<ITypingPassSolverError<'s, 't>>(false, vec![rule_index], conclusions, vec![], IndexSet::default()) {
+                      Ok(_) => Ok(()),
+                      Err(e) => {
+                          let ranges = once(r.range).chain(env.parent_ranges.iter().copied()).collect::<Vec<_>>();
+                          let ranges_slice = self.typing_interner.alloc_slice_from_vec(ranges);
+                          let error = self.typing_interner.alloc(e);
+                          Err(ITypingPassSolverError::InternalSolverError { range: ranges_slice, err: error })
+                      }
+                  }
+              }
             IRulexSR::KindList(r) => {
                 let conclusions: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>> =
                     match solver_state.get_conclusion(&r.result_rune.rune) {
@@ -822,7 +860,6 @@ where
                     }
                 }
             }
-            other => unreachable!("solve_rule: {:?}", other),
         }
   }
 
@@ -872,7 +909,8 @@ where
                             KindT::Str(_) | KindT::Int(_) | KindT::Bool(_) | KindT::Float(_) | KindT::Void(_) => {
                                 return Err(ITypingPassSolverError::CallResultIsntCallable { result });
                             }
-                            KindT::Interface(interface_tt) => {
+                            KindT::RawInterface(raw) => {
+                                let interface_tt = raw.inner;
                                 let interface_inner_name = match interface_tt.id.local_name {
                                     INameT::Interface(r) => r,
                                     other => panic!("solve_call_rule Some InterfaceTT: local_name is not IInterfaceNameT: {:?}", other),
@@ -1123,7 +1161,7 @@ where
             conclusions.insert(
               result_rune.rune,
               ITemplataT::Kind(KindTemplataT {
-                kind: KindT::Interface(
+                kind: self.typing_interner.raw_interface_kind(
                   self.typing_interner.intern_interface_tt(InterfaceTTValT { id: *kind.id }),
                 ),
               }),

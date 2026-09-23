@@ -80,6 +80,7 @@ impl<'s, 't, 'g> ExpressionGE<'s, 't, 'g> {
       ExpressionGE::InterfaceToInterfaceUpcast(e) => vec![e.inner_expr],
       ExpressionGE::UpcastInterface(e) => vec![e.inner_expr],
       ExpressionGE::UpcastGeneric(e) => vec![e.inner_expr],
+      ExpressionGE::NarrowInterface(e) => vec![e.inner_expr],
       ExpressionGE::Destroy(e) => vec![e.expr],
       ExpressionGE::CopyPrim(e) => vec![e.inner],
       ExpressionGE::StaticSizedArrayLookup(e) => vec![e.array_expr, e.index_expr],

@@ -49,7 +49,7 @@ pub fn peel_refs<'s, 't>(kind: KindT<'s, 't>) -> KindT<'s, 't> {
 pub fn citizen_id<'s, 't>(kind: KindT<'s, 't>) -> Option<&'t IdT<'s, 't>> {
   match peel_refs(kind) {
     KindT::Struct(s) => Some(&s.id),
-    KindT::Interface(i) => Some(&i.id),
+    KindT::RawInterface(i) => Some(&i.inner.id),
     _ => None,
   }
 }

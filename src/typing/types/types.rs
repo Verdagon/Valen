@@ -50,7 +50,9 @@ pub enum KindT<'s, 't> {
   Float(FloatT),
   USize(USizeT),
   Struct(&'t StructTT<'s, 't>),
-  Interface(&'t InterfaceTT<'s, 't>),
+  RawInterface(&'t RawInterfaceTT<'s, 't>),
+  DynInterface(&'t DynInterfaceTT<'s, 't>),
+  EnumInterface(&'t EnumInterfaceTT<'s, 't>),
   StaticSizedArray(&'t StaticSizedArrayTT<'s, 't>),
   RuntimeSizedArray(&'t RuntimeSizedArrayTT<'s, 't>),
   KindPlaceholder(&'t KindPlaceholderT<'s, 't>),
@@ -65,15 +67,25 @@ impl<'s, 't> KindT<'s, 't> {
   pub fn expect_citizen(&self) -> ICitizenTT<'s, 't> {
     match self {
       KindT::Struct(c) => ICitizenTT::Struct(c),
-      KindT::Interface(c) => ICitizenTT::Interface(c),
+      KindT::RawInterface(c) => ICitizenTT::Interface(c.inner),
       _ => panic!("vfail"),
     }
   }
 
   pub fn expect_interface(&self) -> &'t InterfaceTT<'s, 't> {
     match self {
-      KindT::Interface(c) => c,
+      KindT::RawInterface(c) => c.inner,
       _ => panic!("vfail"),
+    }
+  }
+
+  // VCOORD: rename to underlying_interface perhaps
+  pub fn interface_tt(&self) -> Option<&'t InterfaceTT<'s, 't>> {
+    match self {
+      KindT::RawInterface(c) => Some(c.inner),
+      KindT::DynInterface(d) => Some(d.inner),
+      KindT::EnumInterface(e) => Some(e.inner),
+      _ => None,
     }
   }
 
@@ -94,7 +106,9 @@ impl<'s, 't> KindT<'s, 't> {
       KindT::Float(_) => true,
       KindT::USize(_) => true,
       KindT::Struct(_) => false,
-      KindT::Interface(_) => false,
+      KindT::RawInterface(_) => false,
+      KindT::DynInterface(_) => false,
+      KindT::EnumInterface(_) => false,
       KindT::StaticSizedArray(_) => false,
       KindT::RuntimeSizedArray(_) => false,
       KindT::KindPlaceholder(_) => false,
@@ -239,15 +253,25 @@ where
   }
 
   pub fn expect_interface(&self) -> &'t InterfaceTT<'s, 't> {
-    KindT::from(*self).expect_interface()
+    match self {
+      ISubKindTT::Interface(i) => i,
+      _ => panic!("vfail"),
+    }
   }
 
   pub fn expect_struct(&self) -> &'t StructTT<'s, 't> {
-    KindT::from(*self).expect_struct()
+    match self {
+      ISubKindTT::Struct(s) => s,
+      _ => panic!("vfail"),
+    }
   }
 
   pub fn is_primitive(&self) -> bool {
-    KindT::from(*self).is_primitive()
+    match self {
+      ISubKindTT::Struct(_) => false,
+      ISubKindTT::Interface(_) => false,
+      ISubKindTT::KindPlaceholder(_) => false,
+    }
   }
 }
 
@@ -269,19 +293,28 @@ where
   }
 
   pub fn expect_citizen(&self) -> ICitizenTT<'s, 't> {
-    KindT::from(*self).expect_citizen()
+    match self {
+      ISuperKindTT::Interface(i) => ICitizenTT::Interface(i),
+      ISuperKindTT::KindPlaceholder(_) => panic!("vfail"),
+    }
   }
 
   pub fn expect_interface(&self) -> &'t InterfaceTT<'s, 't> {
-    KindT::from(*self).expect_interface()
+    match self {
+      ISuperKindTT::Interface(i) => i,
+      _ => panic!("vfail"),
+    }
   }
 
   pub fn expect_struct(&self) -> &'t StructTT<'s, 't> {
-    KindT::from(*self).expect_struct()
+    panic!("vfail")
   }
 
   pub fn is_primitive(&self) -> bool {
-    KindT::from(*self).is_primitive()
+    match self {
+      ISuperKindTT::Interface(_) => false,
+      ISuperKindTT::KindPlaceholder(_) => false,
+    }
   }
 }
 
@@ -307,15 +340,24 @@ where
   }
 
   pub fn expect_interface(&self) -> &'t InterfaceTT<'s, 't> {
-    KindT::from(*self).expect_interface()
+    match self {
+      ICitizenTT::Interface(i) => i,
+      _ => panic!("vfail"),
+    }
   }
 
   pub fn expect_struct(&self) -> &'t StructTT<'s, 't> {
-    KindT::from(*self).expect_struct()
+    match self {
+      ICitizenTT::Struct(s) => s,
+      _ => panic!("vfail"),
+    }
   }
 
   pub fn is_primitive(&self) -> bool {
-    KindT::from(*self).is_primitive()
+    match self {
+      ICitizenTT::Struct(_) => false,
+      ICitizenTT::Interface(_) => false,
+    }
   }
 }
 
@@ -339,6 +381,39 @@ pub struct InterfaceTT<'s, 't> {
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct InterfaceTTValT<'s, 't> {
   pub id: IdT<'s, 't>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct DynInterfaceTT<'s, 't> {
+  pub inner: &'t InterfaceTT<'s, 't>,
+  pub _must_intern: MustIntern,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct DynInterfaceTTValT<'s, 't> {
+  pub inner: &'t InterfaceTT<'s, 't>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct EnumInterfaceTT<'s, 't> {
+  pub inner: &'t InterfaceTT<'s, 't>,
+  pub _must_intern: MustIntern,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct EnumInterfaceTTValT<'s, 't> {
+  pub inner: &'t InterfaceTT<'s, 't>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct RawInterfaceTT<'s, 't> {
+  pub inner: &'t InterfaceTT<'s, 't>,
+  pub _must_intern: MustIntern,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct RawInterfaceTTValT<'s, 't> {
+  pub inner: &'t InterfaceTT<'s, 't>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -368,6 +443,9 @@ where
 {
   StructTT(StructTTValT<'s, 't>),
   InterfaceTT(InterfaceTTValT<'s, 't>),
+  RawInterfaceTT(RawInterfaceTTValT<'s, 't>),
+  DynInterfaceTT(DynInterfaceTTValT<'s, 't>),
+  EnumInterfaceTT(EnumInterfaceTTValT<'s, 't>),
   StaticSizedArrayTT(StaticSizedArrayTTValT<'s, 't>),
   RuntimeSizedArrayTT(RuntimeSizedArrayTTValT<'s, 't>),
   KindPlaceholder(KindPlaceholderT<'s, 't>),
@@ -381,6 +459,9 @@ where
 {
   StructTT(&'t StructTT<'s, 't>),
   InterfaceTT(&'t InterfaceTT<'s, 't>),
+  RawInterfaceTT(&'t RawInterfaceTT<'s, 't>),
+  DynInterfaceTT(&'t DynInterfaceTT<'s, 't>),
+  EnumInterfaceTT(&'t EnumInterfaceTT<'s, 't>),
   StaticSizedArrayTT(&'t StaticSizedArrayTT<'s, 't>),
   RuntimeSizedArrayTT(&'t RuntimeSizedArrayTT<'s, 't>),
   KindPlaceholder(&'t KindPlaceholderT<'s, 't>),
@@ -417,11 +498,6 @@ impl<'s, 't> From<&'t InterfaceTT<'s, 't>> for ISubKindTT<'s, 't> {
 impl<'s, 't> From<&'t InterfaceTT<'s, 't>> for ISuperKindTT<'s, 't> {
   fn from(x: &'t InterfaceTT<'s, 't>) -> Self {
     ISuperKindTT::Interface(x)
-  }
-}
-impl<'s, 't> From<&'t InterfaceTT<'s, 't>> for KindT<'s, 't> {
-  fn from(x: &'t InterfaceTT<'s, 't>) -> Self {
-    KindT::Interface(x)
   }
 }
 
@@ -468,31 +544,9 @@ impl<'s, 't> From<ICitizenTT<'s, 't>> for ISubKindTT<'s, 't> {
     }
   }
 }
-impl<'s, 't> From<ICitizenTT<'s, 't>> for KindT<'s, 't> {
-  fn from(c: ICitizenTT<'s, 't>) -> Self {
-    match c {
-      ICitizenTT::Struct(x) => KindT::Struct(x),
-      ICitizenTT::Interface(x) => KindT::Interface(x),
-    }
-  }
-}
-impl<'s, 't> From<ISubKindTT<'s, 't>> for KindT<'s, 't> {
-  fn from(s: ISubKindTT<'s, 't>) -> Self {
-    match s {
-      ISubKindTT::Struct(x) => KindT::Struct(x),
-      ISubKindTT::Interface(x) => KindT::Interface(x),
-      ISubKindTT::KindPlaceholder(x) => KindT::KindPlaceholder(x),
-    }
-  }
-}
-impl<'s, 't> From<ISuperKindTT<'s, 't>> for KindT<'s, 't> {
-  fn from(s: ISuperKindTT<'s, 't>) -> Self {
-    match s {
-      ISuperKindTT::Interface(x) => KindT::Interface(x),
-      ISuperKindTT::KindPlaceholder(x) => KindT::KindPlaceholder(x),
-    }
-  }
-}
+// No `From<ICitizenTT/ISubKindTT/ISuperKindTT> for KindT`: their interface arm produces the
+// `RawInterface` union kind, which must be interned. Use `TypingInterner::citizen_to_kind` /
+// `sub_kind_to_kind` / `super_kind_to_kind` instead.
 
 
 impl<'s, 't> TryFrom<KindT<'s, 't>> for ICitizenTT<'s, 't> {
@@ -500,7 +554,7 @@ impl<'s, 't> TryFrom<KindT<'s, 't>> for ICitizenTT<'s, 't> {
   fn try_from(k: KindT<'s, 't>) -> Result<Self, ()> {
     match k {
       KindT::Struct(x) => Ok(ICitizenTT::Struct(x)),
-      KindT::Interface(x) => Ok(ICitizenTT::Interface(x)),
+      KindT::RawInterface(x) => Ok(ICitizenTT::Interface(x.inner)),
       _ => Err(()),
     }
   }
@@ -510,7 +564,7 @@ impl<'s, 't> TryFrom<KindT<'s, 't>> for ISubKindTT<'s, 't> {
   fn try_from(k: KindT<'s, 't>) -> Result<Self, ()> {
     match k {
       KindT::Struct(x) => Ok(ISubKindTT::Struct(x)),
-      KindT::Interface(x) => Ok(ISubKindTT::Interface(x)),
+      KindT::RawInterface(x) => Ok(ISubKindTT::Interface(x.inner)),
       KindT::KindPlaceholder(x) => Ok(ISubKindTT::KindPlaceholder(x)),
       _ => Err(()),
     }
@@ -520,7 +574,7 @@ impl<'s, 't> TryFrom<KindT<'s, 't>> for ISuperKindTT<'s, 't> {
   type Error = ();
   fn try_from(k: KindT<'s, 't>) -> Result<Self, ()> {
     match k {
-      KindT::Interface(x) => Ok(ISuperKindTT::Interface(x)),
+      KindT::RawInterface(x) => Ok(ISuperKindTT::Interface(x.inner)),
       KindT::KindPlaceholder(x) => Ok(ISuperKindTT::KindPlaceholder(x)),
       _ => Err(()),
     }

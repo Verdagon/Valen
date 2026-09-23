@@ -170,6 +170,10 @@ fn humanize_ref<'s, 't>(
         humanize_templata(scout_arena, typing_interner, code_map, ITemplataT::Kind(KindTemplataT { kind: *target_type })),
         isnt_parent.candidates.len())
     }
+    ICompileErrorT::BareInterfaceUseInDynMigrationT { range: _, ty } => {
+      format!("dyn migration: bare interface type {} used at a non-virtual position. Write the `dyn` form (`&dyn X` or `Box<dyn X>`); a bare interface is reserved for the future enum representation.",
+        humanize_templata(scout_arena, typing_interner, code_map, ITemplataT::Kind(KindTemplataT { kind: *ty })))
+    }
     ICompileErrorT::CouldntConvertForMutateT { range: _, expected_type, actual_type } => {
       format!("Mutate couldn't convert {} to expected destination type {}",
         humanize_templata(scout_arena, typing_interner, code_map, ITemplataT::Kind(KindTemplataT { kind: *actual_type })),
@@ -935,6 +939,10 @@ pub fn humanize_rule_error<'s, 't>(
       "Expected an own, but was: ".to_string()
         + &humanize_kind(scout_arena, typing_interner, code_map, kind)
     }
+    ITypingPassSolverError::KindIsNotDynInterface { kind } => {
+      "Expected a dyn interface, but was: ".to_string()
+        + &humanize_kind(scout_arena, typing_interner, code_map, kind)
+    }
     ITypingPassSolverError::KindIsNotFromATemplate { kind } => {
       "Expected a type built from a template, but was: ".to_string()
         + &humanize_kind(scout_arena, typing_interner, code_map, kind)
@@ -1184,8 +1192,14 @@ fn humanize_kind<'s, 't>(
     KindT::Float(_) => "float".to_string(),
     KindT::USize(_) => "usize".to_string(),
     KindT::OverloadSet(s) => format!("(overloads: {})", humanize_imprecise_name(*s.name)),
-    KindT::Interface(name) => {
-      humanize_id(scout_arena, typing_interner, code_map, *name.id)
+    KindT::RawInterface(name) => {
+      humanize_id(scout_arena, typing_interner, code_map, *name.inner.id)
+    }
+    KindT::DynInterface(name) => {
+      format!("dyn {}", humanize_id(scout_arena, typing_interner, code_map, *name.inner.id))
+    }
+    KindT::EnumInterface(name) => {
+      humanize_id(scout_arena, typing_interner, code_map, *name.inner.id)
     }
     KindT::Struct(name) => {
       humanize_id(scout_arena, typing_interner, code_map, *name.id)

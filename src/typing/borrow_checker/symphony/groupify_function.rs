@@ -426,6 +426,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionTE::InterfaceToInterfaceUpcast(InterfaceToInterfaceUpcastTE { .. }) => unimplemented!(),
       ExpressionTE::UpcastInterface(UpcastInterfaceTE { .. }) => unimplemented!(),
       ExpressionTE::UpcastGeneric(UpcastGenericTE { .. }) => unimplemented!(),
+      ExpressionTE::NarrowInterface(NarrowInterfaceTE { .. }) => unimplemented!(),
       ExpressionTE::CopyPrim(CopyPrimTE { range, loct, inner: source_te, result, .. }) => {
         let source_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *source_te, local_rune_to_templata, local_to_type_g)?;
         let inner_ge =
@@ -683,7 +684,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 .get(rune)
                 .expect("Couldn't find rune in rune_to_templata map")).kind
       }
-      KindT::Interface(InterfaceTT { .. }) => unimplemented!(), // KindGT::Interface(InterfaceGT { }),
+      KindT::RawInterface(RawInterfaceTT { .. }) => unimplemented!(),
+      KindT::DynInterface(DynInterfaceTT { .. }) => unimplemented!(),
+      KindT::EnumInterface(EnumInterfaceTT { .. }) => unimplemented!(),
       KindT::StaticSizedArray(StaticSizedArrayTT { .. }) => unimplemented!(), // KindGT::StaticSizedArray(StaticSizedArrayGT { }),
       KindT::RuntimeSizedArray(RuntimeSizedArrayTT { name: id_t, .. }) => {
         let rsa_local_name =
@@ -808,6 +811,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       ITypeST::Function(_) => unimplemented!(),
       ITypeST::AnonymousRune(_) => unimplemented!(),
+      ITypeST::DynInterface(_) => unimplemented!(),
       ITypeST::Bool(_) => {}
       ITypeST::Call(CallST { range, template: template_s, args: template_args_s }) => {
         match type_g {
@@ -1162,6 +1166,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         }
       }
       ITypeST::AnonymousRune(_) => unimplemented!(),
+      ITypeST::DynInterface(_) => unimplemented!(),
       ITypeST::Bool(_) => unimplemented!(),
       ITypeST::Call(CallST { range, template: template_s, args: template_args_s }) => {
         match templata_t {

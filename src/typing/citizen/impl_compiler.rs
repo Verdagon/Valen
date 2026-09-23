@@ -379,7 +379,7 @@ where
       None => panic!("vwat: struct_kind_rune not in inferences"),
       Some(ITemplataT::Kind(k)) => match k.kind {
         KindT::Struct(s) => ICitizenTT::Struct(s),
-        KindT::Interface(i) => ICitizenTT::Interface(i),
+        KindT::RawInterface(i) => ICitizenTT::Interface(i.inner),
         _ => panic!("vwat: sub citizen kind is not a citizen"),
       },
       Some(_) => panic!("vwat: expected KindTemplataT for sub_citizen"),
@@ -394,7 +394,7 @@ where
       match inferences.get(&impl_a.interface_kind_rune.rune) {
         None => panic!("vwat: interface_kind_rune not in inferences"),
         Some(ITemplataT::Kind(k)) => match k.kind {
-          KindT::Interface(i) => i,
+          KindT::RawInterface(i) => i.inner,
           _ => {
             return Err(ICompileErrorT::CantImplNonInterface {
               range: self.typing_interner.alloc_slice_copy(&[impl_a.range]),
@@ -528,7 +528,9 @@ where
     let initial_knowns = vec![InitialKnown {
       rune: impl_a.interface_kind_rune,
       templata: ITemplataT::Kind(
-        KindTemplataT { kind: KindT::Interface(self.typing_interner.alloc(interface)) },
+        KindTemplataT {
+          kind: self.typing_interner.raw_interface_kind(self.typing_interner.alloc(interface)),
+        },
       ),
     }];
     let partial_case_conclusions = match self.partial_resolve_impl(
@@ -596,7 +598,7 @@ where
     let initial_knowns = vec![InitialKnown {
       rune: impl_a.struct_kind_rune,
       templata: ITemplataT::Kind(
-        KindTemplataT { kind: KindT::from(child) },
+        KindTemplataT { kind: self.typing_interner.citizen_to_kind(child) },
       ),
     }];
     let _child_env =
@@ -617,7 +619,7 @@ where
       .unwrap_or_else(|| panic!("vassertSome: interfaceKindRune not in conclusions"));
     match *parent_tt {
       ITemplataT::Kind(kt) => match kt.kind {
-        KindT::Interface(i) => Ok(*i),
+        KindT::RawInterface(i) => Ok(*i.inner),
         _ => panic!("vwat: expected InterfaceTT from interfaceKindRune conclusions"),
       },
       _ => panic!("vwat: expected KindTemplataT from interfaceKindRune conclusions"),
@@ -694,7 +696,7 @@ where
         }
       })
       .collect();
-    let kind_as_kind_t = KindT::from(sub_kind);
+    let kind_as_kind_t = self.typing_interner.sub_kind_to_kind(sub_kind);
     let mut seen_super: HashSet<ISuperKindTT<'s, 't>> = HashSet::default();
     let parents_from_impl_templatas: Vec<ISuperKindTT<'s, 't>> = impl_templatas_with_duplicates
       .iter()
@@ -768,7 +770,8 @@ where
 
     // Check if there's already a compiled IsaTemplataT that matches.
     if let Some(impl_isa) = impl_templatas_with_duplicates.iter().find(|i| {
-      KindT::from(sub_kind_tt) == i.sub_kind && KindT::from(super_kind_tt) == i.super_kind
+      self.typing_interner.sub_kind_to_kind(sub_kind_tt) == i.sub_kind
+        && self.typing_interner.super_kind_to_kind(super_kind_tt) == i.super_kind
     }) {
       coutputs.add_instantiation_bounds(
         self.opts.global_options.sanity_check,
@@ -803,13 +806,13 @@ where
           InitialKnown {
             rune: impl_a.struct_kind_rune,
             templata: ITemplataT::Kind(
-              KindTemplataT { kind: KindT::from(sub_kind_tt) },
+              KindTemplataT { kind: self.typing_interner.sub_kind_to_kind(sub_kind_tt) },
             ),
           },
           InitialKnown {
             rune: impl_a.interface_kind_rune,
             templata: ITemplataT::Kind(
-              KindTemplataT { kind: KindT::from(super_kind_tt) },
+              KindTemplataT { kind: self.typing_interner.super_kind_to_kind(super_kind_tt) },
             ),
           },
         ];

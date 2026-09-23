@@ -151,6 +151,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::InterfaceToInterfaceUpcast(_) => unimplemented!(),
       ExpressionGE::UpcastInterface(_) => unimplemented!(),
       ExpressionGE::UpcastGeneric(_) => unimplemented!(),
+      ExpressionGE::NarrowInterface(_) => unimplemented!(),
       ExpressionGE::Destroy(DestroyGE { range, expr, struct_tt, .. }) => {
         self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
       }

@@ -76,7 +76,14 @@ where
       Ok(x) => x,
       Err(_) => panic!("vwat"),
     };
-    let super_kind = match ISuperKindTT::try_from(incoming_kind) {
+    // incoming_kind could be a placeholder or a dyn interface (or soon an enum interface).
+    // Extract the target interface from each of those so we can see what we're really trying
+    // to upcast into.
+    let incoming_for_super = match incoming_kind.interface_tt() {
+      Some(i) => self.typing_interner.raw_interface_kind(i),
+      None => incoming_kind,
+    };
+    let super_kind = match ISuperKindTT::try_from(incoming_for_super) {
       Ok(x) => x,
       Err(_) => panic!("vwat"),
     };

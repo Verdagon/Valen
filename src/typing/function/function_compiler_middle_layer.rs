@@ -18,6 +18,7 @@ use crate::typing::names::names::*;
 use crate::typing::templata::templata::*;
 use crate::typing::templata_compiler::get_interface_template;
 use crate::typing::templata_compiler::peel_all_references;
+use crate::typing::templata_compiler::replace_value_type_in_ref;
 use crate::typing::types::types::KindT;
 use crate::typing::types::types::*;
 use crate::typing::typing_interner::MustIntern;
@@ -40,7 +41,7 @@ where
       None => Ok(None),
       Some(abstract_sp) => {
         let interface_tt = match peel_all_references(*param_kind) {
-          KindT::Interface(i) => i,
+          KindT::RawInterface(i) => i.inner,
           _ => panic!("RangedInternalErrorT: Can only have virtual parameters for interfaces"),
         };
         // Open (non-sealed) interfaces can't have abstract methods defined outside the interface.
@@ -254,7 +255,7 @@ where
           .intern_imprecise_name(IImpreciseNameValS::RuneName(RuneNameValS { rune }));
         let mut lookup_filter = HashSet::default();
         lookup_filter.insert(ILookupContext::TemplataLookupContext);
-        match env
+        let coord = match env
           .lookup_nearest_with_imprecise_name(imprecise_name, lookup_filter, self.typing_interner)
           .unwrap()
         {
@@ -263,9 +264,32 @@ where
             panic!("implement unexpected templata in evaluateFunctionParamTypes: {:?}", other);
             // case other => vimpl(other)
           }
-        }
+        };
+        self.promote_bare_interface_value(coord, param1.virtuality.is_some())
       })
       .collect()
+  }
+
+  // When we use a trait in a position that expects a kind, we implicitly interpret it as an enum.
+  fn promote_bare_interface_value(
+        &self,
+        coord: KindT<'s, 't>,
+        // Whether we're in a virtual param's position right now, we don't interpret these
+        // as enums, we interpret them as raw.
+        is_virtual: bool
+  ) -> KindT<'s, 't> {
+    match (is_virtual, peel_all_references(coord)) {
+      (false, KindT::RawInterface(i)) => replace_value_type_in_ref(
+        self.typing_interner,
+        coord,
+        KindT::EnumInterface(
+          self.typing_interner.intern_enum_interface_tt(EnumInterfaceTTValT { inner: i.inner }),
+        ),
+      ),
+      (true, KindT::RawInterface(_)) => coord,
+      (false, _) => coord,
+      (true, other) => panic!("a virtual parameter must be an interface, but was {:?}", other),
+    }
   }
 
   pub fn assemble_function_params(
@@ -305,6 +329,8 @@ where
           &coord,
           param1.virtuality.as_ref(),
         )?;
+
+        let coord = self.promote_bare_interface_value(coord, maybe_virtuality.is_some());
 
         let name_t: IVarNameT<'s, 't> = self.translate_var_name_step(param1.name);
 

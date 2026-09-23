@@ -28,5 +28,6 @@ pub fn rune_usages<'s>(rule: &IRulexSR<'s>) -> Vec<RuneUsage<'s>> {
     IRulexSR::BorrowRef(x) => vec![x.result_rune.clone(), x.inner_rune.clone()],
     IRulexSR::WeakRef(x) => vec![x.result_rune.clone(), x.inner_rune.clone()],
     IRulexSR::OwnRef(x) => vec![x.result_rune.clone(), x.inner_rune.clone()],
+    IRulexSR::DynInterface(x) => vec![x.result_rune.clone(), x.inner_rune.clone()],
   }
 }

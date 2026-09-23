@@ -345,7 +345,7 @@ where
       .map(|rune| *conclusions.get(&rune).unwrap())
       .filter_map(|templata| match templata {
         ITemplataT::Kind(k) => match k.kind {
-          KindT::Struct(_) | KindT::Interface(_) => Some(k.kind),
+          KindT::Struct(_) | KindT::RawInterface(_) => Some(k.kind),
           _ => None,
         },
         _ => None,
@@ -358,7 +358,7 @@ where
         .map(|rune| (*rune, *conclusions.get(rune).unwrap()))
         .filter_map(|(rune, templata)| match templata {
           ITemplataT::Kind(k) => match k.kind {
-            KindT::Struct(_) | KindT::Interface(_) => Some((rune, k.kind)),
+            KindT::Struct(_) | KindT::RawInterface(_) => Some((rune, k.kind)),
             _ => None,
           },
           _ => None,
@@ -371,8 +371,8 @@ where
     for (rune, citizen) in include_reachable_bounds_for_runes_with_citizens.into_iter() {
       let citizen_tt = match citizen {
         KindT::Struct(s) => ICitizenTT::Struct(s),
-        KindT::Interface(i) => ICitizenTT::Interface(i),
-        _ => panic!("implement: reachableBounds"),
+        KindT::RawInterface(i) => ICitizenTT::Interface(i.inner),
+        _ => panic!("implement: reachableBounds — unexpected citizen kind"),
       };
       let (reachable, citizen_rune_to_search_kinds) = self.get_reachable_bounds(
         self.opts.global_options.sanity_check,
@@ -540,7 +540,15 @@ where
           .expect("vassertSome: implements() super operand not in conclusions"),
       )
       .kind;
-      let sub_kind_tt = match ISubKindTT::try_from(sub_kind) {
+      let sub_kind_without_dyn = match sub_kind.interface_tt() {
+        Some(i) => self.typing_interner.raw_interface_kind(i),
+        None => sub_kind,
+      };
+      let super_kind_without_dyn = match super_kind.interface_tt() {
+        Some(i) => self.typing_interner.raw_interface_kind(i),
+        None => super_kind,
+      };
+      let sub_kind_tt = match ISubKindTT::try_from(sub_kind_without_dyn) {
         Ok(k) => k,
         Err(()) => {
           return Ok(Err(self.resolving_rule_error(
@@ -549,7 +557,7 @@ where
           )))
         }
       };
-      let super_kind_tt = match ISuperKindTT::try_from(super_kind) {
+      let super_kind_tt = match ISuperKindTT::try_from(super_kind_without_dyn) {
         Ok(k) => k,
         Err(()) => {
           return Ok(Err(self.resolving_rule_error(
@@ -663,7 +671,7 @@ where
           let maybe_id_and_template_id: Option<(&'t IdT<'s, 't>, &'t IdT<'s, 't>)> =
             match maybe_mentioned_kind {
               Some(KindT::Struct(s)) => Some((s.id, self.get_citizen_template(s.id))),
-              Some(KindT::Interface(i)) => Some((i.id, self.get_citizen_template(i.id))),
+              Some(KindT::RawInterface(i)) => Some((i.inner.id, self.get_citizen_template(i.inner.id))),
               Some(_) => None,
               None => None,
             };

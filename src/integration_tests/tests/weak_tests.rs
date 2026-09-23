@@ -288,7 +288,7 @@ fn make_and_lock_weak_ref_then_destroy_own_with_interface() {
             }) => match ref_expr.result() {
                 CoordT {
                     ownership: OwnershipT::Weak,
-                    kind: KindT::Interface(InterfaceTT {
+                    kind: KindT::RawInterface(RawInterfaceTT { inner: InterfaceTT {
                         id: IdT {
                             local_name: INameT::Interface(InterfaceNameT {
                                 template: InterfaceTemplateNameT { human_namee: StrI("IUnit"), .. },
@@ -297,7 +297,7 @@ fn make_and_lock_weak_ref_then_destroy_own_with_interface() {
                             ..
                         },
                         ..
-                    }),
+                    }, .. }),
                     ..
                 } => Some(()),
                 _ => None,

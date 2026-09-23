@@ -11,9 +11,11 @@ use crate::typing::ast::ast::{
 };
 use crate::typing::names::names::*;
 use crate::typing::types::types::{
-  InterfaceTT, InterfaceTTValT, InternedKindPayloadT, InternedKindPayloadValT, KindPlaceholderT,
-  OverloadSetT, OverloadSetTValT, RuntimeSizedArrayTT, RuntimeSizedArrayTTValT, StaticSizedArrayTT,
-  StaticSizedArrayTTValT, StructTT, StructTTValT,
+  DynInterfaceTT, DynInterfaceTTValT, EnumInterfaceTT, EnumInterfaceTTValT, ICitizenTT, InterfaceTT,
+  InterfaceTTValT, ISubKindTT, ISuperKindTT, KindT, RawInterfaceTT, RawInterfaceTTValT,
+  InternedKindPayloadT, InternedKindPayloadValT, KindPlaceholderT, OverloadSetT, OverloadSetTValT,
+  RuntimeSizedArrayTT, RuntimeSizedArrayTTValT, StaticSizedArrayTT, StaticSizedArrayTTValT, StructTT,
+  StructTTValT,
 };
 use crate::utils::arena_index_map::ArenaIndexMap;
 use std::hash::Hash;
@@ -549,6 +551,18 @@ where
         };
         T::InterfaceTT(self.bump.alloc(c))
       }
+      V::DynInterfaceTT(v) => {
+        let c = DynInterfaceTT { inner: v.inner, _must_intern: MustIntern(()) };
+        T::DynInterfaceTT(self.bump.alloc(c))
+      }
+      V::RawInterfaceTT(v) => {
+        let c = RawInterfaceTT { inner: v.inner, _must_intern: MustIntern(()) };
+        T::RawInterfaceTT(self.bump.alloc(c))
+      }
+      V::EnumInterfaceTT(v) => {
+        let c = EnumInterfaceTT { inner: v.inner, _must_intern: MustIntern(()) };
+        T::EnumInterfaceTT(self.bump.alloc(c))
+      }
       V::StaticSizedArrayTT(v) => {
         let c = StaticSizedArrayTT { name: v.name, _must_intern: MustIntern(()) };
         T::StaticSizedArrayTT(self.bump.alloc(c))
@@ -838,6 +852,24 @@ where
   impl_intern_kind_wrapper!(intern_struct_tt, StructTT, StructTTValT, StructTT);
   impl_intern_kind_wrapper!(intern_interface_tt, InterfaceTT, InterfaceTTValT, InterfaceTT);
   impl_intern_kind_wrapper!(
+    intern_dyn_interface_tt,
+    DynInterfaceTT,
+    DynInterfaceTTValT,
+    DynInterfaceTT
+  );
+  impl_intern_kind_wrapper!(
+    intern_raw_interface_tt,
+    RawInterfaceTT,
+    RawInterfaceTTValT,
+    RawInterfaceTT
+  );
+  impl_intern_kind_wrapper!(
+    intern_enum_interface_tt,
+    EnumInterfaceTT,
+    EnumInterfaceTTValT,
+    EnumInterfaceTT
+  );
+  impl_intern_kind_wrapper!(
     intern_static_sized_array_tt,
     StaticSizedArrayTT,
     StaticSizedArrayTTValT,
@@ -856,4 +888,30 @@ where
     KindPlaceholderT
   );
   impl_intern_kind_wrapper!(intern_overload_set, OverloadSet, OverloadSetTValT, OverloadSetT);
+
+  pub fn raw_interface_kind(&self, inner: &'t InterfaceTT<'s, 't>) -> KindT<'s, 't> {
+    KindT::RawInterface(self.intern_raw_interface_tt(RawInterfaceTTValT { inner }))
+  }
+
+  pub fn citizen_to_kind(&self, c: ICitizenTT<'s, 't>) -> KindT<'s, 't> {
+    match c {
+      ICitizenTT::Struct(x) => KindT::Struct(x),
+      ICitizenTT::Interface(x) => self.raw_interface_kind(x),
+    }
+  }
+
+  pub fn sub_kind_to_kind(&self, s: ISubKindTT<'s, 't>) -> KindT<'s, 't> {
+    match s {
+      ISubKindTT::Struct(x) => KindT::Struct(x),
+      ISubKindTT::Interface(x) => self.raw_interface_kind(x),
+      ISubKindTT::KindPlaceholder(x) => KindT::KindPlaceholder(x),
+    }
+  }
+
+  pub fn super_kind_to_kind(&self, s: ISuperKindTT<'s, 't>) -> KindT<'s, 't> {
+    match s {
+      ISuperKindTT::Interface(x) => self.raw_interface_kind(x),
+      ISuperKindTT::KindPlaceholder(x) => KindT::KindPlaceholder(x),
+    }
+  }
 }

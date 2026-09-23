@@ -80,6 +80,33 @@ where
   )
 }
 
+pub fn compiler_test_compilation_with_borrow_check<'s, 'ctx, 't, 'p>(
+  typing_interner: &'ctx TypingInterner<'s, 't>,
+  scout_arena: &'ctx ScoutArena<'s>,
+  keywords: &'ctx Keywords<'s>,
+  parser_keywords: &'ctx Keywords<'p>,
+  parse_arena: &'ctx ParseArena<'p>,
+  code_source: &'ctx CodeSource<'p>,
+) -> TypingPassCompilation<'s, 'ctx, 't, 'p>
+where
+  's: 't,
+{
+  let test_module = parse_arena.intern_str("test");
+  let test_tld = parse_arena.intern_package_coordinate(test_module, &[]);
+  let mut options = test_typing_pass_options();
+  options.global_options.borrow_checker_enabled = true;
+  typing_pass_compilation_for_test(
+    typing_interner,
+    scout_arena,
+    keywords,
+    parser_keywords,
+    parse_arena,
+    vec![test_tld],
+    code_source,
+    options,
+  )
+}
+
 pub fn compiler_test_compilation_without_borrow_check<'s, 'ctx, 't, 'p>(
   typing_interner: &'ctx TypingInterner<'s, 't>,
   scout_arena: &'ctx ScoutArena<'s>,

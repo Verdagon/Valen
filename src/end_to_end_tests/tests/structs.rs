@@ -1,4 +1,4 @@
-use crate::end_to_end_tests::{assert_compile_and_run, assert_compile_and_run_dbg, assert_compile_and_run_dbg_without_borrow_check, cmd, expect, programs_dir};
+use crate::end_to_end_tests::{assert_compile_and_run, assert_compile_and_run_dbg, assert_compile_and_run_dbg_without_borrow_check, assert_compile_and_run_without_borrow_check, cmd, expect, programs_dir};
 
 fn p(rel: &str) -> std::path::PathBuf {
     programs_dir().join(rel)
@@ -50,3 +50,5 @@ fn structmutstoreinner() {
         expect("frame variable o.inner.x", &["= 42"]),
     ]);
 }
+#[test]
+fn boxint()              { assert_compile_and_run_without_borrow_check(&p("programs/box/boxint.vale"), 42); }

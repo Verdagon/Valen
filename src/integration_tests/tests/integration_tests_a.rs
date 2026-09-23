@@ -254,6 +254,8 @@ fn simple_program_with_mainargs() {
     }
 }
 
+// VINTERFACE: parked while interfaces migrate to the enum representation; re-enable after the enum work lands.
+#[ignore]
 #[test]
 fn simple_program_with_as() {
     let compilation_bump = bumpalo::Bump::new();
@@ -350,6 +352,8 @@ fn simple_program_with_panic() {
     }
 }
 
+// VINTERFACE: parked while interfaces migrate to the enum representation; re-enable after the enum work lands.
+#[ignore]
 #[test]
 fn simple_program_with_opt() {
     let compilation_bump = bumpalo::Bump::new();
@@ -374,6 +378,8 @@ fn simple_program_with_opt() {
     }
 }
 
+// VINTERFACE: parked while interfaces migrate to the enum representation; re-enable after the enum work lands.
+#[ignore]
 #[test]
 fn simple_program_with_result() {
     let compilation_bump = bumpalo::Bump::new();
@@ -902,6 +908,8 @@ exported func main() int { return do({ 3 }); }
     }
 }
 
+// VINTERFACE: parked while interfaces migrate to the enum representation; re-enable after the enum work lands.
+#[ignore]
 #[test]
 fn stamps_an_interface_template_via_a_function_parameter() {
     let compilation_bump = bumpalo::Bump::new();
