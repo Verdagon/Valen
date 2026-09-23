@@ -315,7 +315,19 @@ where
 
     match candidate {
       ICalleeCandidate::Function(FunctionCalleeCandidate { ft }) => {
-        let function = self.illuminate_function(coutputs, ft.function_template_id);
+        let function = self
+          .illuminate_function(coutputs, ft.function_template_id)
+          .map_err(|reason| {
+            let path = match ft.function_template_id.local_name {
+              INameT::FunctionTemplate(t) => t.human_name.0.to_string(),
+              other => panic!("CouldNotPostparseFunction on a non-function template: {:?}", other),
+            };
+            ICompileErrorT::CouldNotPostparseFunction {
+              range: self.typing_interner.alloc_slice_copy(call_range),
+              path,
+              reason,
+            }
+          })?;
         let maybe_virtual_index = function.params.iter().position(|p| p.virtuality.is_some());
         let identifying_rune_templata_types = function.tyype.param_types;
         // Now we want to check that the user didn't specify too many right here.

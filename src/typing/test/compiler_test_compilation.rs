@@ -5,6 +5,8 @@ use crate::parse_arena::ParseArena;
 use crate::scout_arena::ScoutArena;
 use crate::typing::compilation::TypingPassCompilation;
 use crate::typing::oracles::Oracles;
+#[cfg(feature = "rust_interop")]
+use crate::typing::rust_interop::RustOracle;
 use crate::typing::typing_interner::TypingInterner;
 use crate::typing::TypingPassOptions;
 use crate::utils::code_hierarchy::PackageCoordinate;
@@ -103,5 +105,33 @@ where
     vec![test_tld],
     code_source,
     options,
+  )
+}
+
+#[cfg(feature = "rust_interop")]
+pub fn compiler_test_compilation_with_rust_oracle<'s, 'ctx, 't, 'p>(
+  typing_interner: &'ctx TypingInterner<'s, 't>,
+  scout_arena: &'ctx ScoutArena<'s>,
+  keywords: &'ctx Keywords<'s>,
+  parser_keywords: &'ctx Keywords<'p>,
+  parse_arena: &'ctx ParseArena<'p>,
+  code_source: &'ctx CodeSource<'p>,
+  rust_oracle: &'ctx dyn RustOracle<'s, 't>,
+) -> TypingPassCompilation<'s, 'ctx, 't, 'p>
+where
+  's: 't,
+{
+  let test_module = parse_arena.intern_str("test");
+  let test_tld = parse_arena.intern_package_coordinate(test_module, &[]);
+  TypingPassCompilation::new(
+    typing_interner,
+    scout_arena,
+    keywords,
+    parser_keywords,
+    parse_arena,
+    vec![test_tld],
+    code_source,
+    test_typing_pass_options(),
+    Oracles::with_rust(rust_oracle),
   )
 }

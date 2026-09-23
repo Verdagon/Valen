@@ -1,0 +1,13 @@
+<span class="keyword">func</span> <span class="function">greet</span><span class="punctuation bracket">(</span><span class="variable parameter">name</span> <span class="type builtin">str</span><span class="punctuation bracket">)</span> <span class="type builtin">str</span> <span class="punctuation bracket">{</span>
+  <span class="keyword control">return</span> <span class="string">&quot;Hello, &quot;</span> <span class="operator">+</span> name <span class="operator">+</span> <span class="string">&quot;!&quot;</span><span class="punctuation delimiter">;</span>
+<span class="punctuation bracket">}</span>
+
+<span class="keyword">struct</span> <span class="type">Point</span> <span class="punctuation bracket">{</span>
+  <span class="variable">x</span> <span class="type builtin">int</span><span class="punctuation delimiter">;</span>
+  <span class="variable">y</span> <span class="type builtin">int</span><span class="punctuation delimiter">;</span>
+<span class="punctuation bracket">}</span>
+
+<span class="keyword">func</span> <span class="function">main</span><span class="punctuation bracket">(</span><span class="punctuation bracket">)</span> <span class="punctuation bracket">{</span>
+  p <span class="operator">=</span> <span class="function">Point</span><span class="punctuation bracket">(</span>3<span class="punctuation delimiter">,</span> 4<span class="punctuation bracket">)</span><span class="punctuation delimiter">;</span>
+  <span class="function">println</span><span class="punctuation bracket">(</span><span class="function">greet</span><span class="punctuation bracket">(</span><span class="string">&quot;world&quot;</span><span class="punctuation bracket">)</span><span class="punctuation bracket">)</span><span class="punctuation delimiter">;</span>
+<span class="punctuation bracket">}</span>
