@@ -19,6 +19,7 @@ pub enum GroupRootG<'s, 't> {
   Rune(IRuneS<'s>), // a group param, e.g. <g'>, resolved to its id
   ParamAnonymousGroup(IVarNameT<'s, 't>), // A param's group if it doesn't come from a rune or another param. The StrI is the parameter's name
   Local(IVarNameT<'s, 't>), // A local's implicitly declared group.
+  AmbientMulti(), // The ambient multi group
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]

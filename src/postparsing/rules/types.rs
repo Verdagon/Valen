@@ -132,7 +132,6 @@ pub struct RuneUsageST<'s> {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RegionS<'s> {
-  Unspecified,
   Held,
   Group(&'s GroupS<'s>),
 }

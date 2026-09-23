@@ -138,6 +138,7 @@ pub fn humanize_rune<'s>(rune: IRuneS<'s>) -> String {
     IRuneS::ImplicitRune(r) => {
       "_".to_string() + &r.lid.path.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("")
     }
+    IRuneS::ImplicitGroupRune(r) => unimplemented!(),
     IRuneS::MagicParamRune(r) => {
       "_".to_string() + &r.lid.path.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("")
     }

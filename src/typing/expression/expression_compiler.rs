@@ -1939,6 +1939,7 @@ where
         let result = ExpressionTE::ConstantStr(self.typing_interner.alloc(ConstantStrTE::new(
           self.typing_interner,
           c.range,
+          loct,
           c.value,
           region,
         )));

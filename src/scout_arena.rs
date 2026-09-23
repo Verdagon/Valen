@@ -649,6 +649,10 @@ impl<'s> ScoutArena<'s> {
         let c = IRuneS::CodeRune(self.bump.alloc(p.clone()));
         (IRuneValS::CodeRune(p), c)
       }
+      ImplicitGroupRune(p) => {
+        let c = IRuneS::ImplicitGroupRune(self.bump.alloc(p.clone()));
+        (IRuneValS::ImplicitGroupRune(p), c)
+      }
       ImplDropKindRune(p) => {
         let c = IRuneS::ImplDropKindRune(self.bump.alloc(p.clone()));
         (IRuneValS::ImplDropKindRune(p), c)

@@ -34,6 +34,7 @@ pub struct MutEffectPath<'s, 't, 'g> {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum GroupStep<'s, 't> {
   Rune(IRuneS<'s>), // a group param, e.g. <g'>, resolved to its id
+  AmbientMulti(), // the ambient multi group, like rc'
   ParamAnonymousGroup(IVarNameT<'s, 't>), // A param's group if it doesn't come from a rune or another param. The string is the param name
   Local(IVarNameT<'s, 't>), // A local's implicitly declared group.
   Member { member_name: StrI<'s> }, // `x.items`
@@ -331,6 +332,7 @@ pub struct ConstantBoolGE<'s, 't, 'g> {
 #[derive(Debug)]
 pub struct ConstantStrGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
   pub value: StrI<'s>,
   // Str is share-flavored, so a string literal is a share reference.
   pub result: &'g ShareRefGT<'s, 't, 'g>,

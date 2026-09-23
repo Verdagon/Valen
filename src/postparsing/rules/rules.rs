@@ -4,7 +4,7 @@ use crate::postparsing::itemplatatype::{
 };
 use crate::postparsing::names::IImpreciseNameS;
 use crate::postparsing::names::IRuneS;
-use crate::postparsing::rules::types::ITypeST;
+use crate::postparsing::rules::types::{GroupS, ITypeST};
 use crate::utils::range::RangeS;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -116,9 +116,8 @@ pub struct RuneParentEnvLookupSR<'s> {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RegionSR<'s> {
-  Unspecified,
   Held,
-  Rune(RuneUsage<'s>),
+  Group(&'s GroupS<'s>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

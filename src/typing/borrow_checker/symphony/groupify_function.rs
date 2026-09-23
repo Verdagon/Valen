@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use bumpalo::Bump;
 use indexmap::IndexMap;
 use crate::postparsing::ast::{FunctionS, GenericParameterS, IBodyS, ICitizenDenizenS, ICitizenS, IGenericParameterTypeS, IStructMemberS, KindGenericParameterTypeS, StructS};
-use crate::postparsing::names::{CodeNameS, IImpreciseNameS, IRuneS, IVarDeclarationNameS};
+use crate::postparsing::names::{CodeNameS, IImpreciseNameS, IRuneS, IRuneValS, IVarDeclarationNameS, ImplicitGroupRuneS};
 use crate::postparsing::rules::RuneUsage;
 use crate::postparsing::rules::types::*;
 use crate::StrI;
@@ -256,6 +256,34 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let result_gt = KindGT::Float(FloatGT { });
         Ok(ExpressionGE::ConstantFloat(bump_g.alloc(ConstantFloatGE { range: *range, value: *value, result: result_gt, })))
       }
+      ExpressionTE::ConstantStr(ConstantStrTE { range, loct, value, .. }) => {
+        let result_gt =
+            bump_g.alloc(ShareRefGT {
+              inner: KindGT::Str(StrGT {}),
+              group: GroupTemplataG {
+                group: bump_g.alloc_slice_copy(&[
+                  GroupPathG {
+                    root: GroupRootG::AmbientMulti(),
+                    steps: bump_g.alloc_slice_copy(&[
+                      GroupChildStepG::Variant { variant_name: self.scout_arena.intern_str("str") }
+                    ]),
+                    ellipsis: false,
+                  }
+                ]),
+                kind: KindGT::Str(StrGT {}),
+                born_at: *loct,
+              }
+            });
+        Ok(
+          ExpressionGE::ConstantStr(
+            bump_g.alloc(
+              ConstantStrGE {
+                range: *range,
+                loct: *loct,
+                value: *value,
+                result: result_gt,
+              })))
+      }
       ExpressionTE::ArgLookup(ArgLookupTE { range, loct, param_index, result, .. }) => {
         let param_type_t = function_t.header.params[*param_index as usize].tyype;
         let param_type_s = function_s.params[*param_index as usize].tyype;
@@ -409,11 +437,53 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionTE::ArraySize(ArraySizeTE { .. }) => unimplemented!(),
       ExpressionTE::IsSameInstance(IsSameInstanceTE { .. }) => unimplemented!(),
       ExpressionTE::AsSubtype(AsSubtypeTE { .. }) => unimplemented!(),
-      ExpressionTE::ConstantStr(ConstantStrTE { .. }) => unimplemented!(),
       ExpressionTE::InterfaceFunctionCall(InterfaceFunctionCallTE { .. }) => unimplemented!(),
       ExpressionTE::ExternFunctionCall(ExternFunctionCallTE { .. }) => unimplemented!(),
       ExpressionTE::BoundFunctionCall(BoundFunctionCallTE { .. }) => unimplemented!(),
-      ExpressionTE::Reinterpret(ReinterpretTE { .. }) => unimplemented!(),
+      ExpressionTE::Reinterpret(ReinterpretTE { range, expr: expr_te, result: desired_tt, .. }) => {
+        let source_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *expr_te, local_rune_to_templata, local_to_type_g)?;
+        // For now, we only allow reinterpreting things into the same group they were already in.
+        let desired_gt =
+          match source_ge.result() {
+            KindGT::Never(_) | KindGT::Void(_) | KindGT::Int(_) | KindGT::Bool(_) | KindGT::Str(_) | KindGT::Float(_) | KindGT::USize(_) | KindGT::Struct(_) | KindGT::Interface(_) | KindGT::StaticSizedArray(_) | KindGT::RuntimeSizedArray(_) | KindGT::KindPlaceholder(_) | KindGT::OverloadSet(_) => {
+              source_ge.result()
+            },
+            KindGT::BorrowRef(BorrowRefGT { inner: source_inner_gt, group: GroupTemplataG { group: source_group, kind: _, born_at } }) => {
+              match desired_tt {
+                KindT::Never(_) | KindT::Void(_) | KindT::Int(_) | KindT::Bool(_) | KindT::Str(_) | KindT::Float(_) | KindT::USize(_) | KindT::Struct(_) | KindT::Interface(_) | KindT::StaticSizedArray(_) | KindT::RuntimeSizedArray(_) | KindT::KindPlaceholder(_) | KindT::OverloadSet(_) => unimplemented!(),
+                KindT::BorrowRef(BorrowRefT { inner: desired_inner_tt }) => {
+                  let result_inner_gt =
+                    match (source_inner_gt, desired_inner_tt) {
+                      (KindGT::Str(StrGT { }), KindT::Str(StrT { })) => KindGT::Str(StrGT { }),
+                      // Temporary, until we can fix the typing pass's output
+                      (KindGT::ShareRef(ShareRefGT { inner: KindGT::Str(StrGT), group: inner_share_group}), KindT::Str(StrT {})) => KindGT::Str(StrGT { }),
+                      other => panic!("Unimplemented: {:?} to {:?}", source_inner_gt, desired_inner_tt),
+                    };
+                  KindGT::BorrowRef(
+                    bump_g.alloc(BorrowRefGT {
+                      inner: result_inner_gt,
+                      group: GroupTemplataG {
+                        group: source_group,
+                        kind: result_inner_gt,
+                        born_at: *born_at,
+                      }
+                    }))
+                }
+                KindT::ShareRef(_) => unimplemented!(),
+                KindT::OwnRef(_) => unimplemented!(),
+                KindT::WeakRef(_) => unimplemented!(),
+              }
+            }
+            KindGT::ShareRef(ShareRefGT { inner, group }) => unimplemented!(),
+            KindGT::OwnRef(_) => unimplemented!(),
+            KindGT::WeakRef(_) => unimplemented!(),
+          };
+        Ok(ExpressionGE::Reinterpret(bump_g.alloc(ReinterpretGE {
+          range: *range,
+          expr: source_ge,
+          result: desired_gt,
+        })))
+      }
       ExpressionTE::Construct(ConstructTE { .. }) => unimplemented!(),
       ExpressionTE::NewRuntimeSizedArray(NewRuntimeSizedArrayTE { .. }) => unimplemented!(),
       ExpressionTE::StaticArrayFromCallable(StaticArrayFromCallableTE { .. }) => unimplemented!(),
@@ -431,6 +501,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let inner_ge =
           match source_ge.result() {
             KindGT::BorrowRef(BorrowRefGT { inner, group }) => *inner,
+            KindGT::ShareRef(ShareRefGT { inner, group }) => *inner,
             _ => panic!("CopyPrimt encountered non-borrow ref"),
           };
         Ok(ExpressionGE::CopyPrim(bump_g.alloc(CopyPrimGE {
@@ -630,7 +701,6 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             };
         let bst_specified_group_s =
           match bst_group_s {
-            RegionS::Unspecified => panic!("Encountered a borrow ref with unspecified region"),
             RegionS::Held => panic!("Encountered a borrow ref with held region"),
             RegionS::Group(b) => *b,
           };
@@ -670,6 +740,20 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                     .as_slice());
         KindGT::Struct(bump_g.alloc(StructGT { id, template_args: template_args_g }))
       }
+      KindT::Interface(InterfaceTT { id, .. }) => {
+        let template_args_t: &'t [ITemplataT<'s, 't>] =
+            ICitizenNameT::try_from(id.local_name)
+                .expect("Interface without ICitizenNameT")
+                .template_args();
+        let template_args_g =
+            bump_g.alloc_slice_copy(
+              template_args_t
+                  .iter()
+                  .map(|x| self.groupify_templata(coutputs, bump_g, rune_to_templata, local_to_type_g, *x, group_born_at_loct))
+                  .collect::<Vec<_>>()
+                  .as_slice());
+        KindGT::Interface(bump_g.alloc(InterfaceGT { id, template_args: template_args_g }))
+      }
       KindT::KindPlaceholder(kp @ KindPlaceholderT { id: id_t }) => {
         let rune =
             match id_t.local_name {
@@ -683,7 +767,6 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 .get(rune)
                 .expect("Couldn't find rune in rune_to_templata map")).kind
       }
-      KindT::Interface(InterfaceTT { .. }) => unimplemented!(), // KindGT::Interface(InterfaceGT { }),
       KindT::StaticSizedArray(StaticSizedArrayTT { .. }) => unimplemented!(), // KindGT::StaticSizedArray(StaticSizedArrayGT { }),
       KindT::RuntimeSizedArray(RuntimeSizedArrayTT { name: id_t, .. }) => {
         let rsa_local_name =
@@ -784,7 +867,6 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             self.match_types(coutputs, bump_g, **inner_st, ITemplataG::Kind(KindTemplataG { kind: *inner_gt }), map);
 
             match group_s {
-              RegionS::Unspecified => unimplemented!(),
               RegionS::Held => unimplemented!(),
               RegionS::Group(group_s) => {
                 match group_s {
@@ -917,6 +999,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           GroupRootG::Rune(r) => GroupStep::Rune(r),
           GroupRootG::ParamAnonymousGroup(n) => GroupStep::ParamAnonymousGroup(n),
           GroupRootG::Local(n) => GroupStep::Local(n),
+          GroupRootG::AmbientMulti() => GroupStep::AmbientMulti(),
         });
         for step in path.steps {
           result.push(match step {
@@ -1087,7 +1170,29 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             let inner_kind_gt = expect_kind_templata_g(inner_gt).kind;
 
             match group_s {
-              RegionS::Unspecified => unimplemented!(),
+              // RegionS::Unspecified => {
+              //   // TODO: consider generating this in the postparser instead...
+              //   // I guess that would depend on our closure handling too.
+              //   let implicit_group_rune =
+              //       self.scout_arena.intern_rune(
+              //           IRuneValS::ImplicitGroupRune(
+              //             ImplicitGroupRuneS { number: group_rune_to_type_gt.len() as u32 }));
+              //   let group_templata_g =
+              //       GroupTemplataG {
+              //         group: Self::new_rune_group_expr(bump_g, implicit_group_rune),
+              //         kind: inner_kind_gt,
+              //         born_at: LocT { path: &[] },
+              //       };
+              //   group_rune_to_type_gt.insert(implicit_group_rune, ITemplataG::Group(group_templata_g));
+              //
+              //   ITemplataG::Kind(KindTemplataG {
+              //     kind: KindGT::BorrowRef(
+              //       bump_g.alloc(BorrowRefGT {
+              //         inner: inner_kind_gt,
+              //         group: group_templata_g
+              //       }))
+              //   })
+              // }
               RegionS::Held => unimplemented!(),
               RegionS::Group(group_s) => {
                 match group_s {
@@ -1194,6 +1299,39 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
               kind: KindGT::Struct(
                 bump_g.alloc(StructGT {
                   id: struct_id_t,
+                  template_args: template_args_g
+                }))
+            })
+          }
+          ITemplataT::Kind(KindTemplataT { kind: KindT::Interface(InterfaceTT { id: interface_id_t, ..}) }) => {
+            let interface_template_id_t = Compiler::get_template(self.typing_interner, **interface_id_t);
+            let citizen_denizen_s = coutputs.peek_postparsed_type(interface_template_id_t).expect("Couldn't find interface template");
+            let interface_def_templata_type =
+                match citizen_denizen_s {
+                  ICitizenDenizenS::TopLevelStruct(_) => panic!("Expected interface"),
+                  ICitizenDenizenS::TopLevelInterface(interface_s) => interface_s.tyype,
+                };
+            let interface_templata_g =
+                ITemplataG::InterfaceDefinition(
+                  bump_g.alloc(
+                    InterfaceDefinitionTemplataG {
+                      interface_template_id: interface_template_id_t,
+                      tyype: interface_def_templata_type
+                    }));
+            let template_args_tt =
+                IInterfaceNameT::try_from(interface_id_t.local_name)
+                    .expect("Expected interface name")
+                    .template_args();
+            let mut template_args_g_vec = Vec::new();
+            for (template_arg_s, template_arg_t) in template_args_s.iter().zip(template_args_tt.iter()) {
+              template_args_g_vec.push(
+                self.simple_match_group_rune_types(coutputs, bump_g, group_rune_to_type_gt, **template_arg_s, *template_arg_t));
+            }
+            let template_args_g = bump_g.alloc_slice_copy(template_args_g_vec.as_slice());
+            ITemplataG::Kind(KindTemplataG {
+              kind: KindGT::Interface(
+                bump_g.alloc(InterfaceGT {
+                  id: interface_id_t,
                   template_args: template_args_g
                 }))
             })

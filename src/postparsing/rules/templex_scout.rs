@@ -11,7 +11,7 @@ use crate::postparsing::ast::{
 use crate::postparsing::itemplatatype::{
   FunctionTemplataType, ITemplataType, KindTemplataType, TemplateTemplataType,
 };
-use crate::postparsing::names::CodeNameValS;
+use crate::postparsing::names::{CodeNameValS, IRuneValS, ImplicitGroupRuneS};
 use crate::postparsing::names::IRuneValS::{CodeRune, ImplicitRune};
 use crate::postparsing::names::{
   CodeNameS, CodeRuneS, DesugaredParamNameDeclarationS, FunctionNameS, IFunctionDeclarationNameS,
@@ -288,7 +288,18 @@ pub fn translate_templex_into_type_st<'s, 'p>(
         borrow_ref.inner,
       ));
       let region = match borrow_ref.region {
-        RegionP::Unspecified => RegionS::Unspecified,
+        RegionP::Unspecified => {
+          RegionS::Group(
+            scout_arena.alloc(
+              GroupS::Rune(
+                scout_arena.alloc(
+                RuneUsage {
+                    range: range_s,
+                    rune: scout_arena.intern_rune(
+                        IRuneValS::ImplicitGroupRune(
+                          ImplicitGroupRuneS{ range: range_s })),
+                }))))
+        },
         RegionP::Held => RegionS::Held,
         RegionP::Group(group_p) => {
           RegionS::Group(translate_group_p_into_group_s(scout_arena, &env, group_p))
@@ -837,9 +848,8 @@ fn region_s_into_region_sr<'s>(
   region: RegionS<'s>,
 ) -> RegionSR<'s> {
   match region {
-    RegionS::Unspecified => RegionSR::Unspecified,
     RegionS::Held => RegionSR::Held,
-    RegionS::Group(_group_s) => RegionSR::Unspecified,
+    RegionS::Group(g ) => RegionSR::Group(g),
   }
 }
 
@@ -1207,9 +1217,22 @@ pub fn translate_templex<'s, 'p>(
           borrow_ref.inner,
         );
         let region = match borrow_ref.region {
-          RegionP::Unspecified => RegionSR::Unspecified,
+          RegionP::Unspecified => {
+            RegionSR::Group(
+              scout_arena.alloc(
+                GroupS::Rune(
+                  scout_arena.alloc(
+                    RuneUsage {
+                      range: range_s,
+                      rune: scout_arena.intern_rune(
+                        IRuneValS::ImplicitGroupRune(
+                          ImplicitGroupRuneS{ range: range_s })),
+                    }))))
+          },
           RegionP::Held => RegionSR::Held,
-          RegionP::Group(_group_p) => RegionSR::Unspecified,
+          RegionP::Group(group_p) => {
+            RegionSR::Group(translate_group_p_into_group_s(scout_arena, &env, group_p))
+          }
         };
         translate_borrow_ref_templex(scout_arena, lidb, rule_builder, range_s, inner_rune, region)
       }
