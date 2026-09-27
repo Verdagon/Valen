@@ -31,6 +31,7 @@ where
     scout_arena,
     keywords,
     parser_keywords,
+    &[],
     parse_arena,
     packages_to_build,
     code_source,

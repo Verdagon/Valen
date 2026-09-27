@@ -12,6 +12,7 @@ use crate::utils::fx::{HashMap, HashSet};
 pub fn lex_and_explore<'p, 'ctx, D, F>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
+  rust_crates: &'ctx [StrI<'p>],
   packages: Vec<&'p PackageCoordinate<'p>>,
   source: &CodeSource<'p>,
   mut denizen_handler: impl FnMut(&'p FileCoordinate<'p>, &str, &[ImportL<'p>], &IDenizenL<'p>) -> D,
@@ -82,12 +83,15 @@ where
               Some(imports_accum) => imports_accum.push(im.clone()),
             }
 
-            if im.module_name.str == keywords.rust {
-              #[cfg(not(feature = "rust_interop"))]
-              panic!(
-                "`import {}.…` needs the `rust_interop` feature, which is not enabled in this build",
-                keywords.rust.0
-              );
+            if rust_crates.contains(&im.module_name.str) {
+              let package_steps: Vec<StrI<'p>> = im.package_steps.iter().map(|x| x.str).collect();
+              let coord = parse_arena.intern_package_coordinate(im.module_name.str, &package_steps);
+              if source.resolve(coord).is_some() {
+                panic!(
+                  "`{}` is both a Rust crate and a Vale module",
+                  im.module_name.str.0
+                );
+              }
             } else {
               packages_to_explore.push((
                 im.module_name.str.to_string(),

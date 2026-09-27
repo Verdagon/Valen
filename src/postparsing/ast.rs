@@ -351,6 +351,7 @@ pub struct ExportAsS<'s> {
 #[derive(Debug, PartialEq)]
 pub struct ImportS<'s> {
   pub range: RangeS<'s>,
+  // VCOORD: maybe use a PackageCoordinate here
   pub module_name: StrI<'s>,
   pub package_names: &'s [StrI<'s>],
   pub importee_name: StrI<'s>,

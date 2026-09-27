@@ -1,5 +1,6 @@
 use crate::typing::templata::templata::{FunctionTemplataT, ITemplataT, StructDefinitionTemplataT};
 use crate::utils::arena_index_map::ArenaIndexMap;
+use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::utils::fx::HashSet;
 use crate::utils::fx::IndexMap;
 use crate::utils::range::CodeLocationS;
@@ -39,10 +40,10 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::mem::discriminant;
 
+// TODO: one day maybe change this to an IdT? and ImportedItemKind can be divined from the local name
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ResolvedName<'s> {
-  pub module_name: StrI<'s>,
-  pub package_names: &'s [StrI<'s>],
+  pub package_coord: &'s PackageCoordinate<'s>,
   pub importee_name: StrI<'s>,
   pub kind: ImportedItemKind,
 }

@@ -26,8 +26,6 @@ use crate::typing::names::names::IInterfaceTemplateNameT;
 use crate::typing::names::names::*;
 use crate::typing::names::names::{MemberNameT, IVarNameT};
 use crate::typing::names::names::{IInstantiationNameT, INameT, IStructTemplateNameT, IdValT};
-#[cfg(feature = "rust_interop")]
-use crate::typing::rust_interop::is_rust_backed;
 use crate::typing::templata::templata::FunctionTemplataT;
 use crate::typing::templata::templata::ITemplataT;
 use crate::typing::templata::templata::*;
@@ -138,7 +136,7 @@ where
           // getting rid of this whole loop.
           #[cfg(feature = "rust_interop")]
           {
-            if is_rust_backed(id) {
+            if self.in_rust_crate(id) {
               continue;
             }
           }
@@ -250,7 +248,7 @@ where
           let is_abstract_interface_method = coutputs
             .peek_postparsed_function(id)
             .map_or(false, |f| matches!(f.body, IBodyS::AbstractBody(_)));
-          if is_rust_backed(id) && !is_abstract_interface_method {
+          if self.in_rust_crate(id) && !is_abstract_interface_method {
             continue;
           }
         }

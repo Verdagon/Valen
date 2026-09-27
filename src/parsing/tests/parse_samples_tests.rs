@@ -23,7 +23,13 @@ fn parse<'p, 'ctx>(
   'p: 'ctx,
 {
   let mut compilation =
-    parser_test_compilation::test(parse_arena, keywords, code_source, test_package_coord);
+    parser_test_compilation::test(
+      parse_arena,
+      keywords,
+      &[],
+      code_source,
+      test_package_coord,
+    );
   compilation
     .get_parseds()
     .unwrap_or_else(|e| panic!("Failed to parse sample '{}': {:?}", path, e));

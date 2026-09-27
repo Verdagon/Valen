@@ -16,6 +16,7 @@ use crate::typing::infer::compiler_solver::ITypingPassSolverError;
 use crate::typing::infer_compiler::IResolvingError;
 use crate::typing::names::names::*;
 use crate::typing::overload_resolver::{FindFunctionFailure, IFindFunctionFailureReason};
+use crate::typing::templata_compiler::peel_all_references;
 use crate::typing::templata::templata::*;
 use crate::typing::types::types::*;
 use crate::utils::fx::IndexMap;
@@ -281,7 +282,12 @@ where
       return Ok(None);
     };
     let recv_type = recv_expr.result();
-    if !crate::typing::rust_interop::reserved::is_rust_backed_kind(recv_type) {
+    let recv_in_rust_crate = match peel_all_references(recv_type) {
+      KindT::Struct(StructTT { id, .. }) => self.in_rust_crate(id),
+      KindT::Interface(InterfaceTT { id, .. }) => self.in_rust_crate(id),
+      _ => false,
+    };
+    if !recv_in_rust_crate {
       return Ok(None);
     }
     let calling_env = IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner));

@@ -36,7 +36,7 @@ pub struct StructLayout {
     pub align: u64,
 }
 
-pub enum Coercion {
+pub enum PassModeR {
     Ignore,
     DirectInt(u32),
     DirectPtr,
@@ -46,23 +46,23 @@ pub enum Coercion {
     LocationPtr,
 }
 
-impl Coercion {
+impl PassModeR {
     fn to_ffi(&self) -> CoercionFFI {
         match self {
-            Coercion::Ignore => CoercionFFI { kind: 0, bits: 0, bits2: 0 },
-            Coercion::DirectInt(bits) => CoercionFFI { kind: 1, bits: *bits, bits2: 0 },
-            Coercion::DirectPtr => CoercionFFI { kind: 2, bits: 0, bits2: 0 },
-            Coercion::Indirect => CoercionFFI { kind: 3, bits: 0, bits2: 0 },
-            Coercion::Cast(bits) => CoercionFFI { kind: 4, bits: *bits, bits2: 0 },
-            Coercion::Pair(bits0, bits1) => CoercionFFI { kind: 5, bits: *bits0, bits2: *bits1 },
-            Coercion::LocationPtr => CoercionFFI { kind: 6, bits: 0, bits2: 0 },
+            PassModeR::Ignore => CoercionFFI { kind: 0, bits: 0, bits2: 0 },
+            PassModeR::DirectInt(bits) => CoercionFFI { kind: 1, bits: *bits, bits2: 0 },
+            PassModeR::DirectPtr => CoercionFFI { kind: 2, bits: 0, bits2: 0 },
+            PassModeR::Indirect => CoercionFFI { kind: 3, bits: 0, bits2: 0 },
+            PassModeR::Cast(bits) => CoercionFFI { kind: 4, bits: *bits, bits2: 0 },
+            PassModeR::Pair(bits0, bits1) => CoercionFFI { kind: 5, bits: *bits0, bits2: *bits1 },
+            PassModeR::LocationPtr => CoercionFFI { kind: 6, bits: 0, bits2: 0 },
         }
     }
 }
 
 pub struct ExternAbi {
-    pub ret: Coercion,
-    pub args: Vec<Coercion>,
+    pub ret: PassModeR,
+    pub args: Vec<PassModeR>,
 }
 
 pub fn populate_metal_cache<'cache, 's, 'i>(
@@ -77,33 +77,11 @@ where
 {
     let lowerer = Lowerer { cache, code_map, current_group_facts: RefCell::new(None) };
 
-    let mut package_coords: Vec<&'s PackageCoordinate<'s>> = Vec::new();
-    let mut seen: HashMap<usize, ()> = HashMap::new();
-    let mut note = |pc: &'s PackageCoordinate<'s>, out: &mut Vec<&'s PackageCoordinate<'s>>| {
-        if seen.insert(pc as *const _ as usize, ()).is_none() {
-            out.push(pc);
-        }
-    };
-    for f in monouts.functions.iter() {
-        note(f.header.id.package_coord, &mut package_coords);
-    }
-    for s in monouts.structs.iter() {
-        note(s.instantiated_citizen.id.package_coord, &mut package_coords);
-    }
-    for it in monouts.interfaces.iter() {
-        note(it.instantiated_interface.id.package_coord, &mut package_coords);
-    }
-    for a in monouts.static_sized_arrays.iter() {
-        note(a.name.package_coord, &mut package_coords);
-    }
-    for a in monouts.runtime_sized_arrays.iter() {
-        note(a.name.package_coord, &mut package_coords);
-    }
-
     let pb = cache.new_program_builder();
-    for pc in package_coords {
-        let coord = lowerer.lower_package_coord(pc);
-        let package = lowerer.lower_package(monouts, pc, coord, struct_layouts, extern_abis);
+    for p in monouts.packages.iter() {
+        let coord = lowerer.lower_package_coord(p.coord);
+        let package = lowerer.lower_package(
+            monouts, p.coord, coord, struct_layouts, extern_abis, p.is_rust_crate);
         pb.add_package(coord, package);
     }
     pb.finish()
@@ -212,9 +190,10 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
         coord: PackageCoord<'cache>,
         struct_layouts: &HashMap<String, StructLayout>,
         extern_abis: &HashMap<String, ExternAbi>,
+        is_rust_crate: bool,
     ) -> crate::backend_ffi::metal_cache::Package<'cache> {
         let pkg_key = pc as *const _ as usize;
-        let pb = self.cache.new_package_builder(coord);
+        let pb = self.cache.new_package_builder(coord, is_rust_crate);
 
         for f in monouts.functions.iter() {
             if f.header.id.package_coord as *const _ as usize != pkg_key {

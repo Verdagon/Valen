@@ -230,7 +230,7 @@ ExpressionHandle* metal_expr_destroy_mut_runtime_sized_array(ExpressionHandle* a
 
 
 PackageBuilderHandle* metal_package_builder_new(
-    MetalCacheHandle* cache, PackageCoordHandle* package_coord);
+    MetalCacheHandle* cache, PackageCoordHandle* package_coord, bool is_rust_crate);
 
 void metal_package_builder_add_interface(
     PackageBuilderHandle*, const char* name_ptr, size_t name_len, InterfaceDefHandle*);

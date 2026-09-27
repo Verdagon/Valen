@@ -222,8 +222,8 @@ fn humanize_ref<'s, 't>(
       format!("Couldn't find any type named `{:?}`!", name)
     }
     ICompileErrorT::UnresolvableRustImport { range: _, path } => {
-      format!("Couldn't resolve the Rust import `rust.{path}` to any importable item. Name the crate \
-               and a `pub` type or function, e.g. `import rust.mycrate.Widget;`.")
+      format!("Couldn't resolve the Rust import `{path}` to any importable item. Name the crate \
+               and a `pub` type or function, e.g. `import mycrate.Widget;`.")
     }
     ICompileErrorT::CouldNotPostparseFunction { range: _, path, reason } => {
       use crate::typing::compiler_error_reporter::CouldNotPostparseReason;

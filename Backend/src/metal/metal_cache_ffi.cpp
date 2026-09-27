@@ -508,6 +508,7 @@ extern "C" VIS ExpressionHandle* metal_expr_destroy_mut_runtime_sized_array(Expr
 struct PackageBuilder {
   MetalCache* cache;
   PackageCoordinate* packageCoord;
+  bool isRustCrate;
   std::unordered_map<std::string, InterfaceDefinition*> interfaces;
   std::unordered_map<std::string, StructDefinition*> structs;
   std::unordered_map<std::string, StaticSizedArrayDefinitionT*> staticSizedArrays;
@@ -523,10 +524,11 @@ struct PackageBuilder {
 };
 
 extern "C" VIS PackageBuilderHandle* metal_package_builder_new(
-    MetalCacheHandle* h, PackageCoordHandle* package_coord) {
+    MetalCacheHandle* h, PackageCoordHandle* package_coord, bool is_rust_crate) {
   auto* b = new PackageBuilder();
   b->cache = cache(h);
   b->packageCoord = pc(package_coord);
+  b->isRustCrate = is_rust_crate;
   return reinterpret_cast<PackageBuilderHandle*>(b);
 }
 
@@ -615,6 +617,7 @@ extern "C" VIS PackageHandle* metal_package_builder_finish(PackageBuilderHandle*
   auto* pkg = new Package(
       b->cache->addressNumberer,
       b->packageCoord,
+      b->isRustCrate,
       std::move(b->interfaces),
       std::move(b->structs),
       std::move(b->staticSizedArrays),

@@ -11,6 +11,7 @@ use crate::instantiating::ast::ast::{
 use crate::instantiating::ast::citizens::{ICitizenDefinitionI, InterfaceDefinitionI, StructDefinitionI};
 use crate::instantiating::ast::names::INameI;
 use crate::instantiating::ast::names::StructNameI;
+use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::utils::fx::IndexMap;
 
 
@@ -35,7 +36,13 @@ pub struct FunctionAliasingInfoI<'i> {
     pub instruction_loc_to_accessed_groups: ArenaIndexMap<'i, &'i [i32], &'i [u32]>,
 }
 
+pub struct PackageI<'s> {
+    pub coord: &'s PackageCoordinate<'s>,
+    pub is_rust_crate: bool,
+}
+
 pub struct HinputsI<'s, 'i> where 's: 'i {
+    pub packages: &'i [PackageI<'s>],
     pub interfaces: &'i [InterfaceDefinitionI<'s, 'i>],
     pub structs: &'i [&'i StructDefinitionI<'s, 'i>],
     pub static_sized_arrays: &'i [&'i StaticSizedArrayIT<'s, 'i>],

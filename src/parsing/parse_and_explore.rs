@@ -6,6 +6,7 @@ use crate::lexing::lex_and_explore;
 use crate::parse_arena::ParseArena;
 use crate::parsing::ast::IDenizenP;
 use crate::parsing::Parser;
+use crate::interner::StrI;
 use crate::utils::code_hierarchy::{FileCoordinate, PackageCoordinate};
 use crate::Keywords;
 
@@ -42,6 +43,7 @@ fn expect_parsed<'p, T>(
 pub fn parse_and_explore<'p, 'ctx, D, F, HandleParsedDenizen, FileHandler>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
+  rust_crates: &'ctx [StrI<'p>],
   _opts: GlobalOptions,
   parser: &Parser<'p, 'ctx>,
   packages: Vec<&'p PackageCoordinate<'p>>,
@@ -57,6 +59,7 @@ where
   lex_and_explore::lex_and_explore(
     parse_arena,
     keywords,
+    rust_crates,
     packages,
     source,
     |file_coord: &'p FileCoordinate<'p>,

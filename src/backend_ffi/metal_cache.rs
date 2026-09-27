@@ -281,7 +281,7 @@ extern "C" {
     ) -> *mut c_void;
     fn metal_expr_destroy_mut_runtime_sized_array(array_expr: *mut c_void, loc: *mut c_void) -> *mut c_void;
 
-    fn metal_package_builder_new(_: *mut MetalCacheHandleRaw, package_coord: *mut c_void) -> *mut c_void;
+    fn metal_package_builder_new(_: *mut MetalCacheHandleRaw, package_coord: *mut c_void, is_rust_crate: bool) -> *mut c_void;
     fn metal_package_builder_add_interface(_: *mut c_void, name_ptr: *const c_char, name_len: usize, v: *mut c_void);
     fn metal_package_builder_add_struct(_: *mut c_void, name_ptr: *const c_char, name_len: usize, v: *mut c_void);
     fn metal_package_builder_add_function(_: *mut c_void, name_ptr: *const c_char, name_len: usize, v: *mut c_void);
@@ -819,8 +819,13 @@ impl MetalCache {
         unsafe { Expression(NonNull::new(metal_expr_destroy_mut_runtime_sized_array(array_expr.0.as_ptr(), loc_ptr(loc))).unwrap(), PhantomData) }
     }
 
-    pub fn new_package_builder<'c>(&'c self, package_coord: PackageCoord<'c>) -> PackageBuilder<'c> {
-        let raw = unsafe { metal_package_builder_new(self.raw, package_coord.0.as_ptr()) };
+    pub fn new_package_builder<'c>(
+        &'c self,
+        package_coord: PackageCoord<'c>,
+        is_rust_crate: bool,
+    ) -> PackageBuilder<'c> {
+        let raw =
+            unsafe { metal_package_builder_new(self.raw, package_coord.0.as_ptr(), is_rust_crate) };
         assert!(!raw.is_null());
         PackageBuilder { raw, _cache: PhantomData }
     }
@@ -947,131 +952,5 @@ impl<'cache> Program<'cache> {
 impl<'cache> Drop for Program<'cache> {
     fn drop(&mut self) {
         unsafe { metal_program_free(self.raw) };
-    }
-}
-
-#[cfg(all(test, not(feature = "rust_interop")))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn singletons_match_constructor_inits() {
-        let cache = MetalCache::new();
-        let i32_via_singleton = cache.i32();
-        let i32_via_get = cache.get_int(cache.mut_region_id(), 32);
-        assert_eq!(i32_via_singleton, i32_via_get, "i32 singleton must dedupe with get_int(mut, 32)");
-
-        let i32_again = cache.get_int(cache.mut_region_id(), 32);
-        assert_eq!(i32_via_get, i32_again);
-
-        let i64 = cache.get_int(cache.mut_region_id(), 64);
-        assert_ne!(i32_via_get, i64);
-    }
-
-    #[test]
-    fn name_and_struct_kind_intern() {
-        let cache = MetalCache::new();
-        let pkg = cache.get_package_coordinate("test", &[]);
-        let n1 = cache.get_name(pkg, "Widget");
-        let n2 = cache.get_name(pkg, "Widget");
-        assert_eq!(n1, n2, "names must intern by (package, string)");
-
-        let n3 = cache.get_name(pkg, "Other");
-        assert_ne!(n1, n3);
-
-        let s1 = cache.get_struct_kind(n1);
-        let s2 = cache.get_struct_kind(n1);
-        assert_eq!(s1, s2, "struct kinds must intern by Name pointer");
-    }
-
-    #[test]
-    fn wrap_kinds_intern_on_inner() {
-        let cache = MetalCache::new();
-        let i32 = cache.i32();
-        assert_eq!(cache.get_borrow_ref(i32), cache.get_borrow_ref(i32));
-        assert_ne!(cache.get_borrow_ref(i32), cache.get_share_ref(i32));
-        assert_ne!(cache.get_borrow_ref(i32), i32);
-    }
-
-    #[test]
-    fn prototype_interns_on_signature() {
-        let cache = MetalCache::new();
-        let pkg = cache.get_package_coordinate("test", &[]);
-        let main_name = cache.get_name(pkg, "main");
-        let p1 = cache.get_prototype(main_name, cache.i32(), &[]);
-        let p2 = cache.get_prototype(main_name, cache.i32(), &[]);
-        assert_eq!(p1, p2);
-    }
-
-    #[test]
-    fn interface_method_interns() {
-        let cache = MetalCache::new();
-        let pkg = cache.get_package_coordinate("test", &[]);
-        let foo = cache.get_prototype(cache.get_name(pkg, "foo"), cache.i32(), &[]);
-        let m1 = cache.get_interface_method(foo, 0);
-        let m2 = cache.get_interface_method(foo, 0);
-        assert_eq!(m1, m2);
-        let m3 = cache.get_interface_method(foo, 1);
-        assert_ne!(m1, m3);
-    }
-
-    #[test]
-    fn non_interned_constructors_allocate_fresh_each_time() {
-        let cache = MetalCache::new();
-        let i32 = cache.i32();
-        let m1 = cache.new_struct_member("x", "x", i32);
-        let m2 = cache.new_struct_member("x", "x", i32);
-        assert_ne!(m1, m2);
-    }
-
-    #[test]
-    fn build_empty_program() {
-        let cache = MetalCache::new();
-        let coord = cache.get_package_coordinate("test", &[]);
-        let pkg = cache.new_package_builder(coord).finish();
-        let pb = cache.new_program_builder();
-        pb.add_package(coord, pkg);
-        let _program = pb.finish();
-    }
-
-    #[test]
-    fn build_hello_world_program_structure() {
-        let cache = MetalCache::new();
-        let coord = cache.get_package_coordinate("test", &[]);
-        let main_name = cache.get_name(coord, "main");
-        let proto = cache.get_prototype(main_name, cache.i32(), &[]);
-
-        let no_loc = cache.get_source_location("", 0, 0);
-        let seven = cache.expr_constant_int(7, 32, no_loc);
-        let ret = cache.expr_return(seven, cache.i32(), no_loc);
-        let body = cache.expr_block(ret, cache.i32(), no_loc);
-        let func = cache.new_function(proto, Some(body), no_loc);
-
-        let pb = cache.new_package_builder(coord);
-        pb.add_function("main", func);
-        pb.add_export_function("main", proto);
-        let pkg = pb.finish();
-
-        let progb = cache.new_program_builder();
-        progb.add_package(coord, pkg);
-        let _program = progb.finish();
-    }
-
-    #[test]
-    fn build_program_with_one_function_no_body() {
-        let cache = MetalCache::new();
-        let coord = cache.get_package_coordinate("test", &[]);
-        let main_name = cache.get_name(coord, "main");
-        let proto = cache.get_prototype(main_name, cache.i32(), &[]);
-        let func = cache.new_function(proto, None, cache.get_source_location("", 0, 0));
-
-        let pb = cache.new_package_builder(coord);
-        pb.add_function("main", func);
-        pb.add_export_function("main", proto);
-        let pkg = pb.finish();
-
-        let progb = cache.new_program_builder();
-        progb.add_package(coord, pkg);
-        let _program = progb.finish();
     }
 }

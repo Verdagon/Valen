@@ -47,6 +47,7 @@ struct ExternAbi;
 class Package {
 public:
   PackageCoordinate* packageCoordinate;
+  bool isRustCrate;
   std::unordered_map<std::string, InterfaceDefinition*> interfaces;
   std::unordered_map<std::string, StructDefinition*> structs;
   std::unordered_map<std::string, StaticSizedArrayDefinitionT*> staticSizedArrays;
@@ -74,6 +75,7 @@ public:
   Package(
     AddressNumberer* addressNumberer,
     PackageCoordinate* packageCoordinate_,
+    bool isRustCrate_,
     std::unordered_map<std::string, InterfaceDefinition*> interfaces_,
     std::unordered_map<std::string, StructDefinition*> structs_,
     std::unordered_map<std::string, StaticSizedArrayDefinitionT*> staticSizedArrays_,
@@ -88,6 +90,7 @@ public:
     std::unordered_map<std::string, ExternAbi> externAbis_,
     std::unordered_map<std::string, std::vector<bool>> paramNoaliasByName_) :
       packageCoordinate(packageCoordinate_),
+      isRustCrate(isRustCrate_),
       interfaces(std::move(interfaces_)),
       structs(std::move(structs_)),
       staticSizedArrays(std::move(staticSizedArrays_)),

@@ -81,7 +81,9 @@ where
       typing_interner,
       scout_arena,
       keywords,
+      &[],
       parser_keywords,
+      &[],
       parse_arena,
       packages_to_build,
       code_source,
@@ -146,7 +148,7 @@ where
     self.typing_pass_compilation.expect_compiler_outputs();
     let monouts =
       instantiator::translate(
-        &self.global_options, &self.instantiating_interner, &self.typing_pass_compilation.typing_interner, self.scout_arena, self.keywords, self.typing_pass_compilation.cached_compiler_outputs());
+        &self.global_options, &self.instantiating_interner, &self.typing_pass_compilation.typing_interner, self.scout_arena, self.keywords, &[], self.typing_pass_compilation.cached_compiler_outputs());
     self.monouts_cache = Some(monouts);
     self.monouts_cache.as_ref().unwrap()
   }

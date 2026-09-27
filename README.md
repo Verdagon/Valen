@@ -48,7 +48,7 @@ Our plans for Valen:
       ```
     * Make a `src/main.valen`:
       ```
-      import rust.chrono.TimeDelta;
+      import chrono.TimeDelta;
       
       exported func main() i64 {
         d = TimeDelta.seconds(42i64);

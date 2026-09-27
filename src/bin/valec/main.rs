@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "rust_interop", feature(rustc_private))]
+
 #[cfg(not(feature = "no_backend"))]
 mod build;
 #[cfg(not(feature = "no_backend"))]

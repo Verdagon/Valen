@@ -17,8 +17,7 @@ use crate::typing::types::types::*;
 use crate::typing::hinputs_t::*;
 use crate::typing::compiler::Compiler;
 use crate::utils::vassert::vassert_one;
-#[cfg(feature = "rust_interop")]
-use crate::typing::rust_interop::reserved::is_rust_backed;
+use crate::interner::StrI;
 use crate::postparsing::names::{IImpreciseNameS, IRuneS};
 use crate::postparsing::post_parser_error_humanizer::humanize_imprecise_name;
 use crate::scout_arena::ScoutArena;
@@ -32,6 +31,8 @@ use crate::typing::templata_compiler::peel_all_references;
 use crate::typing::ast::expressions::ExpressionTE;
 use crate::typing::env::function_environment_t::LocalVariable;
 use crate::utils::fx::IndexMap;
+use crate::utils::fx::IndexSet;
+use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::instantiating::ast::ast::ExternI;
 use crate::instantiating::ast::ast::ICitizenAttributeI;
 use crate::instantiating::ast::ast::KindExternI;
@@ -277,10 +278,10 @@ impl<'s, 't, 'i> InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
 }
 
 
-pub fn translate<'s, 'ctx, 't, 'i>(opts: &'ctx GlobalOptions, interner: &'ctx InstantiatingInterner<'s, 'i>, typing_interner: &'ctx TypingInterner<'s, 't>, scout_arena: &'ctx ScoutArena<'s>, keywords: &'ctx Keywords<'s>, hinputs: &'ctx HinputsT<'s, 't>) -> HinputsI<'s, 'i>
+pub fn translate<'s, 'ctx, 't, 'i>(opts: &'ctx GlobalOptions, interner: &'ctx InstantiatingInterner<'s, 'i>, typing_interner: &'ctx TypingInterner<'s, 't>, scout_arena: &'ctx ScoutArena<'s>, keywords: &'ctx Keywords<'s>, rust_crates: &'ctx [StrI<'s>], hinputs: &'ctx HinputsT<'s, 't>) -> HinputsI<'s, 'i>
 where 's: 't, 's: 'i {
     let mut monouts = InstantiatedOutputsI::new();
-    let instantiator = InstantiatorI { opts, interner, typing_interner, scout_arena, keywords, hinputs };
+    let instantiator = InstantiatorI { opts, interner, typing_interner, scout_arena, keywords, rust_crates, hinputs };
     instantiator.translate_program(&mut monouts)
 }
 
@@ -292,6 +293,7 @@ pub struct InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
     pub typing_interner: &'ctx TypingInterner<'s, 't>,
     pub scout_arena: &'ctx ScoutArena<'s>,
     pub keywords: &'ctx Keywords<'s>,
+    pub rust_crates: &'ctx [StrI<'s>],
     pub hinputs: &'ctx HinputsT<'s, 't>,
 }
 
@@ -484,8 +486,30 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 }),
                 self.interner.bump());
 
+        let mut package_coords: IndexSet<&'s PackageCoordinate<'s>> = IndexSet::default();
+        for f in monouts.functions.values() {
+            package_coords.insert(f.header.id.package_coord);
+        }
+        for s in monouts.structs.values() {
+            package_coords.insert(s.instantiated_citizen.id.package_coord);
+        }
+        for i in monouts.interfaces_without_methods.values() {
+            package_coords.insert(i.instantiated_interface.id.package_coord);
+        }
+        for a in monouts.static_sized_arrays.values() {
+            package_coords.insert(a.name.package_coord);
+        }
+        for a in monouts.runtime_sized_arrays.values() {
+            package_coords.insert(a.name.package_coord);
+        }
+        let packages: Vec<PackageI<'s>> = package_coords
+            .into_iter()
+            .map(|coord| PackageI { coord, is_rust_crate: self.rust_crates.contains(&coord.module) })
+            .collect();
+
         let result_hinputs =
             HinputsI {
+                packages: self.interner.alloc_slice_from_vec(packages),
                 interfaces: self.interner.alloc_slice_from_vec(interfaces),
                 structs: self.interner.alloc_slice_from_vec(monouts.structs.values().copied().collect()),
                 static_sized_arrays: self.interner.alloc_slice_from_vec(monouts.static_sized_arrays.values().copied().collect()),
@@ -1600,33 +1624,12 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 result_ce
             }
             ExpressionTE::ExternFunctionCall(efc) => {
-                let ExternFunctionCallTE { prototype2, args, .. } = **efc;
-                let prototype = self.translate_prototype(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, prototype2);
+                let ExternFunctionCallTE { prototype2: prototype_t, args, .. } = **efc;
+                let prototype = self.translate_prototype(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, prototype_t);
                 let args_ce: Vec<ExpressionIE<'s, 'i>> = args.iter().map(|arg_te| self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, arg_te).1).collect();
                 let result_ce = ExpressionIE::ExternFunctionCall(self.interner.bump().alloc(ExternFunctionCallIE { range: efc.range, prototype2: prototype, args: self.interner.bump().alloc_slice_fill_iter(args_ce.into_iter()), result: result_it }));
-                // Old code that handled generics:
-                // match prototype2.id.local_name {
-                //     INameT::ExternFunction(ExternFunctionNameT { human_name, template_args, .. }) if !template_args.is_empty() => {
-                //         let num_inherited = self.hinputs.function_externs.iter().find(|fe| {
-                //             fe.prototype.id.package_coord == prototype2.id.package_coord
-                //                 && fe.prototype.id.init_steps == prototype2.id.init_steps
-                //                 && match fe.prototype.id.local_name {
-                //                     INameT::ExternFunction(ExternFunctionNameT { human_name: hn, .. }) => hn == human_name,
-                //                     _ => false,
-                //                 }
-                //         })
-                //         .and_then(|fe| fe.generic_parameter_inheritance.as_ref().map(|i| i.num_inherited_generic_parameters))
-                //         .unwrap_or(0);
-                //         monouts.function_externs.push(FunctionExternI {
-                //             prototype: self.interner.alloc(PrototypeI { id: prototype.id, return_type: prototype.return_type }),
-                //             num_inherited_generic_parameters: num_inherited,
-                //         });
-                //    }
-                //    _ => {}
-                // }
-
                 #[cfg(feature = "rust_interop")]
-                if is_rust_backed(&prototype2.id) {
+                if self.rust_crates.contains(&prototype_t.id.package_coord.module) {
                     monouts.rust_instantiation_requests
                         .entry(prototype.id)
                         .or_insert_with(|| self.interner.alloc(prototype));

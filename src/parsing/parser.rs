@@ -14,6 +14,7 @@ use crate::parsing::parse_utils::{
 };
 use crate::parsing::pattern_parser::PatternParser;
 use crate::parsing::templex_parser::TemplexParser;
+use crate::interner::StrI;
 use crate::utils::code_hierarchy::FileCoordinateMap;
 use crate::utils::code_hierarchy::{FileCoordinate, PackageCoordinate};
 use crate::utils::fx::HashSet;
@@ -809,6 +810,7 @@ pub struct ParserCompilation<'p, 'ctx> {
   opts: GlobalOptions,
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
+  rust_crates: &'ctx [StrI<'p>],
   packages_to_build: Vec<&'p PackageCoordinate<'p>>,
   code_source: &'ctx CodeSource<'p>,
   code_map_cache: Option<FileCoordinateMap<'p, String>>,
@@ -823,6 +825,7 @@ where
     opts: GlobalOptions,
     parse_arena: &'ctx ParseArena<'p>,
     keywords: &'ctx Keywords<'p>,
+    rust_crates: &'ctx [StrI<'p>],
     packages_to_build: Vec<&'p PackageCoordinate<'p>>,
     code_source: &'ctx CodeSource<'p>,
   ) -> Self {
@@ -830,6 +833,7 @@ where
       opts,
       parse_arena,
       keywords,
+      rust_crates,
       packages_to_build,
       code_source,
       code_map_cache: None,
@@ -860,6 +864,7 @@ where
     parse_and_explore::parse_and_explore(
       self.parse_arena,
       self.keywords,
+      self.rust_crates,
       self.opts.clone(),
       &parser,
       needed_packages.to_vec(),

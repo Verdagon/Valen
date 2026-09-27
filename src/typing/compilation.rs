@@ -17,6 +17,7 @@ use crate::typing::hinputs_t::HinputsT;
 use crate::typing::oracles::Oracles;
 use crate::typing::typing_interner::TypingInterner;
 use crate::utils::code_hierarchy::FileCoordinateMap;
+use crate::interner::StrI;
 use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::utils::fx::HashMap;
 use crate::utils::source_code_utils::humanize_pos_code_map;
@@ -44,6 +45,7 @@ where
   coutputs_cache: Option<CompilerOutputs<'s, 't>>,
   scout_arena: &'ctx ScoutArena<'s>,
   keywords: &'ctx Keywords<'s>,
+  rust_crates: &'ctx [StrI<'s>],
   options: TypingPassOptions,
   pub typing_interner: &'ctx TypingInterner<'s, 't>,
   oracles: Oracles<'ctx, 's, 't>,
@@ -57,7 +59,9 @@ where
     typing_interner: &'ctx TypingInterner<'s, 't>,
     scout_arena: &'ctx ScoutArena<'s>,
     keywords: &'ctx Keywords<'s>,
+    rust_crates: &'ctx [StrI<'s>],
     parser_keywords: &'ctx Keywords<'p>,
+    parser_rust_crates: &'ctx [StrI<'p>],
     parse_arena: &'ctx ParseArena<'p>,
     packages_to_build: Vec<&'p PackageCoordinate<'p>>,
     code_source: &'ctx CodeSource<'p>,
@@ -68,6 +72,7 @@ where
       scout_arena,
       keywords,
       parser_keywords,
+      parser_rust_crates,
       parse_arena,
       packages_to_build,
       code_source,
@@ -80,6 +85,7 @@ where
       coutputs_cache: None,
       scout_arena,
       keywords,
+      rust_crates,
       options: typing_options,
       typing_interner,
       oracles,
@@ -121,6 +127,7 @@ where
       self.scout_arena,
       &self.typing_interner,
       self.keywords,
+      self.rust_crates,
       &self.options,
       self.oracles,
     );

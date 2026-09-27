@@ -58,10 +58,7 @@ use crate::typing::names::names::{PredictedFunctionNameValT, PredictedFunctionTe
 use crate::typing::oracles::Oracles;
 use crate::typing::overload_resolver::FindFunctionFailure;
 #[cfg(feature = "rust_interop")]
-use crate::typing::rust_interop::{
-  create_postparsed_function, declare_rust_import, is_rust_backed, RustImportSeed,
-  RUST_TRAIT_ANON_MODULE,
-};
+use crate::typing::rust_interop::{create_postparsed_function, declare_rust_import};
 use crate::typing::templata::templata::ImplDefinitionTemplataT;
 use crate::typing::templata::templata::{
   FunctionTemplataT, ITemplataT, InterfaceDefinitionTemplataT, KindTemplataT, PlaceholderTemplataT,
@@ -114,6 +111,7 @@ where
   pub scout_arena: &'ctx ScoutArena<'s>,
   pub typing_interner: &'ctx TypingInterner<'s, 't>,
   pub keywords: &'ctx Keywords<'s>,
+  pub rust_crates: &'ctx [StrI<'s>],
   pub opts: &'ctx TypingPassOptions,
   pub oracles: Oracles<'ctx, 's, 't>,
 }
@@ -126,10 +124,15 @@ where
     scout_arena: &'ctx ScoutArena<'s>,
     typing_interner: &'ctx TypingInterner<'s, 't>,
     keywords: &'ctx Keywords<'s>,
+    rust_crates: &'ctx [StrI<'s>],
     opts: &'ctx TypingPassOptions,
     oracles: Oracles<'ctx, 's, 't>,
   ) -> Self {
-    Compiler { scout_arena, typing_interner, keywords, opts, oracles }
+    Compiler { scout_arena, typing_interner, keywords, rust_crates, opts, oracles }
+  }
+
+  pub fn in_rust_crate(&self, id: &IdT<'s, '_>) -> bool {
+    self.rust_crates.contains(&id.package_coord.module)
   }
 
   pub fn get_placeholders_in_id(&self, accum: &mut Vec<IdT<'s, 't>>, id: IdT<'s, 't>) {
@@ -495,7 +498,7 @@ where
     }
     #[cfg(feature = "rust_interop")]
     {
-      match create_postparsed_function(self, coutputs, template_id) {
+      match create_postparsed_function(self, template_id) {
         Some(Ok(f)) => {
           coutputs.register_postparsed_function(template_id, f);
           coutputs.defer_evaluating_function(DeferredActionT::EvaluateFunction {
@@ -788,33 +791,47 @@ where
     // VCOORD: this tries to only run the anon interface macro if its the first sighting.
     // thatll need to grow into a more general mechanism soon, before/when we switch to
     // lazy compiling valen too.
+    #[cfg(not(feature = "rust_interop"))]
+    {
+      for program in file_to_program_s.file_coord_to_contents.values() {
+        for import in program.imports {
+          if self.rust_crates.contains(&import.module_name) {
+            panic!(
+              "`import {}....` names a Rust crate, but `rust_interop` not enabled",
+              import.module_name.0
+            );
+          }
+        }
+      }
+    }
     #[cfg(feature = "rust_interop")]
     {
-      if let Some((id, _)) =
-        namespace_name_to_templatas_vec.iter().find(|(id, _)| is_rust_backed(id))
+      if let Some((id, _)) = namespace_name_to_templatas_vec
+        .iter()
+        .find(|(id, _)| self.in_rust_crate(id))
       {
-        panic!("Overlap, a Vale package claimed the reserved `rust` module: {id:?}");
+        panic!("Valen package with the same name as a Rust crate: {id:?}");
       }
       let mut per_crate: IndexMap<
         &'s PackageCoordinate<'s>,
         Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
       > = IndexMap::default();
-      let mut anon_denizen_entries: Vec<(&'t IdT<'s, 't>, IEnvEntryT<'s, 't>)> = Vec::new();
+      let anon_denizen_entries: Vec<(&'t IdT<'s, 't>, IEnvEntryT<'s, 't>)> = Vec::new();
       for program in file_to_program_s.file_coord_to_contents.values() {
         for import in program.imports {
-          if import.module_name != self.keywords.rust {
+          if !self.rust_crates.contains(&import.module_name) {
             continue;
           }
           let oracle = self
             .oracles
             .rust
             // VCOORD: make this into an error?
-            .expect("an `import rust.…` statement, but no Rust oracle was provided");
+            .expect("an import names a Rust crate, but no Rust oracle was provided");
           let name = match oracle.resolve_import(import) {
             Some(name) => name,
             None => {
-              let mut path =
-                import.package_names.iter().map(|s| format!("{}.", s.0)).collect::<String>();
+              let mut path = format!("{}.", import.module_name.0);
+              path.extend(import.package_names.iter().map(|s| format!("{}.", s.0)));
               path.push_str(import.importee_name.0);
               return Err(ICompileErrorT::UnresolvableRustImport {
                 range: self.typing_interner.alloc_slice_from_vec(vec![import.range]),
@@ -822,72 +839,14 @@ where
               });
             }
           };
-          let (local_name, entry, seed) = declare_rust_import(self, name);
-          match seed {
-            Some(RustImportSeed::Struct(id, s)) => {
-              template_id_to_postparsed_struct.insert(id, s);
-            }
-            Some(RustImportSeed::Interface(id, i, anon_eligible)) => {
-              let first_sighting = template_id_to_postparsed_interface.insert(id, i).is_none();
-              for internal_method in i.internal_methods.iter() {
-                let (_, method_template_id) = self.internal_method_template_id(id, internal_method);
-                template_id_to_postparsed_function.insert(method_template_id, internal_method);
-              }
-              if first_sighting && anon_eligible {
-                let anon_pkg_coord = self
-                  .scout_arena
-                  .intern_package_coordinate(self.scout_arena.intern_str(RUST_TRAIT_ANON_MODULE), &[]);
-                let anon_pkg_id = self.typing_interner.intern_id(IdValT {
-                  package_coord: anon_pkg_coord,
-                  init_steps: &[],
-                  local_name: INameT::PackageTopLevel(
-                    self.typing_interner.intern_package_top_level_name(PackageTopLevelNameT {}),
-                  ),
-                });
-                let native_iface_id = anon_pkg_id.add_step(self.typing_interner, id.local_name);
-                for aht_denizen in
-                  self.get_interface_sibling_entries_anonymous_interface(*native_iface_id, i)
-                {
-                  let denizen_id = aht_denizen.template_id();
-                  match aht_denizen {
-                    GeneratedAhtDenizen::Function(fid, f) => {
-                      template_id_to_postparsed_function.insert(fid, f);
-                    }
-                    GeneratedAhtDenizen::Struct(sid, s) => {
-                      template_id_to_postparsed_struct.insert(sid, s);
-                    }
-                    GeneratedAhtDenizen::Impl(iid, im) => {
-                      template_id_to_postparsed_impl.insert(iid, im);
-                    }
-                  }
-                  anon_denizen_entries.push((denizen_id, aht_denizen.env_entry()));
-                }
-              }
-            }
-            None => {}
+          let (local_name, entry, maybe_struct) = declare_rust_import(self, name);
+          if let Some((struct_template_id, struct_s)) = maybe_struct {
+            template_id_to_postparsed_struct.insert(struct_template_id, struct_s);
           }
-          let coord =
-            self.scout_arena.intern_package_coordinate(name.module_name, name.package_names);
-          per_crate.entry(coord).or_default().push((local_name, entry));
+          per_crate.entry(name.package_coord).or_default().push((local_name, entry));
         }
       }
-      if let Some(oracle) = self.oracles.rust {
-        for name in oracle.deref_target_imports() {
-          let coord =
-            self.scout_arena.intern_package_coordinate(name.module_name, name.package_names);
-          let (local_name, entry, seed) = declare_rust_import(self, name);
-          match seed {
-            Some(RustImportSeed::Struct(id, s)) => {
-              template_id_to_postparsed_struct.insert(id, s);
-            }
-            Some(RustImportSeed::Interface(id, i, _)) => {
-              template_id_to_postparsed_interface.insert(id, i);
-            }
-            None => {}
-          }
-          per_crate.entry(coord).or_default().push((local_name, entry));
-        }
-      }
+      // TODO: handle deref
       for (coord, entries) in per_crate {
         let package_id = self.typing_interner.intern_id(IdValT {
           package_coord: coord,
@@ -1262,7 +1221,7 @@ where
       //    indirectly calling evaluate_generic_function_from_non_call.
       #[cfg(feature = "rust_interop")]
       {
-        if is_rust_backed(package_id) {
+        if self.in_rust_crate(package_id) {
           continue;
         }
       }

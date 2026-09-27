@@ -3,10 +3,12 @@ use crate::compile_options::GlobalOptions;
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;
 use crate::parsing::parser::ParserCompilation;
+use crate::interner::StrI;
 use crate::utils::code_hierarchy::PackageCoordinate;
 pub fn test<'p, 'ctx>(
   parse_arena: &'ctx ParseArena<'p>,
   keywords: &'ctx Keywords<'p>,
+  rust_crates: &'ctx [StrI<'p>],
   code_source: &'ctx CodeSource<'p>,
   test_package_coord: &'p PackageCoordinate<'p>,
 ) -> ParserCompilation<'p, 'ctx>
@@ -24,6 +26,7 @@ where
     },
     parse_arena,
     keywords,
+    rust_crates,
     vec![test_package_coord],
     code_source,
   )

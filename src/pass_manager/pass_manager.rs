@@ -11,6 +11,7 @@ use crate::code_source::{CodeSource, Source};
 use crate::utils::code_hierarchy::PackageCoordinate;
 use bumpalo::Bump;
 use crate::utils::fx::HashMap;
+use std::collections::HashMap as StdHashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -507,7 +508,12 @@ where
 
   let cache = crate::backend_ffi::metal_cache::MetalCache::new();
   let program = crate::backend_ffi::metal_lowerer::populate_metal_cache(
-    &cache, monouts, &vale_code_map, &std::collections::HashMap::new(), &std::collections::HashMap::new());
+    &cache,
+    monouts,
+    &vale_code_map,
+    &StdHashMap::new(),
+    &StdHashMap::new(),
+  );
 
   let mut backend_opts = backend_opts;
   if let Some(triple) = &clang_cfg.target_triple {

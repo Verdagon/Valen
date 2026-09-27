@@ -50,6 +50,7 @@ use crate::postparsing::rules::templex_scout::{
   translate_type_st_into_rune,
 };
 use crate::postparsing::variable_uses::{VariableDeclarations, VariableUses};
+use crate::interner::StrI;
 use crate::scout_arena::ScoutArena;
 use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::utils::code_hierarchy::FileCoordinateMap;
@@ -1356,6 +1357,7 @@ pub use scout_compilation::ScoutCompilation;
 mod scout_compilation {
   use super::*;
 
+  // VCOORD: these lifetimes are backwards
   pub struct ScoutCompilation<'s, 'ctx, 'p> {
     global_options: GlobalOptions,
     scout_arena: &'ctx ScoutArena<'s>,
@@ -1371,6 +1373,7 @@ mod scout_compilation {
       scout_arena: &'ctx ScoutArena<'s>,
       keywords: &'ctx Keywords<'s>,
       parser_keywords: &'ctx Keywords<'p>,
+      parser_rust_crates: &'ctx [StrI<'p>],
       parse_arena: &'ctx ParseArena<'p>,
       packages_to_build: Vec<&'p PackageCoordinate<'p>>,
       code_source: &'ctx CodeSource<'p>,
@@ -1380,6 +1383,7 @@ mod scout_compilation {
         global_options.clone(),
         parse_arena,
         parser_keywords,
+        parser_rust_crates,
         packages_to_build,
         code_source,
       );
