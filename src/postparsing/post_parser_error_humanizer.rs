@@ -62,6 +62,12 @@ where
     ICompileErrorS::StatementAfterReturnS(_) => {
       panic!("implement: humanize StatementAfterReturnS");
     }
+    ICompileErrorS::UnanchoredGroupRuneS(x) => {
+      format!(
+        "Group `{}` is used in an effect or return, but no parameter borrows into it. Add a parameter like `&… in {}`.",
+        x.name, x.name
+      )
+    }
     ICompileErrorS::ParamDestructureRequiresBody { .. } => {
       "This function has no body block (extern/abstract/generated), so its parameters can't use destructuring syntax. Take the whole value and destructure it inside the body.".to_string()
     }

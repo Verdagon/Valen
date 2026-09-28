@@ -1954,7 +1954,7 @@ exported func foo<g'>(x &int in g) int { return 0; }
 }
 
 #[test]
-fn test_param_group_resolves_to_local() {
+fn undeclared_group_rune_is_treated_as_rune() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
@@ -1971,12 +1971,89 @@ exported func foo(x &int in g) int { return 0; }
   let foo = program.lookup_function("foo");
   match foo.params {
     [ParameterS {
+      tyype:
+        ITypeST::BorrowRef(BorrowRefST {
+          region:
+            RegionS::Group(GroupS::Rune(RuneUsage {
+              rune: IRuneS::CodeRune(CodeRuneS { name: StrI("g"), .. }),
+              ..
+            })),
+          ..
+        }),
+      ..
+    }] => {}
+    other => panic!("expected one param whose ITypeST is BorrowRef(Group(Rune g)), got {:?}", other),
+  }
+}
+
+#[test]
+fn param_name_group_resolves_to_local() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let program = compile(
+    &scout_arena,
+    &keywords,
+    &parse_arena,
+    r#"
+exported func foo(g &int, x &int in g) int { return 0; }
+"#,
+  );
+  let foo = program.lookup_function("foo");
+  match foo.params {
+    [_, ParameterS {
       tyype: ITypeST::BorrowRef(BorrowRefST { region: RegionS::Group(GroupS::Local(_)), .. }),
       ..
     }] => {}
     other => {
-      panic!("expected one param whose ITypeST is BorrowRef(Group(Local)); got {:?}", other)
+      panic!("expected second param's ITypeST to be BorrowRef(Group(Local)); got {:?}", other)
     }
+  }
+}
+
+#[test]
+fn unanchored_group_rune_is_rejected() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let err = compile_for_error(
+    &scout_arena,
+    &keywords,
+    &parse_arena,
+    r#"
+struct Entity { hp int; }
+exported func f(x &Entity) int mut(r) { return 0; }
+"#,
+  );
+  match &err {
+    ICompileErrorS::UnanchoredGroupRuneS(e) => assert_eq!(e.name, "r"),
+    _ => panic!("expected UnanchoredGroupRuneS, got {:?}", err),
+  }
+}
+
+#[test]
+fn declared_but_unanchored_group_rune_is_rejected() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let err = compile_for_error(
+    &scout_arena,
+    &keywords,
+    &parse_arena,
+    r#"
+struct Entity { hp int; }
+exported func f<r'>(x &Entity) int mut(r) { return 0; }
+"#,
+  );
+  match &err {
+    ICompileErrorS::UnanchoredGroupRuneS(e) => assert_eq!(e.name, "r"),
+    _ => panic!("expected UnanchoredGroupRuneS, got {:?}", err),
   }
 }
 
@@ -1994,7 +2071,7 @@ fn test_effect_clause_scouts_to_mut() {
     &keywords,
     &parse_arena,
     r#"
-exported func foo<g'>() int mut(g) { return 0; }
+exported func foo<g'>(x &int in g) int mut(g) { return 0; }
 "#,
   );
   let foo = program.lookup_function("foo");
@@ -2548,7 +2625,7 @@ fn test_effect_ellipsis_scouts_to_mut() {
     &keywords,
     &parse_arena,
     r#"
-exported func foo<g'>() int mut(g...) { return 0; }
+exported func foo<g'>(x &int in g) int mut(g...) { return 0; }
 "#,
   );
   let foo = program.lookup_function("foo");
