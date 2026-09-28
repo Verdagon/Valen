@@ -58,7 +58,7 @@ use crate::typing::names::names::{PredictedFunctionNameValT, PredictedFunctionTe
 use crate::typing::oracles::Oracles;
 use crate::typing::overload_resolver::FindFunctionFailure;
 #[cfg(feature = "rust_interop")]
-use crate::typing::rust_interop::{create_postparsed_function, declare_rust_import};
+use crate::typing::rust_interop::{create_postparsed_function, declare_rust_imports};
 use crate::typing::templata::templata::ImplDefinitionTemplataT;
 use crate::typing::templata::templata::{
   FunctionTemplataT, ITemplataT, InterfaceDefinitionTemplataT, KindTemplataT, PlaceholderTemplataT,
@@ -788,9 +788,6 @@ where
     let builtins = builtins_builder.build_in(self.typing_interner);
 
     // Handle `import rust.whatever` imports.
-    // VCOORD: this tries to only run the anon interface macro if its the first sighting.
-    // thatll need to grow into a more general mechanism soon, before/when we switch to
-    // lazy compiling valen too.
     #[cfg(not(feature = "rust_interop"))]
     {
       for program in file_to_program_s.file_coord_to_contents.values() {
@@ -812,72 +809,12 @@ where
       {
         panic!("Valen package with the same name as a Rust crate: {id:?}");
       }
-      let mut per_crate: IndexMap<
-        &'s PackageCoordinate<'s>,
-        Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
-      > = IndexMap::default();
-      let anon_denizen_entries: Vec<(&'t IdT<'s, 't>, IEnvEntryT<'s, 't>)> = Vec::new();
-      for program in file_to_program_s.file_coord_to_contents.values() {
-        for import in program.imports {
-          if !self.rust_crates.contains(&import.module_name) {
-            continue;
-          }
-          let oracle = self
-            .oracles
-            .rust
-            // VCOORD: make this into an error?
-            .expect("an import names a Rust crate, but no Rust oracle was provided");
-          let name = match oracle.resolve_import(import) {
-            Some(name) => name,
-            None => {
-              let mut path = format!("{}.", import.module_name.0);
-              path.extend(import.package_names.iter().map(|s| format!("{}.", s.0)));
-              path.push_str(import.importee_name.0);
-              return Err(ICompileErrorT::UnresolvableRustImport {
-                range: self.typing_interner.alloc_slice_from_vec(vec![import.range]),
-                path,
-              });
-            }
-          };
-          let (local_name, entry, maybe_struct) = declare_rust_import(self, name);
-          if let Some((struct_template_id, struct_s)) = maybe_struct {
-            template_id_to_postparsed_struct.insert(struct_template_id, struct_s);
-          }
-          per_crate.entry(name.package_coord).or_default().push((local_name, entry));
-        }
-      }
-      // TODO: handle deref
-      for (coord, entries) in per_crate {
-        let package_id = self.typing_interner.intern_id(IdValT {
-          package_coord: coord,
-          init_steps: &[],
-          local_name: INameT::PackageTopLevel(
-            self.typing_interner.intern_package_top_level_name(PackageTopLevelNameT {}),
-          ),
-        });
-        let mut store = TemplatasStoreBuilder::new(package_id);
-        store.add_entries(self.scout_arena, entries);
-        namespace_name_to_templatas_vec.push((package_id, store.build_in(self.typing_interner)));
-      }
-
-      // VCOORD: this probably shouldnt stay here long term.
-      let mut anon_ns_to_entries: IndexMap<
-        &'t IdT<'s, 't>,
-        Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
-      > = IndexMap::default();
-      for (name, env_entry) in &anon_denizen_entries {
-        let package_id = self.typing_interner.intern_id(IdValT {
-          package_coord: name.package_coord,
-          init_steps: name.init_steps,
-          local_name: pkg_top_level_for_group,
-        });
-        anon_ns_to_entries.entry(package_id).or_default().push((name.local_name, *env_entry));
-      }
-      for (package_id, entries) in anon_ns_to_entries {
-        let mut store = TemplatasStoreBuilder::new(package_id);
-        store.add_entries(self.scout_arena, entries);
-        namespace_name_to_templatas_vec.push((package_id, store.build_in(self.typing_interner)));
-      }
+      let declarations = declare_rust_imports(self, file_to_program_s)?;
+      template_id_to_postparsed_function.extend(declarations.functions);
+      template_id_to_postparsed_struct.extend(declarations.structs);
+      template_id_to_postparsed_interface.extend(declarations.interfaces);
+      template_id_to_postparsed_impl.extend(declarations.impls);
+      namespace_name_to_templatas_vec.extend(declarations.namespaces);
     }
 
     let name_to_top_level_environment =

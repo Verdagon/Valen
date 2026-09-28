@@ -1,5 +1,5 @@
-use crate::typing::rust_interop::bifrost::real_rustc_oracle::RealRustcOracle;
-use crate::typing::rust_interop::bifrost::generate_final_rust_file::generate_final_rust_file_source;
+use crate::typing::rust_interop::RealRustcOracle;
+use crate::typing::rust_interop::generate_final_rust_file_source;
 use std::cell::RefCell;
 use std::sync::Arc;
 use rustc_driver::{Callbacks, Compilation};
@@ -108,20 +108,28 @@ impl<'ctx, 's, 't, 'i, 'p> Callbacks for BifrostRustcCallbacks<'ctx, 's, 't, 'i,
           Oracles::with_rust(&real),
         );
 
-        match compiler.evaluate(&code_map, postparseds) {
-          Ok((hinputs, _coutputs)) => {
+        let coutputs = match compiler.evaluate(&code_map, postparseds) {
+          Ok((hinputs, coutputs)) => {
             *self.state.hinputs.borrow_mut() = Some(hinputs);
+            coutputs
           }
           Err(err) => {
             *self.typing_error_slot.borrow_mut() = Some(format!("{err:?}"));
             return Compilation::Stop;
           }
-        }
+        };
 
         let borrowed = self.state.hinputs.borrow();
-        let hinputs = borrowed.as_ref().expect("hinputs set on the Ok branch above");
+        let hinputs = borrowed.as_ref().expect("missing hinputs");
         let final_rust_file_source =
-            match generate_final_rust_file_source(hinputs, self.state.rust_crates, self.src_digest) {
+            match generate_final_rust_file_source(
+              hinputs,
+              &coutputs,
+              self.state.typing_interner,
+              self.state.rust_crates,
+              &real,
+              self.src_digest,
+            ) {
               Ok(stub) => stub,
               Err(e) => {
                 *self.typing_error_slot.borrow_mut() =

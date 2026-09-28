@@ -27,7 +27,7 @@ fn main() {
     rustc_args.push(format!("--sysroot={}", sysroot_location));
   }
 
-  let valen_inputs = ValenInputs { rustc_args, borrow_check };
+  let valen_inputs = ValenInputs { rustc_args, borrow_check, stop_after_typing: false };
   match drive(&valen_inputs, true, |_, _, _| {}, |_| {}) {
     Ok((_drove_valen, rustc_exit)) => exit(rustc_exit),
     Err(e) => {

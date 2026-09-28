@@ -30,7 +30,7 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> &'a str {
 }
 
 pub fn rust_crate_names_from_rustc_args(args: &[String]) -> Vec<String> {
-  let mut names: Vec<String> = vec!["std".to_string(), "core".to_string()];
+  let mut names: Vec<String> = vec!["std".to_string(), "core".to_string(), "alloc".to_string()];
   let mut specs: Vec<&str> = Vec::new();
   let mut iter = args.iter();
   while let Some(arg) = iter.next() {

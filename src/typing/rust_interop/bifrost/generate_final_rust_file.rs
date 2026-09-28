@@ -1,5 +1,8 @@
 use crate::typing::rust_interop::bifrost::error::ValenError;
+use crate::typing::compiler_outputs::CompilerOutputs;
 use crate::typing::hinputs_t::HinputsT;
+use crate::typing::rust_interop::bifrost::oracle::RustOracle;
+use crate::typing::typing_interner::TypingInterner;
 use crate::StrI;
 
 const VALE_OPAQUE_DECL: &str = "pub struct __ValeOpaque<const T: u64>(::core::cell::UnsafeCell<()>, \
@@ -7,7 +10,10 @@ const VALE_OPAQUE_DECL: &str = "pub struct __ValeOpaque<const T: u64>(::core::ce
 
 pub fn generate_final_rust_file_source<'s, 't>(
   hinputs: &HinputsT<'s, 't>,
+  _coutputs: &CompilerOutputs<'s, 't>,
+  _typing_interner: &TypingInterner<'s, 't>,
   rust_crates: &[StrI<'s>],
+  _oracle: &dyn RustOracle<'s, 't>,
   src_digest: u64,
 ) -> Result<String, ValenError> {
   for sub_to_edge in hinputs.interface_template_to_sub_citizen_to_edge.values() {

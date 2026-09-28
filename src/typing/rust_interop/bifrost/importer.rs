@@ -16,15 +16,88 @@ use crate::typing::rust_interop::bifrost::rust_method_entries::new_extern_functi
 use crate::typing::names::names::*;
 use crate::typing::compiler_error_reporter::CouldNotPostparseReason;
 use crate::typing::rust_interop::bifrost::oracle::*;
+use crate::typing::rust_interop::RustImportDeclarations;
 use crate::typing::types::types::*;
 use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::utils::range::CodeLocationS;
 use crate::postparsing::ast::*;
 use crate::postparsing::rules::*;
+use crate::typing::compiler_error_reporter::ICompileErrorT;
+use crate::typing::env::environment::{TemplatasStoreBuilder, TemplatasStoreT};
+use crate::utils::code_hierarchy::FileCoordinateMap;
+use crate::utils::fx::IndexMap;
 
 pub const GENERATED_RANGE_OFFSET: i32 = -1;
 
-pub fn declare_rust_import<'s, 'ctx, 't>(
+// Loop over all Valen files' imports, follow them to whatever Rust thing it describes,
+// and conjure up their IEnvEntry's and their StructS etc.
+pub fn declare_rust_imports<'s, 'ctx, 't>(
+  compiler: &Compiler<'s, 'ctx, 't>,
+  file_to_program_s: &FileCoordinateMap<'s, ProgramS<'s>>,
+) -> Result<RustImportDeclarations<'s, 't>, ICompileErrorT<'s, 't>>
+where
+  's: 't,
+{
+  // Everything (functions, structs, etc) gets an IEnvEntry
+  let mut per_crate: IndexMap<
+    &'s PackageCoordinate<'s>,
+    Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)>,
+  > = IndexMap::default();
+  // Structs also get their StructS early
+  // TODO: perhaps we should lazily make these
+  let mut structs: Vec<(&'t IdT<'s, 't>, &'s StructS<'s>)> = Vec::new();
+  for program in file_to_program_s.file_coord_to_contents.values() {
+    for import in program.imports {
+      if !compiler.rust_crates.contains(&import.module_name) {
+        // This is a Valen import, we don't care about those here
+      } else {
+        let oracle =
+            compiler.oracles.rust
+            .expect("missing Rust oracle");
+        let name =
+            match oracle.resolve_import(import) {
+              Some(name) => name,
+              None => {
+                let mut path = format!("{}.", import.module_name.0);
+                path.extend(import.package_names.iter().map(|s| format!("{}.", s.0)));
+                path.push_str(import.importee_name.0);
+                return Err(ICompileErrorT::UnresolvableRustImport {
+                  range: compiler.typing_interner.alloc_slice_from_vec(vec![import.range]),
+                  path,
+                });
+              }
+            };
+        let (local_name, entry, maybe_struct) = declare_rust_import(compiler, name);
+        if let Some(struct_template_id_and_struct) = maybe_struct {
+          structs.push(struct_template_id_and_struct);
+        }
+        per_crate.entry(name.package_coord).or_default().push((local_name, entry));
+      }
+    }
+  }
+  let mut namespaces: Vec<(&'t IdT<'s, 't>, &'t TemplatasStoreT<'s, 't>)> = Vec::new();
+  for (coord, entries) in per_crate {
+    let package_id = compiler.typing_interner.intern_id(IdValT {
+      package_coord: coord,
+      init_steps: &[],
+      local_name: INameT::PackageTopLevel(
+        compiler.typing_interner.intern_package_top_level_name(PackageTopLevelNameT {}),
+      ),
+    });
+    let mut store = TemplatasStoreBuilder::new(package_id);
+    store.add_entries(compiler.scout_arena, entries);
+    namespaces.push((package_id, store.build_in(compiler.typing_interner)));
+  }
+  Ok(RustImportDeclarations {
+    functions: Vec::new(),
+    structs,
+    interfaces: Vec::new(),
+    impls: Vec::new(),
+    namespaces,
+  })
+}
+
+fn declare_rust_import<'s, 'ctx, 't>(
   compiler: &Compiler<'s, 'ctx, 't>,
   name: ResolvedName<'s>,
 ) -> (INameT<'s, 't>, IEnvEntryT<'s, 't>, Option<(&'t IdT<'s, 't>, &'s StructS<'s>)>)
@@ -134,6 +207,7 @@ where
 
   let mut params: Vec<ParameterS<'s>> = Vec::new();
   let mut effects: Vec<EffectS<'s>> = Vec::new();
+  let mut param_group_runes: Vec<RuneUsage<'s>> = Vec::new();
   let mut lidb = LocationInDenizenBuilder::new(Vec::new());
   for (index, param_type) in sig.params.iter().enumerate() {
     let own_rune = RuneUsage {
@@ -154,13 +228,14 @@ where
               &mut value_type_rules,
               &mut lidb,
             );
-            let region_rune = RuneUsage {
+            let group_rune = RuneUsage {
               range,
               rune: scout_arena.intern_rune(IRuneValS::ImplicitRegionRune(ImplicitRegionRuneValS {
                 original_rune: value_rune.rune,
               })),
             };
-            let group = scout_arena.alloc(GroupS::Rune(scout_arena.alloc(region_rune)));
+            param_group_runes.push(group_rune);
+            let group = scout_arena.alloc(GroupS::Rune(scout_arena.alloc(group_rune)));
             if *is_mut {
               effects.push(EffectS::Mut(group));
             }
@@ -228,10 +303,25 @@ where
     &mut lidb,
   );
 
-  let maybe_return_type = match &sig.ret {
-    TypeR::Borrow { .. } => unimplemented!(),
-    _ => Some(translate_type(compiler, &sig.ret, range)),
-  };
+  let maybe_return_type =
+      match &sig.ret {
+        TypeR::Borrow { inner, .. } => {
+          // For now, only support returning a ref into the only parameter
+          let param_group_rune =
+              match param_group_runes.as_slice() {
+                [only] => *only,
+                _ => unimplemented!(),
+              };
+          let ellipsis_base =
+              scout_arena.alloc(GroupS::Rune(scout_arena.alloc(param_group_rune)));
+          Some(ITypeST::BorrowRef(scout_arena.alloc(BorrowRefST {
+            range,
+            inner: scout_arena.alloc(translate_type(compiler, inner, range)),
+            region: RegionS::Group(scout_arena.alloc(GroupS::Ellipsis { base: ellipsis_base })),
+          })))
+        }
+        _ => Some(translate_type(compiler, &sig.ret, range)),
+      };
 
   for bound in sig.generic_param_bounds.iter() {
     let _ = bound;
@@ -388,7 +478,23 @@ where
       }));
       own_rune
     }
-    TypeR::Borrow { .. } => unimplemented!(),
+    TypeR::Borrow { inner, .. } => {
+      // We don't yet support named lifetimes yet, we assume all Rust param lifetimes are anonymous.
+      // We make one here.
+      // TODO: i think the right way soon would be to read rust's own implicit anon lifetime
+      let anon_group_rune = new_rune(scout_arena, range, lidb);
+      let inner_type_rune = add_rules_for_type(compiler, inner, anon_group_rune, range, rules, lidb);
+      rules.push(IRulexSR::BorrowRef(BorrowRefSR {
+        range,
+        result_rune: own_rune,
+        inner_rune: inner_type_rune,
+        region: RegionSR::Group(scout_arena.alloc(GroupS::Rune(scout_arena.alloc(RuneUsage {
+          range,
+          rune: scout_arena.intern_rune(IRuneValS::ImplicitGroupRune(ImplicitGroupRuneS { range })),
+        })))),
+      }));
+      own_rune
+    }
   }
 }
 

@@ -1,9 +1,6 @@
 // These test invoking the whole orchestrator from the outside as a subprocess, as opposed to the
 // rest of the tests which invoke things through the dark box API.
 
-#![cfg(feature = "rust_interop")]
-#![feature(rustc_private)]
-
 use std::fs::{create_dir_all, write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -14,7 +11,7 @@ use tempfile::TempDir;
 
 fn stage_dependency_crate(project_dir: &Path, crate_name: &str) {
   let fixture_dir =
-      PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/typing/test/bifrost/fixtures").join(crate_name);
+      PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/typing/test/rust_interop/fixtures").join(crate_name);
   let crate_dir = project_dir.join(crate_name);
   copy_dir_recursive(&fixture_dir, &crate_dir).expect("could not copy the dependency crate fixture");
   write(
@@ -64,7 +61,6 @@ exported func main() i64 {
       .arg("build")
       .arg("--manifest-path")
       .arg(project_dir.join("Valen.toml"))
-      .arg("--no-borrow-check")
       .output()
       .expect("could not run valen");
   assert!(
@@ -102,7 +98,6 @@ exported func main() i64 {
       .arg("build")
       .arg("--manifest-path")
       .arg(project_dir.join("Valen.toml"))
-      .arg("--no-borrow-check")
       .output()
       .expect("could not run valen");
   assert!(

@@ -267,6 +267,37 @@ where
   fn deref_target_imports(&self) -> Vec<ResolvedName<'s>> {
     unimplemented!()
   }
+
+  fn rust_spelling(&self, package_coord: &PackageCoordinate<'s>, name: StrI<'s>) -> Option<String> {
+    for item in &self.items {
+      if item.container_id.is_none() && item.name.kind != ImportedItemKind::Function {
+        if *item.name.package_coord == *package_coord && item.name.importee_name == name {
+          if let RustItemOrigin::Rustc(def_id) = item.origin {
+            return Some(visible_rust_path(self.tcx, def_id));
+          }
+        }
+      }
+    }
+    None
+  }
+}
+
+// Get the publicly importable path for a type, because some types are private to their own
+// crate but are publicly exported under a different name.
+pub(crate) fn visible_rust_path(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+  let visible_parents = tcx.visible_parent_map(());
+  let mut segments: Vec<String> = Vec::new();
+  let mut current = def_id;
+  while !current.is_crate_root() {
+    segments.push(tcx.item_name(current).to_string());
+    current =
+        match visible_parents.get(&current) {
+          Some(parent) => *parent,
+          None => unimplemented!(),
+        };
+  }
+  segments.reverse();
+  format!("::{}::{}", tcx.crate_name(current.krate), segments.join("::"))
 }
 
 pub(crate) fn find_rust_def_id<'tcx>(

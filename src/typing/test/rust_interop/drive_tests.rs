@@ -39,8 +39,9 @@ use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::interface::Compiler as RustcCompiler;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use crate::code_source::{CodeSource, Source};
-use crate::typing::test::bifrost::cargo_mimic::*;
-use crate::typing::test::bifrost::test_setup::*;
+use crate::typing::test::rust_interop::cargo_mimic::*;
+use crate::typing::test::rust_interop::test_setup::*;
+use crate::typing::test::rust_interop::drive_helpers::{drive_and_run_binary, Scratch};
 use crate::instantiating::rust_interop::BifrostState;
 use crate::instantiating::ast::ast::FunctionExportI;
 use crate::backend_ffi::metal_lowerer::ExternAbi;
@@ -122,7 +123,7 @@ exported func main() i64 {
   rustc_args[1] = valen_source_path.display().to_string();
 
   let (drove_valen, rustc_exit) = drive(
-    &ValenInputs { rustc_args, borrow_check: true },
+    &ValenInputs { rustc_args, borrow_check: true, stop_after_typing: false },
     false,
     |importer_file_text, hinputs, final_rust_file_text| {
       let main = hinputs.lookup_function_by_str("main");
@@ -153,6 +154,7 @@ exported func main() i64 {
 
       let expected_importer_file = r#"extern crate std;
 extern crate core;
+extern crate alloc;
 extern crate simple_dep_rust_lib;
 "#;
       assert_eq!(importer_file_text, expected_importer_file, "importer file drifted from the golden");
@@ -161,6 +163,7 @@ extern crate simple_dep_rust_lib;
 
 extern crate std;
 extern crate core;
+extern crate alloc;
 extern crate simple_dep_rust_lib;
 
 use std::process::exit;
@@ -197,4 +200,129 @@ pub unsafe fn __vale_drop<T>(x: *mut T) {
     output.status.code(),
     Some(73),
     "both aliases mutate one Slot, so the second mutate (73) is what get() reads back");
+}
+
+#[test]
+fn chest_gem_accepted() {
+  let (rustc_location, sysroot_location) = get_env_rustc_and_sysroot_locations();
+  let temp_dir = TempDir::new().expect("could not create scratch dir");
+  add_dependency_rust_lib(temp_dir.path(), "boxed_dep_rust_lib");
+  let valen_project_dir = temp_dir.path().join("testvalenproj");
+  setup_test_temp_dir(&valen_project_dir);
+
+  mimic_compile_dependency_rust_lib(
+    temp_dir.path(),
+    &valen_project_dir,
+    &rustc_location,
+    "boxed_dep_rust_lib");
+  let code = r#"
+  import boxed_dep_rust_lib.Chest;
+  import boxed_dep_rust_lib.Gem;
+  exported func main() i64 {
+    chest = Chest.new();
+    chest.replace(8i64);
+    gem = chest.gem();
+    return gem.get();
+  }
+  "#;
+  let valen_source_path = src_dir_of(&valen_project_dir).join("main.valen");
+  create_dir_all(src_dir_of(&valen_project_dir)).expect("could not create the src dir");
+  write(&valen_source_path, code).expect("could not write the valen source");
+
+  let mut rustc_args =
+      assemble_rustc_args(
+        &sysroot_location, &valen_project_dir, &["boxed_dep_rust_lib"], "bin");
+  rustc_args[1] = valen_source_path.display().to_string();
+
+  let (drove_valen, rustc_exit) =
+      match drive(
+        &ValenInputs { rustc_args, borrow_check: true, stop_after_typing: false },
+        false,
+        // No typing checks needed
+        |_, _, _| {},
+        // No firings checks needed
+        |_| {})
+      {
+        Err(err) => panic!("didn't compile!"),
+        Ok((drove_valen, rustc_exit)) => (drove_valen, rustc_exit),
+      };
+
+  assert!(drove_valen);
+  assert_eq!(rustc_exit, 0);
+  let exe = deps_dir_of(&valen_project_dir).join("stub");
+  let output = Command::new(&exe).output().expect("could not run the driven bin");
+  assert_eq!(output.status.code(), Some(8));
+}
+
+#[test]
+fn chest_gem_use_after_churn_detected() {
+  let (rustc_location, sysroot_location) = get_env_rustc_and_sysroot_locations();
+  let temp_dir = TempDir::new().expect("could not create scratch dir");
+  add_dependency_rust_lib(temp_dir.path(), "boxed_dep_rust_lib");
+  let valen_project_dir = temp_dir.path().join("testvalenproj");
+  setup_test_temp_dir(&valen_project_dir);
+
+  mimic_compile_dependency_rust_lib(
+    temp_dir.path(),
+    &valen_project_dir,
+    &rustc_location,
+    "boxed_dep_rust_lib");
+  let code = r#"
+  import boxed_dep_rust_lib.Chest;
+  import boxed_dep_rust_lib.Gem;
+  exported func main() i64 {
+    chest = Chest.new();
+    gem = chest.gem();
+    chest.replace(8i64);
+    return gem.get();
+  }
+  "#;
+  let valen_source_path = src_dir_of(&valen_project_dir).join("main.valen");
+  create_dir_all(src_dir_of(&valen_project_dir)).expect("could not create the src dir");
+  write(&valen_source_path, code).expect("could not write the valen source");
+
+  let mut rustc_args =
+      assemble_rustc_args(
+        &sysroot_location, &valen_project_dir, &["boxed_dep_rust_lib"], "bin");
+  rustc_args[1] = valen_source_path.display().to_string();
+
+  let err =
+      match drive(
+        &ValenInputs { rustc_args, borrow_check: true, stop_after_typing: false },
+        false,
+        // No typing checks needed
+        |_, _, _| {},
+        // No firings checks needed
+        |_| {})
+      {
+        Err(err) => err,
+        Ok((drove_valen, rustc_exit)) => panic!("use-after-churn wasn't detected"),
+      };
+
+  let message = err.to_string();
+  assert!(message.contains("BorrowCheckError"), "err:\n{message}");
+}
+
+#[test]
+fn drive_links_int_operators_to_exit_seven() {
+  let scratch = Scratch::new();
+  let exit = drive_and_run_binary(
+    &scratch.out_dir(),
+    "exported func main() int { sum = 3 + 4; if sum == 7 { 7 } else { 0 } }",
+    vec![],
+    /*borrow_check=*/ true,
+  );
+  assert_eq!(exit, 7);
+}
+
+#[test]
+fn drive_links_int_not_equal_to_exit_seven() {
+  let scratch = Scratch::new();
+  let exit = drive_and_run_binary(
+    &scratch.out_dir(),
+    "exported func main() int { x = 3; y = 4; if x != y { 7 } else { 0 } }",
+    vec![],
+    /*borrow_check=*/ true,
+  );
+  assert_eq!(exit, 7);
 }

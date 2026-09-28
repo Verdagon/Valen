@@ -17,4 +17,4 @@ mod todo_tests;
 pub mod traverse;
 pub(crate) mod borrow_checker;
 #[cfg(feature = "rust_interop")]
-pub mod bifrost;
+mod rust_interop;

@@ -33,6 +33,7 @@ use crate::typing::rust_interop::source_digest;
 pub struct ValenInputs {
   pub rustc_args: Vec<String>,
   pub borrow_check: bool,
+  pub stop_after_typing: bool,
 }
 
 struct NormalRustcCallbacks;
@@ -132,20 +133,20 @@ pub fn drive(
     debug_output: true,
     borrow_checker_enabled: true,
   };
-  let state = BifrostState {
-    opts: &global_options,
-    interner: &instantiating_interner,
-    typing_interner: &typing_interner,
-    scout_arena: &scout_arena,
-    keywords: &keywords,
-    rust_crates: &rust_crates,
-    hinputs: &hinputs_slot,
-    monouts: &monouts_slot,
-    function_exports: &function_exports_slot,
-    entry_symbol: &entry_symbol_slot,
-    firings: &firings_slot,
-    extern_abis: &extern_abis_slot,
-  };
+  let state = BifrostState::new(
+    &global_options,
+    &instantiating_interner,
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &rust_crates,
+    &hinputs_slot,
+    &monouts_slot,
+    &function_exports_slot,
+    &entry_symbol_slot,
+    &firings_slot,
+    &extern_abis_slot,
+  );
   let mut pass1_callbacks = BifrostRustcCallbacks {
     state: &state,
     compile_builtins,
@@ -180,6 +181,9 @@ pub fn drive(
       &importer_source,
       hinputs.as_ref().expect("pass 1 produced no hinputs"),
       &final_rust_file_text);
+  }
+  if inputs.stop_after_typing {
+    return Ok((true, pass1_exit));
   }
   let final_file_path = final_file_path_in(&out_dir, &crate_name, &crate_type);
   fs::write(&final_file_path, final_rust_file_text)

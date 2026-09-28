@@ -15,18 +15,13 @@ use crate::instantiating::instantiating_interner::InstantiatingInterner;
 use crate::instantiating::instantiator;
 use crate::parse_arena::ParseArena;
 use crate::postparsing::ScoutCompilation;
-// use crate::typing::test::bifrost::spies::CaseOutcome;
 use crate::scout_arena::ScoutArena;
-// use crate::typing::test::bifrost::spies::Callee;
-// use crate::typing::test::bifrost::spies::describe_callee;
-// use crate::typing::test::bifrost::spies::CompileFailure;
 use crate::typing::ast::ast::PrototypeT;
 use crate::typing::compiler_outputs::CompilerOutputs;
 use crate::typing::hinputs_t::HinputsT;
 use crate::typing::names::names::{FunctionNameT, FunctionTemplateNameT, INameT, IdT};
 use crate::typing::templata::templata::ITemplataT;
 use crate::typing::test::traverse::NodeRefT;
-// use crate::typing::test::bifrost::spies::InstantiationSummary;
 use crate::typing::types::types::KindT;
 use crate::typing::typing_interner::TypingInterner;
 use crate::typing::{TypingPassCompilation, TypingPassOptions};
@@ -35,7 +30,7 @@ use crate::utils::code_hierarchy::FileCoordinateMap;
 use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::interface::Compiler as RustcCompiler;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
-use crate::typing::test::bifrost::cargo_mimic::mimic_compile_dependency_rust_lib;
+use crate::typing::test::rust_interop::cargo_mimic::mimic_compile_dependency_rust_lib;
 
 fn copy_dir_recursive(from: &Path, to: &Path) {
   create_dir_all(to).expect("could not create the destination directory");
@@ -87,7 +82,7 @@ pub fn add_dependency_rust_lib(
   // This must be in the fixtures/ dir, we'll copy out of there.
   dependency_rust_lib_crate_name: &str
 ) {
-  let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/typing/test/bifrost/fixtures");
+  let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/typing/test/rust_interop/fixtures");
   let source_fixture_dir_to_copy = fixture_dir.join(dependency_rust_lib_crate_name);
   let dep_crate_dir = temp_dir.join(dependency_rust_lib_crate_name);
   copy_dir_recursive(&source_fixture_dir_to_copy, &dep_crate_dir);
