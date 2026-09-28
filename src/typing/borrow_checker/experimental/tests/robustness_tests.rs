@@ -1,8 +1,9 @@
-use super::util::{assert_borrow_error_renders, assert_compiles_clean};
+use super::util::{assert_borrow_check_gives_error, assert_borrow_check_passes};
 
 #[test]
 fn test_only_the_unsafe_call_among_many_is_flagged() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Entity { hp int; }
 func badpair<r', s'>(a &Entity in r, d &Entity in s) mut(r) { }
@@ -27,7 +28,8 @@ Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutat
 // per call site, so only the unsafe site is flagged.
 #[test]
 fn test_same_callee_safe_and_unsafe_sites() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Entity { hp int; }
 func badpair<r', s'>(a &Entity in r, d &Entity in s) mut(r) { }

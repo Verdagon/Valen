@@ -1,11 +1,11 @@
 
-use super::util::{assert_borrow_error_renders_with_arrays, assert_compiles_clean_with_arrays};
+use super::util::{assert_borrow_check_gives_error, assert_borrow_check_passes};
 
 // Rung 3 (clean): a returned reference into a group that is never churned stays live. The callee's
 // return group is mapped to the specific argument (`arr`), so churning a *different* array leaves it.
 #[test]
 fn test_returned_reference_into_untouched_group_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func get<g'>(a &[]int in g) &int in g[] { return &a[0]; }
@@ -24,7 +24,7 @@ exported func main() int {
 
 #[test]
 fn test_param_element_group_compiles() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func peek<g'>(a &[]int in g, e &int in g[]) { }
@@ -34,7 +34,7 @@ exported func main() int { return 0; }
 
 #[test]
 fn test_inline_member_reference_survives_parent_churn() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 struct Wrap { val int; }
@@ -52,7 +52,7 @@ exported func main() int {
 
 #[test]
 fn test_rsa_element_borrow_no_use_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(arr &[]int in r) mut(r) { }
@@ -67,7 +67,7 @@ exported func main() int {
 
 #[test]
 fn test_use_element_after_readonly_call_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func touch<r'>(arr &[]int in r) { }
@@ -84,7 +84,7 @@ exported func main() int {
 
 #[test]
 fn test_churn_other_group_leaves_element_live() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -102,7 +102,7 @@ exported func main() int {
 
 #[test]
 fn test_whole_array_ref_survives_churn() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -119,7 +119,7 @@ exported func main() int {
 
 #[test]
 fn test_use_element_before_churn_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -136,7 +136,7 @@ exported func main() int {
 
 #[test]
 fn test_reborrow_after_churn_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -154,7 +154,8 @@ exported func main() int {
 
 #[test]
 fn test_churn_in_both_arms_use_after_if_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -185,7 +186,7 @@ Invalidated at test:0.vale:10:5:
 
 #[test]
 fn test_churn_in_returning_arm_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -205,7 +206,7 @@ exported func main() int {
 
 #[test]
 fn test_use_in_arm_then_later_churn_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -224,7 +225,8 @@ exported func main() int {
 
 #[test]
 fn test_use_at_loop_top_after_body_churn_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -253,7 +255,7 @@ Invalidated at test:0.vale:11:5:
 
 #[test]
 fn test_fresh_element_each_iteration_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -272,7 +274,7 @@ exported func main() int {
 
 #[test]
 fn test_loop_without_churn_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func observe<T>(x &T) { }
@@ -289,7 +291,7 @@ exported func main() int {
 
 #[test]
 fn test_element_used_without_any_churn_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func observe<T>(x &T) { }
@@ -305,7 +307,7 @@ exported func main() int {
 
 #[test]
 fn test_two_groups_churn_one_use_other_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -323,7 +325,8 @@ exported func main() int {
 
 #[test]
 fn test_multiple_element_refs_all_invalidated_by_one_churn() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -359,7 +362,7 @@ Invalidated at test:0.vale:10:3:
 
 #[test]
 fn test_whole_array_ref_after_damage_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func damage<r'>(a &[]int in r) mut(r) { }
@@ -380,7 +383,8 @@ exported func main() int {
 
 #[test]
 fn test_nested_member_element_path_churn_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -410,7 +414,7 @@ Invalidated at test:0.vale:11:3:
 #[test]
 #[should_panic(expected = "not bound at this call")]
 fn test_return_group_rune_bound_by_no_parameter_panics() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func leak<g', h'>(a &[]int in g) &int in h { return &a[0]; }
@@ -424,7 +428,8 @@ exported func main() int {
 
 #[test]
 fn test_return_stale_element_reference_rejected() {
-  super::util::assert_borrow_error_renders(
+  super::util::assert_borrow_check_gives_error(
+    &[],
     r#"
 func churn<g'>(a &[]int in g) mut(g) { }
 exported func leak<g'>(a &[]int in g) &int in g[] mut(g) {
@@ -446,7 +451,8 @@ Invalidated at test:0.vale:5:3:
 
 #[test]
 fn test_set_through_stale_element_reference_rejected() {
-  super::util::assert_borrow_error_renders(
+  super::util::assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Ship { fuel int; }
 func churn<g'>(a &[]Ship in g) mut(g) { }
@@ -469,7 +475,8 @@ Invalidated at test:0.vale:6:3:
 
 #[test]
 fn test_read_through_stale_element_reference_rejected() {
-  super::util::assert_borrow_error_renders(
+  super::util::assert_borrow_check_gives_error(
+    &[],
     r#"
 func churn<g'>(a &[]int in g) mut(g) { }
 exported func peek<g'>(a &[]int in g) int mut(g) {
@@ -491,7 +498,8 @@ Invalidated at test:0.vale:5:3:
 
 #[test]
 fn test_two_stale_references_both_reported() {
-  super::util::assert_borrow_error_renders(
+  super::util::assert_borrow_check_gives_error(
+    &[],
     r#"
 func churn<g'>(a &[]int in g) mut(g) { }
 func observe<T, h'>(x &T in h) { }

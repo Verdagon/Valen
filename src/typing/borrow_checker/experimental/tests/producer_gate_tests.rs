@@ -1,5 +1,5 @@
 
-use super::util::{assert_borrow_error_renders_with_arrays, assert_compiles_clean_with_arrays};
+use super::util::{assert_borrow_check_gives_error, assert_borrow_check_passes};
 
 const PREAMBLE: &str = r#"
 import v.builtins.arrays.*;
@@ -20,7 +20,8 @@ fn program(body: &str) -> String {
 
 #[test]
 fn test_undeclared_param_churn_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     &program(r#"
 func churner<g'>(v &Vec<Entity> in g) {
   grow(v);
@@ -41,7 +42,7 @@ this call churns a group reached through a parameter, but the enclosing function
 
 #[test]
 fn test_declared_param_churn_is_accepted() {
-  assert_compiles_clean_with_arrays(&program(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], &program(r#"
 func churner<g'>(v &Vec<Entity> in g) mut(g) {
   grow(v);
 }
@@ -55,7 +56,7 @@ exported func main() int {
 
 #[test]
 fn test_local_churn_needs_no_declaration() {
-  assert_compiles_clean_with_arrays(&program(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], &program(r#"
 func churner<g'>(v &Vec<Entity> in g) {
   nv = Vec<Entity>(Array<Entity>(0));
   grow(&nv);

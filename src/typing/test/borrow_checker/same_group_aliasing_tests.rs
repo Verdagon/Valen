@@ -1,5 +1,5 @@
 
-use super::util::assert_borrow_error_renders_with_arrays;
+use super::util::assert_borrow_check_gives_error;
 
 const PREAMBLE: &str = r#"
 import v.builtins.arrays.*;
@@ -21,7 +21,8 @@ pub(crate) fn program(body: &str) -> String {
 
 #[test]
 fn test_churn_sibling_param_in_same_group_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     &program(r#"
 func attack<r'>(a &Vec<Entity> in r, t &Vec<Entity> in r) mut(r) {
   e = &a.data[0];
@@ -47,7 +48,8 @@ Invalidated at test:0.vale:16:3:
 
 #[test]
 fn test_churn_same_param_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     &program(r#"
 func attack<r'>(a &Vec<Entity> in r, t &Vec<Entity> in r) mut(r) {
   e = &a.data[0];

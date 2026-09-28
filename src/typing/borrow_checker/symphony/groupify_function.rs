@@ -1193,7 +1193,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         }
       }
       GroupS::Ellipsis { base, .. } => {
-        let (root, mut path, type_gt) =
+        let (root, path, type_gt) =
             self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *base, group_born_at_loct);
         (root, path, type_gt)
       }

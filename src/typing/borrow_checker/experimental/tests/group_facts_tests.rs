@@ -1,10 +1,11 @@
 
-use super::util::{group_facts_of, group_facts_of_with_arrays};
+use super::util::group_facts_of;
 use std::collections::HashSet;
 
 #[test]
 fn shared_group_accesses_map_to_the_one_group_and_noarg_call_reaches_nothing() {
   let facts = group_facts_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func nothing() { }
@@ -42,6 +43,7 @@ exported func main() int {
 #[test]
 fn whole_function_sole_reference_accesses_are_still_recorded() {
   let facts = group_facts_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func nothing() { }
@@ -70,6 +72,7 @@ exported func main() int {
 #[test]
 fn tail_without_a_call_still_records_accesses() {
   let facts = group_facts_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func do_things<g'>(a &Ship in g, b &Ship in g) mut(g) {
@@ -98,7 +101,8 @@ exported func main() int {
 
 #[test]
 fn sibling_array_members_get_distinct_child_scopes() {
-  let facts = group_facts_of_with_arrays(
+  let facts = group_facts_of(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -128,7 +132,8 @@ exported func main() int {
 
 #[test]
 fn direct_element_accesses_get_distinct_child_scopes() {
-  let facts = group_facts_of_with_arrays(
+  let facts = group_facts_of(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -155,6 +160,7 @@ exported func main() int {
 #[test]
 fn unaccessed_parameter_group_is_still_counted() {
   let facts = group_facts_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func nothing() { }
@@ -177,7 +183,8 @@ exported func main() int {
 
 #[test]
 fn call_reaches_descendants_of_its_argument_group() {
-  let facts = group_facts_of_with_arrays(
+  let facts = group_facts_of(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -206,7 +213,8 @@ exported func main() int {
 
 #[test]
 fn static_sized_array_element_ref_folds_into_parent_group() {
-  let facts = group_facts_of_with_arrays(
+  let facts = group_facts_of(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;

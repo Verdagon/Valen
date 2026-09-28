@@ -1,8 +1,9 @@
-use super::util::{assert_borrow_error_renders, assert_compiles_clean};
+use super::util::{assert_borrow_check_gives_error, assert_borrow_check_passes};
 
 #[test]
 fn test_borrow_into_moved_local_rejected() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Holder { n int; }
 func consume<g'>(a &Holder in g, b Holder) { }
@@ -22,7 +23,8 @@ Argument 0 borrows into h, but argument 1 moves it, so the borrow would dangle.
 
 #[test]
 fn test_field_borrow_into_moved_local_rejected() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Ship { fuel int; }
 struct Holder { ship Ship; }

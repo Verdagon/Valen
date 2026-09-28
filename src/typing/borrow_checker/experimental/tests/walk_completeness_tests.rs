@@ -1,4 +1,4 @@
-use super::util::assert_borrow_error_renders;
+use super::util::assert_borrow_check_gives_error;
 
 const ALIASING_DIAGNOSTIC: &str = r#"At test:0.vale:6:14:
     badpair(&e, &e);
@@ -16,7 +16,8 @@ fn prelude_program(statement: &str) -> String {
 
 #[test]
 fn test_violation_in_nested_block_caught() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     &prelude_program("  block {\n    badpair(&e, &e);\n  }"),
     ALIASING_DIAGNOSTIC,
   );
@@ -24,7 +25,8 @@ fn test_violation_in_nested_block_caught() {
 
 #[test]
 fn test_violation_in_if_arm_caught() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     &prelude_program("  if (true) {\n    badpair(&e, &e);\n  }"),
     ALIASING_DIAGNOSTIC,
   );
@@ -32,7 +34,8 @@ fn test_violation_in_if_arm_caught() {
 
 #[test]
 fn test_violation_in_while_body_caught() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     &prelude_program("  while (false) {\n    badpair(&e, &e);\n  }"),
     ALIASING_DIAGNOSTIC,
   );
@@ -40,7 +43,8 @@ fn test_violation_in_while_body_caught() {
 
 #[test]
 fn test_violation_in_nested_arg_call_caught() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Entity { hp int; }
 func badpairi<r', s'>(a &Entity in r, d &Entity in s) int mut(r) { return 0; }
@@ -69,7 +73,8 @@ fn value_call_program(statement: &str) -> String {
 
 #[test]
 fn test_violation_in_let_initializer_caught() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     &value_call_program("  y = badpairi(&e, &e);\n  return y;"),
     r#"At test:0.vale:5:17:
   y = badpairi(&e, &e);
@@ -81,7 +86,8 @@ Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutat
 
 #[test]
 fn test_violation_in_return_caught() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     &value_call_program("  return badpairi(&e, &e);"),
     r#"At test:0.vale:5:20:
   return badpairi(&e, &e);
@@ -93,7 +99,8 @@ Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutat
 
 #[test]
 fn test_violation_in_set_source_caught() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     &value_call_program("  y = 0;\n  set y = badpairi(&e, &e);\n  return y;"),
     r#"At test:0.vale:6:21:
   set y = badpairi(&e, &e);

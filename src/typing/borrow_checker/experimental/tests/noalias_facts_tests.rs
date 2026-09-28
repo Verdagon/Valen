@@ -1,8 +1,9 @@
-use super::util::assert_param_noalias;
+use super::util::param_noalias_of;
 
 #[test]
 fn sole_borrow_param_is_noalias() {
-  assert_param_noalias(
+  let noalias = param_noalias_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func peek<g'>(s &Ship in g) { }
@@ -13,15 +14,16 @@ exported func main() int {
 }
 "#,
     "peek",
-    &[true],
   );
+  assert_eq!(noalias, vec![true]);
 }
 
 // Parameters in distinct groups are each the sole reference into their own group, so both are
 // `noalias` — even read-only, since a caller aliasing them is harmless without mutation.
 #[test]
 fn distinct_group_params_are_both_noalias() {
-  assert_param_noalias(
+  let noalias = param_noalias_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func duo<r', s'>(a &Ship in r, b &Ship in s) { }
@@ -33,13 +35,14 @@ exported func main() int {
 }
 "#,
     "duo",
-    &[true, true],
   );
+  assert_eq!(noalias, vec![true, true]);
 }
 
 #[test]
 fn anonymous_group_params_are_both_noalias() {
-  assert_param_noalias(
+  let noalias = param_noalias_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func anon(a &Ship, b &Ship) { }
@@ -51,13 +54,14 @@ exported func main() int {
 }
 "#,
     "anon",
-    &[true, true],
   );
+  assert_eq!(noalias, vec![true, true]);
 }
 
 #[test]
 fn non_borrow_param_is_not_noalias() {
-  assert_param_noalias(
+  let noalias = param_noalias_of(
+    &[],
     r#"
 struct Ship { fuel int; }
 func mix<g'>(a &Ship in g, b int) { }
@@ -68,6 +72,6 @@ exported func main() int {
 }
 "#,
     "mix",
-    &[true, false],
   );
+  assert_eq!(noalias, vec![true, false]);
 }

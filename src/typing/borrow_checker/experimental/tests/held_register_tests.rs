@@ -1,9 +1,10 @@
 
-use super::util::{assert_borrow_error_renders_with_arrays, assert_compiles_clean_with_arrays};
+use super::util::{assert_borrow_check_gives_error, assert_borrow_check_passes};
 
 #[test]
 fn test_held_call_result_invalidated_by_sibling_arg_churn_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -29,7 +30,7 @@ Invalidated at test:0.vale:9:19:
 
 #[test]
 fn test_held_call_result_into_untouched_group_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func get<g'>(a &[]int in g) &int in g[] { return &a[0]; }

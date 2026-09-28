@@ -1,8 +1,9 @@
-use super::util::{assert_borrow_error_renders, assert_compiles_clean};
+use super::util::{assert_borrow_check_gives_error, assert_borrow_check_passes};
 
 #[test]
 fn test_alias_same_local_into_distinct_mut_groups_rejected() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Entity { hp int; }
 func badpair<r', s'>(a &Entity in r, d &Entity in s) mut(r) { }
@@ -24,7 +25,8 @@ Arguments 0 and 1 both borrow into e, but their parameters are in disjoint mutat
 // path.
 #[test]
 fn test_same_field_alias_rejected() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Ship { fuel int; }
 struct Fleet { flagship Ship; escort Ship; }
@@ -47,7 +49,8 @@ Arguments 0 and 1 both borrow into f, but their parameters are in disjoint mutat
 // the other), so into distinct mutated groups they alias.
 #[test]
 fn test_prefix_path_alias_rejected() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Ship { fuel int; }
 struct Fleet { flagship Ship; escort Ship; }
@@ -68,7 +71,8 @@ Arguments 0 and 1 both borrow into f, but their parameters are in disjoint mutat
 
 #[test]
 fn test_nonadjacent_arg_pair_alias_rejected() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Entity { hp int; }
 func bad3<r', s', u'>(a &Entity in r, b &Entity in s, c &Entity in u) mut(r) { }
@@ -89,7 +93,8 @@ Arguments 0 and 2 both borrow into e, but their parameters are in disjoint mutat
 
 #[test]
 fn test_mut_on_second_group_triggers() {
-  assert_borrow_error_renders(
+  assert_borrow_check_gives_error(
+    &[],
     r#"
 struct Entity { hp int; }
 func badpair_s<r', s'>(a &Entity in r, d &Entity in s) mut(s) { }

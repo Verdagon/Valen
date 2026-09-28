@@ -1,9 +1,10 @@
 
-use super::util::{assert_borrow_error_renders_with_arrays, assert_compiles_clean_with_arrays};
+use super::util::{assert_borrow_check_gives_error, assert_borrow_check_passes};
 
 #[test]
 fn test_use_ellipsis_return_after_churn_rejected() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -31,7 +32,7 @@ Invalidated at test:0.vale:10:3:
 
 #[test]
 fn test_ellipsis_ref_into_untouched_group_is_clean() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn<r'>(a &[]int in r) mut(r) { }
@@ -50,7 +51,8 @@ exported func main() int {
 
 #[test]
 fn test_ellipsis_ref_invalidated_by_element_churn() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -78,7 +80,8 @@ Invalidated at test:0.vale:10:3:
 
 #[test]
 fn test_ellipsis_effect_invalidates_child_element() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
@@ -105,7 +108,7 @@ Invalidated at test:0.vale:9:3:
 
 #[test]
 fn test_ellipsis_effect_spares_whole_array() {
-  assert_compiles_clean_with_arrays(r#"
+  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 func churn_ellipsis<r'>(a &[]int in r) mut(r...) { }
@@ -122,7 +125,8 @@ exported func main() int {
 
 #[test]
 fn test_ancestor_churn_invalidates_nested_ellipsis() {
-  assert_borrow_error_renders_with_arrays(
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
     r#"
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
