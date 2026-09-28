@@ -38,11 +38,11 @@ func calculate_defense<r'>(self &Entity in r) int { return 2; }
 func calculate_defend_cost<r'>(self &Entity in r, a &Entity in r) int { return 1; }
 func use_energy<r'>(self &Entity in r, cost int) mut(r) { }
 func damage<r'>(self &Entity in r, amount int) mut(r) { }
-func attack<r'>(a &Entity in r, d &Entity in r) mut(r) {
-  a_power = a.calculate_attack_power();
-  a_energy_cost = a.calculate_attack_cost(d);
-  d_armor = d.calculate_defense();
-  d_energy_cost = d.calculate_defend_cost(a);
+func attack(a &Entity in r, d &Entity in r) mut(r) {
+  let a_power = a.calculate_attack_power();
+  let a_energy_cost = a.calculate_attack_cost(d);
+  let d_armor = d.calculate_defense();
+  let d_energy_cost = d.calculate_defend_cost(a);
   a.use_energy(a_energy_cost);
   d.use_energy(d_energy_cost);
   d.damage(a_power - d_armor);
