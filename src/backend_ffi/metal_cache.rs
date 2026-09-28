@@ -950,7 +950,7 @@ impl<'cache> Drop for Program<'cache> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "rust_interop")))]
 mod tests {
     use super::*;
 

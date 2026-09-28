@@ -395,6 +395,43 @@ fn method_call() {
 }
 
 #[test]
+fn explicit_template_arg_group_type_is_captured() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let program = compile(
+    &scout_arena,
+    &keywords,
+    &parse_arena,
+    "exported func main() int { return bork<&Bar in z>(7); }",
+  );
+  let main = program.lookup_function("main");
+  let code_body = cast!(&main.body, IBodyS::CodeBody);
+  collect_only_snode!(
+    NodeRefS::Expression(code_body.body.block.expr),
+    NodeRefS::Expression(IExpressionSE::Return(ReturnSE {
+      inner:
+        IExpressionSE::FunctionCall(FunctionCallSE {
+          callable_expr:
+            IExpressionSE::OverloadSet(OverloadSetSE {
+              lookup: OutsideLoadSE {
+                parts: [LoadPartSE {
+                  explicit_template_arg_types: [ITypeST::BorrowRef(_)],
+                  ..
+                }],
+                ..
+              },
+            }),
+          ..
+        }),
+      ..
+    })) => Some(())
+  );
+}
+
+#[test]
 fn moving_method_call() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

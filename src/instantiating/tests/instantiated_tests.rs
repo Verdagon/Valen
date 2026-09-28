@@ -247,7 +247,7 @@ exported func main() int {
   return take(&a);
 }
 "#;
-    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -313,7 +313,7 @@ exported func main() {
   [_] = ^s;
 }
 "#;
-    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let take = monouts.lookup_function_by_str("take");
     let [param] = take.header.params else {
@@ -342,7 +342,7 @@ exported func main() str {
   return "hello";
 }
 "#;
-    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -376,7 +376,7 @@ exported func main() {
   [_] = ^s;
 }
 "#;
-    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let get_fuel = monouts.lookup_function_by_str("get_fuel");
     collect_only_inode!(
@@ -410,7 +410,7 @@ exported func main() {
   [_] = ^s;
 }
 "#;
-    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let get_fuel = monouts.lookup_function_by_str("get_fuel");
     collect_only_inode!(
@@ -475,7 +475,7 @@ exported func main() int {
   return if (true) { 42 } else { 73 };
 }
 "#;
-    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(
@@ -516,7 +516,7 @@ exported func main() {
   }
 }
 "#;
-    let mut compile = test_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(

@@ -321,21 +321,36 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let callee_func_s =
             coutputs.peek_postparsed_function(callee_template_id)
                 .expect("Callee not present");
+        let template_args_te =
+          match callable.id.local_name {
+            INameT::Function(FunctionNameT { template, template_args, parameters, .. }) => {
+              template_args
+            }
+            INameT::FunctionBound(FunctionBoundNameT { template, template_args, parameters, .. }) => {
+              template_args
+            }
+            _ => unimplemented!(),
+          };
         let callee_rune_to_caller_templata: IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>> =
-            self.calculate_callee_rune_to_caller_templata(coutputs, bump_g, callee_func_s, &arg_exprs_ge);
-        let callee_return_type_written_context =
-            WrittenContext {
-              type_s: callee_func_s.maybe_return_type.unwrap_or_else(|| panic!("Callee doesn't have return {:?} {:?}", callee_template_id, callee_func_s.name)),
-              name: None,
-            };
+            self.calculate_callee_rune_to_caller_templata(
+              coutputs,
+              bump_g,
+              local_rune_to_templata,
+              local_to_type_g,
+              callee_func_s,
+              *template_args_te,
+              &arg_exprs_ge,
+              *loct);
+        let return_type_s_from_callee_perspective =
+            callee_func_s.maybe_return_type.unwrap_or_else(|| panic!("Callee doesn't have return {:?} {:?}", callee_template_id, callee_func_s.name));
+
         let result_gt =
-            self.groupify_type(
+            self.groupify_postparsed_type(
               coutputs,
               bump_g,
               &callee_rune_to_caller_templata,
-              local_to_type_g,
-              *result,
-              Some(&callee_return_type_written_context),
+              return_type_s_from_callee_perspective,
+              callable.return_type,
               *loct);
         let mut stuff: Vec<&'g MutEffectPath> = Vec::new();
         for callee_effect_s in callee_func_s.effects {
@@ -414,12 +429,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           result: KindGT::Void(VoidGT { }),
         })))
       }
-      ExpressionTE::While(WhileTE { range, loct, block: block_te, result, .. }) => {
+      ExpressionTE::While(WhileTE { range, loct, pre_iteration_loct, post_iteration_loct, block: block_te, result, .. }) => {
         let BlockTE { range: block_range, inner: block_inner, .. } = block_te;
         let block_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *block_inner, local_rune_to_templata, local_to_type_g)?;
         Ok(ExpressionGE::While(bump_g.alloc(WhileGE {
           range: *range,
           loct: *loct,
+          pre_iteration_loct: *pre_iteration_loct,
+          post_iteration_loct: *post_iteration_loct,
           block: BlockGE { range: *block_range, inner: block_ge, result: block_ge.result() },
           result: KindGT::Void(VoidGT { }),
           mut_effects: &[], // TODO
@@ -489,7 +506,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionTE::StaticArrayFromCallable(StaticArrayFromCallableTE { .. }) => unimplemented!(),
       ExpressionTE::DestroyStaticSizedArrayIntoFunction(DestroyStaticSizedArrayIntoFunctionTE { .. }) => unimplemented!(),
       ExpressionTE::DestroyStaticSizedArrayIntoLocals(DestroyStaticSizedArrayIntoLocalsTE { .. }) => unimplemented!(),
-      ExpressionTE::DestroyRuntimeSizedArray(DestroyRuntimeSizedArrayTE { .. }) => unimplemented!(),
+      ExpressionTE::DestroyRuntimeSizedArray(DestroyRuntimeSizedArrayTE { range, array_expr, .. }) => {
+        let array_expr_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *array_expr, local_rune_to_templata, local_to_type_g)?;
+        Ok(ExpressionGE::DestroyRuntimeSizedArray(bump_g.alloc(DestroyRuntimeSizedArrayGE {
+          range: *range,
+          array_expr: array_expr_ge,
+          result: KindGT::Void(VoidGT { }),
+        })))
+      }
       ExpressionTE::RuntimeSizedArrayCapacity(RuntimeSizedArrayCapacityTE { .. }) => unimplemented!(),
       ExpressionTE::PushRuntimeSizedArray(PushRuntimeSizedArrayTE { .. }) => unimplemented!(),
       ExpressionTE::PopRuntimeSizedArray(PopRuntimeSizedArrayTE { .. }) => unimplemented!(),
@@ -767,7 +791,20 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 .get(rune)
                 .expect("Couldn't find rune in rune_to_templata map")).kind
       }
-      KindT::StaticSizedArray(StaticSizedArrayTT { .. }) => unimplemented!(), // KindGT::StaticSizedArray(StaticSizedArrayGT { }),
+      KindT::StaticSizedArray(StaticSizedArrayTT { name: id_t, .. }) => {
+        let ssa_local_name =
+            match id_t.local_name {
+              INameT::StaticSizedArray(ssa_name) => ssa_name,
+              _ => panic!("Expected RSA"),
+            };
+        let element_gt = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, ssa_local_name.arr.element_type, None, group_born_at_loct);
+        let size_gt = self.groupify_templata(coutputs, bump_g, rune_to_templata, local_to_type_g, ssa_local_name.size, group_born_at_loct);
+        KindGT::StaticSizedArray(bump_g.alloc(StaticSizedArrayGT {
+          name: *id_t,
+          size: size_gt,
+          element_type: element_gt,
+        }))
+      }
       KindT::RuntimeSizedArray(RuntimeSizedArrayTT { name: id_t, .. }) => {
         let rsa_local_name =
           match id_t.local_name {
@@ -802,7 +839,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let kind_g = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, kind, None, group_born_at_loct);
         ITemplataG::Kind(KindTemplataG { kind: kind_g })
       },
-      ITemplataT::Placeholder(_) => unimplemented!(),
+      ITemplataT::Placeholder(PlaceholderTemplataT{ id, tyype }) => {
+        ITemplataG::Placeholder(
+          bump_g.alloc(PlaceholderTemplataG { id: *id, tyype: *tyype }))
+      }
       ITemplataT::Integer(num) => ITemplataG::Integer(num),
       ITemplataT::Boolean(_) => unimplemented!(),
       ITemplataT::String(_) => unimplemented!(),
@@ -811,7 +851,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ITemplataT::CoordList(_) => unimplemented!(),
       ITemplataT::RuntimeSizedArrayTemplate(_) => unimplemented!(),
       ITemplataT::StaticSizedArrayTemplate(_) => unimplemented!(),
-      ITemplataT::Group(_) => unimplemented!(),
+      ITemplataT::Group(GroupTemplataT {}) => unimplemented!(),
       ITemplataT::Function(_) => unimplemented!(),
       ITemplataT::StructDefinition(_) => unimplemented!(),
       ITemplataT::InterfaceDefinition(_) => unimplemented!(),
@@ -841,10 +881,34 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       &self,
       coutputs: &CompilerOutputs<'s, 't>,
       bump_g: &'g Bump,
+      local_rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+      local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
       function_s: &'s FunctionS<'s>,
-      args_ge: &Vec<ExpressionGE<'s, 't, 'g>>
+      explicit_template_args_te: &[ITemplataT<'s, 't>],
+      args_ge: &Vec<ExpressionGE<'s, 't, 'g>>,
+      group_born_at_loc: LocT<'t>,
   ) -> IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>> {
     let mut map = IndexMap::new();
+    for i in 0..explicit_template_args_te.len() {
+      assert!(i < function_s.generic_params.len());
+      match function_s.generic_params[i].tyype {
+        IGenericParameterTypeS::RegionGenericParameterType(_) => {
+          // Skip, I think theyll be handled by the match_types below, not sure
+        }
+        IGenericParameterTypeS::KindGenericParameterType(_) |
+        IGenericParameterTypeS::OtherGenericParameterType(_) => {
+          let template_arg_ge =
+              self.groupify_templata(
+                coutputs,
+                bump_g,
+                local_rune_to_templata,
+                local_to_type_g,
+                explicit_template_args_te[i],
+                group_born_at_loc);
+          map.insert(function_s.generic_params[i].rune.rune, template_arg_ge);
+        }
+      }
+    }
     assert!(args_ge.len() == function_s.params.len());
     for i in 0..args_ge.len() {
       self.match_types(coutputs, bump_g, function_s.params[i].tyype, ITemplataG::Kind(KindTemplataG { kind: args_ge[i].result() }), &mut map);
@@ -933,13 +997,18 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
               self.match_types(coutputs, bump_g, **template_arg_s, *template_arg_g, map);
             }
           }
+          ITemplataG::Kind(KindTemplataG { kind: KindGT::StaticSizedArray(StaticSizedArrayGT { name: id_t, size: size_gt, element_type: element_type_gt }) }) => {
+            assert!(template_args_s.len() == 2);
+            self.match_types(coutputs, bump_g, *template_args_s[0], *size_gt, map);
+            self.match_types(coutputs, bump_g, *template_args_s[1], ITemplataG::Kind(KindTemplataG { kind: *element_type_gt }), map);
+          }
           ITemplataG::Kind(KindTemplataG {
                              kind: KindGT::Int(_) | KindGT::Bool(_) | KindGT::Float(_) | KindGT::Str(_) | KindGT::Void(_) | KindGT::USize(_) | KindGT::Never(_),
                            }) => {
             // Postparser makes zero-arg calls to primitives.
             assert!(template_args_s.is_empty());
           },
-          _ => panic!("Unexpected non-template type"),
+          _ => panic!("Unexpected non-template type: {:?}", type_g),
         }
       }
       ITypeST::Int(_) => {}
@@ -1112,7 +1181,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let (root, mut path, type_gt) =
             self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *base, group_born_at_loct);
         match type_gt {
-          KindGT::StaticSizedArray(StaticSizedArrayGT { name, element_type }) => {
+          KindGT::StaticSizedArray(StaticSizedArrayGT { name, size, element_type }) => {
             path.push(GroupChildStepG::InlineElements { });
             (root, path, *element_type)
           }
@@ -1336,6 +1405,63 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 }))
             })
           }
+          ITemplataT::Kind(KindTemplataT { kind: KindT::StaticSizedArray(StaticSizedArrayTT { name: name_t, .. }) }) => {
+            let element_type_t =
+              match name_t.local_name {
+                INameT::StaticSizedArray(StaticSizedArrayNameT { template, size, arr: RawArrayNameT { element_type, .. } }) => element_type,
+                _ => panic!("Weird name for SSA"),
+              };
+            assert!(template_args_s.len() == 2);
+            let size_templata_s = template_args_s[0];
+            let size_templata_g =
+                self.simple_match_group_rune_types(
+                  coutputs,
+                  bump_g,
+                  group_rune_to_type_gt,
+                  *size_templata_s,
+                  ITemplataT::Kind(KindTemplataT { kind: *element_type_t }));
+            let element_type_s = template_args_s[1];
+            let element_type_g =
+              expect_kind_templata_g(
+                self.simple_match_group_rune_types(
+                  coutputs,
+                  bump_g,
+                  group_rune_to_type_gt,
+                  *element_type_s,
+                  ITemplataT::Kind(KindTemplataT { kind: *element_type_t })));
+            ITemplataG::Kind(KindTemplataG {
+              kind: KindGT::StaticSizedArray(
+                bump_g.alloc(StaticSizedArrayGT {
+                  name: *name_t,
+                  size: size_templata_g,
+                  element_type: element_type_g.kind,
+                }))
+            })
+          }
+          ITemplataT::Kind(KindTemplataT { kind: KindT::RuntimeSizedArray(RuntimeSizedArrayTT { name: name_t, .. }) }) => {
+            let element_type_t =
+                match name_t.local_name {
+                  INameT::RuntimeSizedArray(RuntimeSizedArrayNameT { template, arr: RawArrayNameT { element_type, .. } }) => element_type,
+                  _ => panic!("Weird name for SSA"),
+                };
+            assert!(template_args_s.len() == 1);
+            let element_type_s = template_args_s[0];
+            let element_type_g =
+                expect_kind_templata_g(
+                  self.simple_match_group_rune_types(
+                    coutputs,
+                    bump_g,
+                    group_rune_to_type_gt,
+                    *element_type_s,
+                    ITemplataT::Kind(KindTemplataT { kind: *element_type_t })));
+            ITemplataG::Kind(KindTemplataG {
+              kind: KindGT::RuntimeSizedArray(
+                bump_g.alloc(RuntimeSizedArrayGT {
+                  name: *name_t,
+                  element_type: element_type_g.kind,
+                }))
+            })
+          }
           ITemplataT::Kind(KindTemplataT { kind: KindT::Int(IntT { bits }) }) => ITemplataG::Kind(KindTemplataG { kind: KindGT::Int(IntGT { bits }) }),
           ITemplataT::Kind(KindTemplataT { kind: KindT::Bool(BoolT { }) }) => ITemplataG::Kind(KindTemplataG { kind: KindGT::Bool(BoolGT { }) }),
           ITemplataT::Kind(KindTemplataT { kind: KindT::Void(VoidT { }) }) => ITemplataG::Kind(KindTemplataG { kind: KindGT::Void(VoidGT { }) }),
@@ -1367,6 +1493,224 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ITypeST::WeakRef(_) => unimplemented!(),
       ITypeST::OwnRef(_) => unimplemented!(),
       ITypeST::Pack(_) => unimplemented!(),
+      ITypeST::String(_) => unimplemented!(),
+    }
+  }
+  // Creates a type, from this function's perspective, given a foreign-phrased postparsed
+  // definition.
+  //
+  // For example, if we have this code:
+  //     struct Box<E> { x E; }
+  //     func get<E, g'>(b &Box<E> in g) &Box<E> in g { return b; }
+  //     func peek<T, h'>(b &Box<T> in h) ... { return b.get(); }
+  // this function will calculate peek's `b.get()` callsite's return value (`&Box<T> in h`).
+  //
+  // Similar to groupify_type, but groupify_type needs the foreign-phrased *typed* definition. In
+  // the above example, we don't have that, because when borrow checking a function, we haven't yet
+  // compiled that function.
+  //
+  // Taking that example further, here's the tools we have:
+  //  * callee_rune_to_caller_templata:
+  //     * E = peek$T
+  //     * g = h' Box<peek$T>
+  //    which makes sense because E and g are `get` runes, T and h are `peek` runes.
+  //    Those are all groupified.
+  //  * get's postparseds:
+  //        func get<"E", "g"'>(b &"Box"<"E"> in "g") &"Box"<"E"> in "g" { ... }
+  //    (quotes included to emphasize that these are postparsed things; names; not typed)
+  //  * peek's typed callsite's return: &Box<T>
+  // And we want the groupified return: &Box<T> in h
+  //
+  // So we do this:
+  //  * Look at the postparseds in the callee, which is `&"Box"<"E"> in "g"`
+  //  * Look at callee_rune_to_caller_templata, which has:
+  //     * "E" = peek$T
+  //     * "g" = h' Box<peek$T>
+  //  * We recurse, substituting:
+  //    turning this:  `&"Box"<"E"> in "g"`
+  //    into this:     `&"Box"<peek$T> in (h' Box<peek$T>)`
+  //    BUT to turn the "Box"<peek$T> into a Box<peek$T>, we need the typed mention of Box<T>.
+  // That's why we call a function that matches foreign postparseds (substituted on the fly
+  // with a callee-rune-to-local-templata map) with local typed types.
+  // That's what groupify_postparsed_type is for.
+  fn groupify_postparsed_type<'g>(
+    &self,
+    coutputs: &CompilerOutputs<'s, 't>,
+    bump_g: &'g Bump,
+    foreign_rune_to_local_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    foreign_type_s: ITypeST<'s>,
+    local_type_t: KindT<'s, 't>,
+    group_born_at_loct: LocT<'t>,
+  ) -> KindGT<'s, 't, 'g> {
+    match foreign_type_s {
+      ITypeST::Rune(RuneUsageST { rune, .. }) => {
+        expect_kind_templata_g(
+          *foreign_rune_to_local_templata.get(&rune.rune).expect("Couldn't find rune")).kind
+      }
+      ITypeST::BorrowRef(BorrowRefST { inner: inner_st, region: region_s, .. }) => {
+        let inner_tt =
+            match local_type_t {
+              KindT::BorrowRef(BorrowRefT { inner: inner_tt }) => inner_tt,
+              _ => panic!("Unexpected non-borrow"),
+            };
+        let group_s =
+            match region_s {
+              RegionS::Held => panic!("Encountered a borrow ref with held region"),
+              RegionS::Group(g) => *g,
+            };
+        let group_path_g =
+            self.groupify_group_expr(
+              coutputs, bump_g, foreign_rune_to_local_templata, &IndexMap::new(), *group_s, group_born_at_loct);
+        let inner_gt =
+            self.groupify_postparsed_type(
+              coutputs, bump_g, foreign_rune_to_local_templata, **inner_st, *inner_tt, group_born_at_loct);
+        KindGT::BorrowRef(bump_g.alloc(BorrowRefGT {
+          inner: inner_gt,
+          group: GroupTemplataG {
+            kind: inner_gt,
+            group: bump_g.alloc_slice_copy(&[group_path_g]),
+            born_at: group_born_at_loct,
+          }
+        }))
+      }
+      ITypeST::Call(CallST { args: template_args_s, .. }) => {
+        match local_type_t {
+          KindT::Struct(StructTT { id, .. }) => {
+            let template_args_t: &'t [ITemplataT<'s, 't>] =
+                ICitizenNameT::try_from(id.local_name)
+                    .expect("Citizen without ICitizenNameT")
+                    .template_args();
+            assert!(template_args_s.len() == template_args_t.len());
+            let template_args_g =
+                template_args_s.iter().zip(template_args_t.iter()).map(|(template_arg_s, template_arg_t)| {
+                  self.groupify_postparsed_templata(coutputs, bump_g, foreign_rune_to_local_templata, **template_arg_s, *template_arg_t, group_born_at_loct)
+                })
+                .collect::<Vec<_>>();
+            KindGT::Struct(bump_g.alloc(StructGT {
+              id,
+              template_args: bump_g.alloc_slice_copy(template_args_g.as_slice()),
+            }))
+          }
+          KindT::Interface(InterfaceTT { id, .. }) => {
+            let template_args_t: &'t [ITemplataT<'s, 't>] =
+                ICitizenNameT::try_from(id.local_name)
+                    .expect("Citizen without ICitizenNameT")
+                    .template_args();
+            assert!(template_args_s.len() == template_args_t.len());
+            let template_args_g =
+                template_args_s.iter().zip(template_args_t.iter()).map(|(template_arg_s, template_arg_t)| {
+                  self.groupify_postparsed_templata(coutputs, bump_g, foreign_rune_to_local_templata, **template_arg_s, *template_arg_t, group_born_at_loct)
+                })
+                    .collect::<Vec<_>>();
+            KindGT::Interface(bump_g.alloc(InterfaceGT {
+              id,
+              template_args: bump_g.alloc_slice_copy(template_args_g.as_slice()),
+            }))
+          }
+          KindT::Never(NeverT { from_break }) => {
+            assert!(template_args_s.is_empty());
+            KindGT::Never(NeverGT { from_break })
+          }
+          KindT::Void(VoidT { }) => {
+            assert!(template_args_s.is_empty());
+            KindGT::Void(VoidGT { })
+          }
+          KindT::Int(IntT { bits }) => {
+            assert!(template_args_s.is_empty());
+            KindGT::Int(IntGT { bits })
+          }
+          KindT::Bool(BoolT { }) => {
+            assert!(template_args_s.is_empty());
+            KindGT::Bool(BoolGT { })
+          }
+          KindT::Str(StrT { }) => {
+            assert!(template_args_s.is_empty());
+            KindGT::Str(StrGT { })
+          }
+          KindT::Float(FloatT { }) => {
+            assert!(template_args_s.is_empty());
+            KindGT::Float(FloatGT { })
+          }
+          KindT::USize(USizeT { }) => {
+            assert!(template_args_s.is_empty());
+            KindGT::USize(USizeGT { })
+          }
+          _ => panic!("Postparsed call {:?} doesn't match typed {:?}", foreign_type_s, local_type_t),
+        }
+      }
+      ITypeST::RuntimeSizedArray(RuntimeSizedArrayST { element: element_s, .. }) => {
+        match local_type_t {
+          KindT::RuntimeSizedArray(RuntimeSizedArrayTT { name: id_t, .. }) => {
+            let rsa_local_name =
+                match id_t.local_name {
+                  INameT::RuntimeSizedArray(rsa_name) => rsa_name,
+                  _ => panic!("Expected RSA"),
+                };
+            let element_gt =
+                self.groupify_postparsed_type(
+                  coutputs, bump_g, foreign_rune_to_local_templata, **element_s, rsa_local_name.arr.element_type, group_born_at_loct);
+            KindGT::RuntimeSizedArray(bump_g.alloc(RuntimeSizedArrayGT {
+              name: *id_t,
+              element_type: element_gt,
+            }))
+          }
+          _ => panic!("Postparsed RSA doesn't match typed {:?}", local_type_t),
+        }
+      }
+      ITypeST::AnonymousRune(_) => unimplemented!(),
+      ITypeST::Bool(_) => unimplemented!(),
+      ITypeST::Function(_) => unimplemented!(),
+      ITypeST::Int(_) => unimplemented!(),
+      ITypeST::Tuple(_) => unimplemented!(),
+      ITypeST::Name(_) => unimplemented!(),
+      ITypeST::WeakRef(_) => unimplemented!(),
+      ITypeST::OwnRef(_) => unimplemented!(),
+      ITypeST::Pack(_) => unimplemented!(),
+      ITypeST::String(_) => unimplemented!(),
+    }
+  }
+
+  // See groupify_postparsed_type for this thing's purpose
+  fn groupify_postparsed_templata<'g>(
+    &self,
+    coutputs: &CompilerOutputs<'s, 't>,
+    bump_g: &'g Bump,
+    foreign_rune_to_local_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    foreign_templata_s: ITypeST<'s>,
+    local_templata_t: ITemplataT<'s, 't>,
+    group_born_at_loct: LocT<'t>,
+  ) -> ITemplataG<'s, 't, 'g> {
+    match foreign_templata_s {
+      ITypeST::Rune(RuneUsageST { rune, .. }) => {
+        *foreign_rune_to_local_templata.get(&rune.rune).expect("Couldn't find rune")
+      }
+      ITypeST::Int(_) => {
+        match local_templata_t {
+          ITemplataT::Integer(num) => ITemplataG::Integer(num),
+          _ => panic!("Postparsed int doesn't match typed {:?}", local_templata_t),
+        }
+      }
+      ITypeST::Call(CallST { template, args, .. }) => {
+        match local_templata_t {
+          ITemplataT::Kind(KindTemplataT { kind }) => {
+            ITemplataG::Kind(KindTemplataG {
+              kind: self.groupify_postparsed_type(
+                coutputs, bump_g, foreign_rune_to_local_templata, foreign_templata_s, kind, group_born_at_loct),
+            })
+          }
+          _ => panic!("Postparsed int doesn't match typed {:?}", local_templata_t),
+        }
+      }
+      ITypeST::AnonymousRune(_) => unimplemented!(),
+      ITypeST::Bool(_) => unimplemented!(),
+      ITypeST::Function(_) => unimplemented!(),
+      ITypeST::Tuple(_) => unimplemented!(),
+      ITypeST::Name(_) => unimplemented!(),
+      ITypeST::BorrowRef(_) => unimplemented!(),
+      ITypeST::WeakRef(_) => unimplemented!(),
+      ITypeST::OwnRef(_) => unimplemented!(),
+      ITypeST::Pack(_) => unimplemented!(),
+      ITypeST::RuntimeSizedArray(_) => unimplemented!(),
       ITypeST::String(_) => unimplemented!(),
     }
   }

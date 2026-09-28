@@ -17,6 +17,8 @@ use crate::typing::env::function_environment_t::*;
 use crate::typing::env::i_env_entry::{FunctionEnvEntry, IEnvEntryT};
 use crate::typing::infer_compiler::*;
 use crate::typing::names::names::*;
+#[cfg(feature = "rust_interop")]
+use crate::typing::rust_interop::rust_method_entries;
 use crate::typing::templata::templata::*;
 use crate::typing::templata_compiler::*;
 use crate::typing::types::types::*;
@@ -131,8 +133,11 @@ where
       .filter(|(id, _)| **id == *sibling_key)
       .flat_map(|(_, ts)| ts.name_to_entry.iter().map(|(n, e)| (*n, *e)))
       .collect();
-    let all_outer_entries: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> =
+    #[cfg_attr(not(feature = "rust_interop"), allow(unused_mut))]
+    let mut all_outer_entries: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> =
       internal_method_entries.into_iter().chain(sibling_entries.into_iter()).collect();
+    #[cfg(feature = "rust_interop")]
+    all_outer_entries.extend(rust_method_entries(self, struct_template_id));
     let mut outer_store = TemplatasStoreBuilder::new(struct_template_id);
     outer_store.add_entries(self.scout_arena, all_outer_entries);
     let outer_templatas = outer_store.build_in(self.typing_interner);
@@ -188,8 +193,11 @@ where
       .filter(|(id, _)| **id == *sibling_key)
       .flat_map(|(_, ts)| ts.name_to_entry.iter().map(|(n, e)| (*n, *e)))
       .collect();
-    let all_outer_entries: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> =
+    #[cfg_attr(not(feature = "rust_interop"), allow(unused_mut))]
+    let mut all_outer_entries: Vec<(INameT<'s, 't>, IEnvEntryT<'s, 't>)> =
       internal_method_entries.into_iter().chain(sibling_entries.into_iter()).collect();
+    #[cfg(feature = "rust_interop")]
+    all_outer_entries.extend(rust_method_entries(self, interface_template_id));
     let mut outer_store = TemplatasStoreBuilder::new(interface_template_id);
     outer_store.add_entries(self.scout_arena, all_outer_entries);
     let outer_templatas = outer_store.build_in(self.typing_interner);

@@ -15,6 +15,19 @@ use crate::utils::code_hierarchy::PackageCoordinate;
 use crate::utils::range::RangeS;
 use std::slice::from_ref;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum CouldNotPostparseReason {
+  IntWidth,
+  UnsignedInteger,
+  Float,
+  Unsized,
+  UnimportedType,
+  UnnormalizableAlias,
+  InheritedParameter,
+  SharedParameterLifetime,
+  Unrepresentable,
+}
+
 #[derive(Debug)]
 pub enum ICompileErrorT<'s, 't> {
   CouldntNarrowDownCandidates {
@@ -81,6 +94,15 @@ pub enum ICompileErrorT<'s, 't> {
   TooManyTypesWithNameT {
     range: &'t [RangeS<'s>],
     name: IImpreciseNameS<'s>,
+  },
+  UnresolvableRustImport {
+    range: &'t [RangeS<'s>],
+    path: String,
+  },
+  CouldNotPostparseFunction {
+    range: &'t [RangeS<'s>],
+    path: String,
+    reason: CouldNotPostparseReason,
   },
   ArrayElementsHaveDifferentTypes {
     range: &'t [RangeS<'s>],
@@ -308,6 +330,8 @@ impl<'s, 't> ICompileErrorT<'s, 't> {
       Self::CantUseRuneValueAsExpression { range, .. } => *range,
       Self::CouldntFindTypeT { range, .. } => *range,
       Self::TooManyTypesWithNameT { range, .. } => *range,
+      Self::UnresolvableRustImport { range, .. } => *range,
+      Self::CouldNotPostparseFunction { range, .. } => *range,
       Self::ArrayElementsHaveDifferentTypes { range, .. } => *range,
       Self::UnexpectedArrayElementType { range, .. } => *range,
       Self::InitializedWrongNumberOfElements { range, .. } => *range,

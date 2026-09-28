@@ -294,7 +294,7 @@ fn test_rune_type_in_generic_param() {
   let code = "\nfunc bork<I Int>() int { I }\n";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -792,7 +792,7 @@ where func moo(int, bool)str
 "#;
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -1143,7 +1143,7 @@ exported func main() {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -1176,7 +1176,7 @@ exported func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,

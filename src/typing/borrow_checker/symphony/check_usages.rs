@@ -124,11 +124,48 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       ExpressionGE::LockWeak(_) => unimplemented!(),
       ExpressionGE::BorrowToWeak(_) => unimplemented!(),
-      ExpressionGE::If(_) => unimplemented!(),
-      ExpressionGE::While(_) => unimplemented!(),
+      ExpressionGE::If(IfGE { range, loct, condition: condition_ge, then_call: then_ge, else_call: else_ge, result }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *condition_ge, next_held_num)?;
+
+        let mut group_tree_for_then = group_tree.clone();
+        self.check_expr(coutputs, function_s, arena, &mut group_tree_for_then, *then_ge, next_held_num)?;
+
+        let mut group_tree_for_else = group_tree.clone();
+        self.check_expr(coutputs, function_s, arena, &mut group_tree_for_else, *else_ge, next_held_num)?;
+
+        // Can be typed Never if a break or a return exited out of the branch, in which case,
+        // don't incorporate its invalidations
+        if !matches!(then_ge.result(), KindGT::Never(_)) {
+          merge_invalidations_into_from(group_tree, group_tree_for_then);
+        }
+        // Can be typed Never if a break or a return exited out of the branch, in which case,
+        // don't incorporate its invalidations
+        if !matches!(else_ge.result(), KindGT::Never(_)) {
+          merge_invalidations_into_from(group_tree, group_tree_for_else);
+        }
+      }
+      ExpressionGE::While(WhileGE { range, loct, pre_iteration_loct, post_iteration_loct, block, result, mut_effects }) => {
+        // Before the loop, note all the mut effects that happen inside the loop.
+        let mel = MutEffectLoc { loct: *pre_iteration_loct, range: *range };
+        for mut_effect in mut_effects.iter() {
+          self.note_mut_effect(group_tree, mel, mut_effect.steps);
+        }
+
+        // Now do the body. "Past iterations"'s mutations were noted above, so we'll correctly
+        // detect invalidations inside the loop.
+        self.check_expr(coutputs, function_s, arena, group_tree, block.inner, next_held_num)?;
+
+        // After the loop, note all the mut effects that happen inside the loop.
+        let mel = MutEffectLoc { loct: *post_iteration_loct, range: *range };
+        for mut_effect in mut_effects.iter() {
+          self.note_mut_effect(group_tree, mel, mut_effect.steps);
+        }
+      }
       ExpressionGE::Mutate(_) => unimplemented!(),
       ExpressionGE::Restackify(_) => unimplemented!(),
-      ExpressionGE::Break(_) => unimplemented!(),
+      ExpressionGE::Break(_) => {
+        // Do nothing
+      }
       ExpressionGE::StaticArrayFromValues(_) => unimplemented!(),
       ExpressionGE::ArraySize(_) => unimplemented!(),
       ExpressionGE::IsSameInstance(_) => unimplemented!(),
@@ -145,18 +182,46 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::Reinterpret(ReinterpretGE { range, expr: source_ge, result }) => {
         self.check_expr(coutputs, function_s, arena, group_tree, *source_ge, next_held_num)?;
       }
-      ExpressionGE::Construct(_) => unimplemented!(),
-      ExpressionGE::NewRuntimeSizedArray(_) => unimplemented!(),
-      ExpressionGE::StaticArrayFromCallable(_) => unimplemented!(),
-      ExpressionGE::DestroyStaticSizedArrayIntoFunction(_) => unimplemented!(),
-      ExpressionGE::DestroyStaticSizedArrayIntoLocals(_) => unimplemented!(),
-      ExpressionGE::DestroyRuntimeSizedArray(_) => unimplemented!(),
-      ExpressionGE::RuntimeSizedArrayCapacity(_) => unimplemented!(),
-      ExpressionGE::PushRuntimeSizedArray(_) => unimplemented!(),
-      ExpressionGE::PopRuntimeSizedArray(_) => unimplemented!(),
-      ExpressionGE::InterfaceToInterfaceUpcast(_) => unimplemented!(),
-      ExpressionGE::UpcastInterface(_) => unimplemented!(),
-      ExpressionGE::UpcastGeneric(_) => unimplemented!(),
+      ExpressionGE::Construct(ConstructGE { args, .. }) => {
+        for arg in args.iter() {
+          self.check_expr(coutputs, function_s, arena, group_tree, *arg, next_held_num)?;
+        }
+      }
+      ExpressionGE::NewRuntimeSizedArray(NewRuntimeSizedArrayGE { capacity_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *capacity_expr, next_held_num)?;
+      }
+      ExpressionGE::StaticArrayFromCallable(StaticArrayFromCallableGE { generator, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *generator, next_held_num)?;
+      }
+      ExpressionGE::DestroyStaticSizedArrayIntoFunction(DestroyStaticSizedArrayIntoFunctionGE { array_expr, consumer, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, group_tree, *consumer, next_held_num)?;
+      }
+      ExpressionGE::DestroyStaticSizedArrayIntoLocals(DestroyStaticSizedArrayIntoLocalsGE { expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
+      }
+      ExpressionGE::DestroyRuntimeSizedArray(DestroyRuntimeSizedArrayGE { array_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+      }
+      ExpressionGE::RuntimeSizedArrayCapacity(RuntimeSizedArrayCapacityGE { array_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+      }
+      ExpressionGE::PushRuntimeSizedArray(PushRuntimeSizedArrayGE { array_expr, new_element_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, group_tree, *new_element_expr, next_held_num)?;
+      }
+      ExpressionGE::PopRuntimeSizedArray(PopRuntimeSizedArrayGE { array_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+      }
+      ExpressionGE::InterfaceToInterfaceUpcast(InterfaceToInterfaceUpcastGE { inner_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *inner_expr, next_held_num)?;
+      }
+      ExpressionGE::UpcastInterface(UpcastInterfaceGE { inner_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *inner_expr, next_held_num)?;
+      }
+      ExpressionGE::UpcastGeneric(UpcastGenericGE { inner_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *inner_expr, next_held_num)?;
+      }
       ExpressionGE::Destroy(DestroyGE { range, expr, struct_tt, .. }) => {
         self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
       }
@@ -261,7 +326,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           self.collect_templata_mentioned_group_templatas(group_templatas, *template_arg);
         }
       }
-      KindGT::StaticSizedArray(StaticSizedArrayGT { name, element_type }) => {
+      KindGT::StaticSizedArray(StaticSizedArrayGT { name, size, element_type }) => {
+        self.collect_templata_mentioned_group_templatas(group_templatas, *size);
         self.collect_kind_mentioned_group_templatas(group_templatas, *element_type);
       }
       KindGT::RuntimeSizedArray(RuntimeSizedArrayGT { name, element_type }) => {
@@ -433,5 +499,32 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         Ok(target_is_independent)
       }
     }
+  }
+}
+
+fn merge_invalidations_into_from<'s, 't>(
+  into: &mut GroupSubtree<'s, 't>,
+  from: GroupSubtree<'s, 't>,
+) {
+  match (into.last_mut_effect, from.last_mut_effect) {
+    (Some(into_mel), Some(from_mel)) => {
+      if from_mel.loct.path > into_mel.loct.path {
+        into.last_mut_effect = Some(from_mel);
+      }
+    }
+    (None, Some(from_mel)) => {
+      into.last_mut_effect = Some(from_mel);
+    }
+    (Some(_), None) | (None, None) => {}
+  }
+  for (step, from_child) in from.name_to_child {
+    let into_child =
+        into.name_to_child
+        .entry(step)
+        .or_insert_with(|| GroupSubtree {
+            last_mut_effect: None,
+            name_to_child: IndexMap::new(),
+        });
+    merge_invalidations_into_from(into_child, from_child);
   }
 }

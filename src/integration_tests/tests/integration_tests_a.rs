@@ -781,7 +781,7 @@ fn test_generic() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_no_builtins_without_borrow_check(
+    let mut compile = test_no_builtins(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -1157,7 +1157,7 @@ fn simple_extern_function() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_no_builtins_without_borrow_check(
+    let mut compile = test_no_builtins(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -1192,6 +1192,73 @@ extern func VecOuterNew<T>() Vec<T>;
 exported func main() int {
   v = VecOuterNew<int>();
   return 42;
+}
+",
+    );
+    match compile.eval_for_kind_primitive_args(Vec::new()).unwrap() {
+        IVonData::Int(VonInt { value: 42 }) => {}
+        other => panic!("expected VonInt(42), got {:?}", other),
+    }
+}
+
+#[test]
+#[ignore]
+fn extern_rust_vec() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+extern struct Vec<T> {
+  extern func new() Vec<T>;
+}
+exported func main() int {
+  v = Vec<int>.new();
+  return 42;
+}
+",
+    );
+    match compile.eval_for_kind_primitive_args(Vec::new()).unwrap() {
+        IVonData::Int(VonInt { value: 42 }) => {}
+        other => panic!("expected VonInt(42), got {:?}", other),
+    }
+}
+
+#[test]
+#[ignore]
+fn extern_rust_vec_capacity() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+extern struct Vec<T> {
+  extern func with_capacity(c i64) Vec<T>;
+  extern func capacity(self Vec<T>) i64;
+}
+exported func main() i64 {
+  v = Vec<int>.with_capacity(42i64);
+  return Vec<int>.capacity(^v);
 }
 ",
     );
