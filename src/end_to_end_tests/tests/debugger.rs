@@ -18,7 +18,7 @@ fn breakpoint_resolves_to_main_source_line() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check("exported func main() int { return 42; }");
+    let (cp, _) = compile_inline_debug("exported func main() int { return 42; }");
     cp.lldb_check(
         &["b :main", "run", "bt"],
         &["test.vale:1", "frame #0", ":main"],
@@ -30,7 +30,7 @@ fn breakpoint_resolves_by_file_and_line() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check("exported func main() int { return 42; }");
+    let (cp, _) = compile_inline_debug("exported func main() int { return 42; }");
     cp.lldb_check(
         &["b test.vale:1", "run", "bt"],
         &["test.vale:1", "frame #0", ":main"],
@@ -42,7 +42,7 @@ fn breakpoint_line_tracks_function_declaration() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "\n\
          \n\
          \n\
@@ -56,7 +56,7 @@ fn distinct_functions_resolve_to_their_own_lines() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int { return helper(); }\n\
          \n\
          \n\
@@ -74,7 +74,7 @@ fn dwarf_has_compile_unit_and_named_subprogram() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check("exported func main() int { return 42; }");
+    let (cp, _) = compile_inline_debug("exported func main() int { return 42; }");
     let out = cp.dwarfdump_capture(&["--debug-info"]);
     assert!(out.contains("DW_TAG_compile_unit"), "no compile unit:\n{out}");
     assert!(
@@ -96,7 +96,7 @@ fn function_decl_line_is_declaration_not_body_statement() {
         return;
     }
     // func keyword line 1; `{` line 2; `return 42;` line 3.
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int\n\
          {\n\
          return 42;\n\
@@ -116,7 +116,7 @@ fn three_statements_step_to_distinct_lines() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int {\n\
          x = 7;\n\
          y = 11;\n\
@@ -191,7 +191,7 @@ fn step_over_function_call() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int {\n\
          x = helper();\n\
          return x;\n\
@@ -209,7 +209,7 @@ fn if_branch_steps_to_branch_body() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int {\n\
          x = 7;\n\
          if true { return x; }\n\
@@ -234,7 +234,7 @@ fn member_access_steps_to_distinct_lines() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "struct S { x int; }\n\
          exported func main() int {\n\
          s = S(7);\n\
@@ -253,7 +253,7 @@ fn backtrace_resolves_caller_and_callee_frames() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int {\n\
          return helper();\n\
          }\n\
@@ -291,7 +291,7 @@ fn local_variable_visible_in_lldb() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int {\n\
          x = 7;\n\
          return x;\n\
@@ -305,7 +305,7 @@ fn function_argument_visible_in_lldb() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int { return helper(7); }\n\
          func helper(a int) int {\n\
          return a;\n\
@@ -319,7 +319,7 @@ fn bool_and_float_locals_visible_in_lldb() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "exported func main() int {\n\
          b = true;\n\
          f = 1.5;\n\
@@ -343,7 +343,7 @@ fn struct_local_field_visible_in_lldb() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "struct S { x int; }\n\
          exported func main() int {\n\
          s = S(7);\n\
@@ -361,7 +361,7 @@ fn struct_local_multifield_visible_in_lldb() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "struct S { a int; b bool; }\n\
          exported func main() int {\n\
          s = S(7, true);\n\
@@ -378,7 +378,7 @@ fn dwarf_dies_for_struct_have_user_members() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "struct S { a int; b bool; }\n\
          exported func main() int {\n\
          s = S(7, true);\n\
@@ -399,7 +399,7 @@ fn destructured_locals_visible_in_lldb() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "struct Pair { a int; b int; }\n\
          exported func main() int {\n\
          [x, y] = Pair(7, 11);\n\
@@ -422,7 +422,7 @@ fn borrow_ref_struct_fields_visible_in_lldb() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "struct Carrier { hp int; interceptors int; }\n\
          exported func main() int {\n\
          carrier = Carrier(400, 8);\n\
@@ -443,7 +443,7 @@ fn dwarf_dies_for_borrow_ref_are_pointer_to_struct() {
     if skip_non_native() {
         return;
     }
-    let (cp, _) = compile_inline_debug_without_borrow_check(
+    let (cp, _) = compile_inline_debug(
         "struct Carrier { hp int; interceptors int; }\n\
          exported func main() int {\n\
          carrier = Carrier(400, 8);\n\

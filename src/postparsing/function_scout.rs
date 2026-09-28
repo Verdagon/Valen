@@ -10,7 +10,7 @@ use crate::parsing::ast::{
 use crate::postparsing::ast::{
   AbstractBodyS, AbstractSP, BuiltinS, CodeBodyS, ExportS, ExternBodyS, ExternS, FunctionS,
   GeneratedBodyS, GenericParameterS, IBodyS, IFunctionAttributeS, IGenericParameterTypeS,
-  KindGenericParameterTypeS, LocationInDenizen, LocationInDenizenBuilder, ParameterS,
+  KindGenericParameterTypeS, LocationInDenizen, LocationInDenizenBuilder, MacroCallS, ParameterS,
   RegionGenericParameterTypeS, UserFunctionS,
 };
 use crate::postparsing::expressions::LocalS;
@@ -893,6 +893,11 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           generator_name: self.scout_arena.intern_str(builtin_attr.generator_name.str().as_str()),
         }),
         IAttributeP::AbstractAttribute(_) => panic!("AbstractAttribute should have been filtered"),
+        IAttributeP::MacroCall(macro_call_p) => IFunctionAttributeS::MacroCall(MacroCallS {
+          range: Self::eval_range(file_coordinate, macro_call_p.range),
+          include: macro_call_p.inclusion,
+          macro_name: self.scout_arena.intern_str(macro_call_p.name.str().as_str()),
+        }),
         other => panic!("POSTPARSER_SCOUT_FUNCTION_ATTRIBUTE_NOT_YET_IMPLEMENTED: {:?}", other),
       })
       .collect();

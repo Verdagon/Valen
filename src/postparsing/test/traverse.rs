@@ -735,6 +735,7 @@ fn visit_function_attribute<'s, T, F>(
     IFunctionAttributeS::UserFunction(x) => {
       collect_if(pred, out, NodeRefS::UserFunctionAttribute(x))
     }
+    IFunctionAttributeS::MacroCall(x) => collect_if(pred, out, NodeRefS::MacroCallAttribute(x)),
   }
 }
 

@@ -6,7 +6,7 @@ fn p(rel: &str) -> std::path::PathBuf {
 
 #[test]
 fn structmutfield() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/structs/structmutfield.vale"), 5, &[
+    assert_compile_and_run_dbg(&p("programs/structs/structmutfield.vale"), 5, &[
         cmd("br s -p 'lldb breakpoint: structmutfield-at' -f structmutfield.vale"),
         cmd("run"),
         expect("bt", &["structmutfield.vale", ":main"]),
@@ -18,7 +18,7 @@ fn structmutfield() {
 fn memberrefcount()      { assert_compile_and_run(&p("programs/structs/memberrefcount.vale"), 5); }
 #[test]
 fn bigstructmutfield() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/structs/bigstructmutfield.vale"), 42, &[
+    assert_compile_and_run_dbg(&p("programs/structs/bigstructmutfield.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: bigstructmutfield-at' -f bigstructmutfield.vale"),
         cmd("run"),
         expect("bt", &["bigstructmutfield.vale", ":main"]),
@@ -26,7 +26,7 @@ fn bigstructmutfield() {
 }
 #[test]
 fn structmut() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/structs/structmut.vale"), 8, &[
+    assert_compile_and_run_dbg(&p("programs/structs/structmut.vale"), 8, &[
         cmd("br s -p 'lldb breakpoint: structmut-at' -f structmut.vale"),
         cmd("run"),
         expect("bt", &["structmut.vale", ":main"]),

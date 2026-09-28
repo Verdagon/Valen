@@ -41,7 +41,7 @@ fn simple_true_branch_returning_an_int() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -105,7 +105,7 @@ fn simple_false_branch_returning_an_int() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -282,7 +282,7 @@ fn if_with_condition_declaration() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -454,7 +454,7 @@ fn if_nevers() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     let source = load_expected("programs/if/ifnevers.vale");
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -515,7 +515,7 @@ fn toast() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,

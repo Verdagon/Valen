@@ -39,7 +39,7 @@ fn borrowing_a_temporary_mutable_makes_a_local_var() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -92,7 +92,7 @@ fn owning_ref_method_call() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -494,7 +494,7 @@ fn gets_from_temporary_struct_a_members_member() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -531,7 +531,7 @@ fn unstackifies_local_vars() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -610,7 +610,7 @@ fn member_access_on_returned_owning_ref() {
     let keywords = Keywords::new_for_scout(&scout_arena);
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,

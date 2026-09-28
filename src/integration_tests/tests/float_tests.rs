@@ -53,7 +53,7 @@ fn float_arithmetic() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     let source = load_expected("programs/floatarithmetic.vale");
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
@@ -78,7 +78,7 @@ fn float_equals() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     let source = load_expected("programs/floateq.vale");
-    let mut compile = test_without_borrow_check(
+    let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,

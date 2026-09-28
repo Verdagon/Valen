@@ -1,5 +1,6 @@
 use bumpalo::Bump;
-use crate::postparsing::ast::FunctionS;
+use crate::parsing::ast::ast::IMacroInclusionP;
+use crate::postparsing::ast::{FunctionS, IFunctionAttributeS, MacroCallS};
 use crate::postparsing::rules::types::ITypeST;
 use crate::StrI;
 use crate::typing::ast::ast::FunctionDefinitionT;
@@ -29,9 +30,15 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   where
     's: 'g,
   {
-    let (body_g, _access_log) =
-        self.groupify_function(coutputs, function_s, function_t, bump_g)?;
-    self.check_usages(coutputs, function_s, bump_g, body_g)?;
+    let opted_out =
+        function_s.attributes.iter().any(|attr| matches!(attr,
+          IFunctionAttributeS::MacroCall(MacroCallS { include: IMacroInclusionP::DontCallMacro, macro_name, .. })
+            if *macro_name == self.keywords.borrow_check));
+    if !opted_out {
+      let (body_g, _access_log) =
+          self.groupify_function(coutputs, function_s, function_t, bump_g)?;
+      self.check_usages(coutputs, function_s, bump_g, body_g)?;
+    }
     Ok(self.calculate_aliasing_info(function_s, function_t, bump_g))
   }
 }

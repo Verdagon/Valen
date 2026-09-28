@@ -297,7 +297,7 @@ exported func main() bool {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
-    borrow_checker_enabled: false,
+    borrow_checker_enabled: true,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,
@@ -511,7 +511,7 @@ exported func main() {
     use_optimized_solver: true,
     verbose_errors: true,
     debug_output: false,
-    borrow_checker_enabled: false,
+    borrow_checker_enabled: true,
   };
   let typing_pass_options = TypingPassOptions {
     global_options,

@@ -106,7 +106,7 @@ fn mutlocal() {
 
 #[test]
 fn constraintRef() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/constraintRef.vale"), 8, &[
+    assert_compile_and_run_dbg(&p("programs/constraintRef.vale"), 8, &[
         cmd("br s -p 'lldb breakpoint: constraintRef-ready' -f constraintRef.vale"),
         cmd("run"),
         expect("frame variable -P 1 carrier", &["hp = 400", "interceptors = 8"]),
@@ -115,7 +115,7 @@ fn constraintRef() {
 
 #[test]
 fn unstackifyret() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/unstackifyret.vale"), 42, &[
+    assert_compile_and_run_dbg(&p("programs/unstackifyret.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: unstackifyret-set' -f unstackifyret.vale"),
         cmd("run"),
         expect("frame variable playerRow", &["playerRow = 4"]),
@@ -124,7 +124,7 @@ fn unstackifyret() {
 
 #[test]
 fn unreachablemoot() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/unreachablemoot.vale"), 42, &[
+    assert_compile_and_run_dbg(&p("programs/unreachablemoot.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: unreachablemoot-live' -f unreachablemoot.vale"),
         cmd("br s -p 'lldb breakpoint: unreachablemoot-dead' -f unreachablemoot.vale"),
         expect("run", &["stop reason = breakpoint 1"]),
@@ -134,7 +134,7 @@ fn unreachablemoot() {
 
 #[test]
 fn panic() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/panic.vale"), 1, &[
+    assert_compile_and_run_dbg(&p("programs/panic.vale"), 1, &[
         cmd("br s -p 'lldb breakpoint: panic-site' -f panic.vale"),
         cmd("br s -p 'lldb breakpoint: panic-after' -f panic.vale"),
         expect("run", &["stop reason = breakpoint 1"]),
@@ -144,7 +144,7 @@ fn panic() {
 
 #[test]
 fn panicnot() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/panicnot.vale"), 42, &[
+    assert_compile_and_run_dbg(&p("programs/panicnot.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: panicnot-return' -f panicnot.vale"),
         cmd("br s -p 'lldb breakpoint: panicnot-dead' -f panicnot.vale"),
         expect("run", &["stop reason = breakpoint 1"]),
@@ -154,7 +154,7 @@ fn panicnot() {
 
 #[test]
 fn nestedblocks() {
-    assert_compile_and_run_dbg_without_borrow_check(&p("programs/nestedblocks.vale"), 42, &[
+    assert_compile_and_run_dbg(&p("programs/nestedblocks.vale"), 42, &[
         cmd("br s -p 'lldb breakpoint: nestedblocks-inner' -f nestedblocks.vale"),
         cmd("run"),
         expect("frame variable originalIndex", &["originalIndex = 9"]),

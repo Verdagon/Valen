@@ -80,6 +80,7 @@ pub enum IFunctionAttributeS<'s> {
   Builtin(BuiltinS<'s>),
   Export(ExportS<'s>),
   UserFunction(UserFunctionS),
+  MacroCall(MacroCallS<'s>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
