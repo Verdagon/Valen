@@ -797,15 +797,17 @@ fn translate_group_p_into_group_s<'s, 'p>(
       let is_rune = env
         .all_declared_runes()
         .contains(&scout_arena.intern_rune(CodeRune(CodeRuneS { name: group_name_str })));
-      if is_rune {
+      let is_param_name =
+        env.declared_param_names().contains(scout_arena.intern_code_name(group_name_str));
+      if is_param_name && !is_rune {
+        scout_arena.alloc(GroupS::Local(scout_arena.intern_imprecise_name(
+          CodeName(CodeNameValS { name: group_name_str }),
+        )))
+      } else {
         scout_arena.alloc(GroupS::Rune(scout_arena.alloc(RuneUsage {
           range: group_range,
           rune: scout_arena.intern_rune(CodeRune(CodeRuneS { name: group_name_str })),
         })))
-      } else {
-        scout_arena.alloc(GroupS::Local(scout_arena.intern_imprecise_name(
-          CodeName(CodeNameValS { name: group_name_str }),
-        )))
       }
     }
     GroupP::Member { base, member } => scout_arena.alloc(GroupS::Member {

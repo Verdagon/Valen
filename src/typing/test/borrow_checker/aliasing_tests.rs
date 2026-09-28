@@ -4,7 +4,7 @@ use super::util::assert_borrow_check_passes;
 fn test_common_group_attack_aliasing_call_is_safe() {
   assert_borrow_check_passes(&[], r#"
 struct Entity { hp int; }
-func attack<r'>(a &Entity in r, d &Entity in r) mut(r) { }
+func attack(a &Entity in r, d &Entity in r) mut(r) { }
 exported func main() int {
   e = Entity(5);
   attack(&e, &e);

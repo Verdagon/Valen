@@ -81,6 +81,7 @@ pub enum ICompileErrorS<'s> {
   RangedInternalErrorS(RangedInternalErrorS<'s>),
   CantOwnershipInterfaceInImpl(CantOwnershipInterfaceInImpl<'s>),
   CantOwnershipStructInImpl(CantOwnershipStructInImpl<'s>),
+  UnanchoredGroupRuneS(UnanchoredGroupRuneS<'s>),
   ParamDestructureRequiresBody {
     range: RangeS<'s>,
   },
@@ -101,6 +102,7 @@ impl ICompileErrorS<'_> {
       ICompileErrorS::RangedInternalErrorS(x) => &x.range,
       ICompileErrorS::CantOwnershipInterfaceInImpl(x) => &x.range,
       ICompileErrorS::CantOwnershipStructInImpl(x) => &x.range,
+      ICompileErrorS::UnanchoredGroupRuneS(x) => &x.range,
       ICompileErrorS::ParamDestructureRequiresBody { range } => range,
     }
   }
@@ -114,6 +116,12 @@ pub struct CouldntFindVarToMutateS<'s> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CouldntFindRuneS<'s> {
+  pub range: RangeS<'s>,
+  pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnanchoredGroupRuneS<'s> {
   pub range: RangeS<'s>,
   pub name: String,
 }
@@ -201,6 +209,15 @@ impl<'s> IEnvironmentS<'s> {
       }
     }
   }
+
+  pub fn declared_param_names(&self) -> IndexSet<CodeNameS<'s>> {
+    match self {
+      IEnvironmentS::Environment(_) => IndexSet::default(),
+      IEnvironmentS::FunctionEnvironment(function_environment) => {
+        function_environment.declared_param_names.clone()
+      }
+    }
+  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -231,6 +248,7 @@ pub struct FunctionEnvironmentS<'s> {
   pub name: IFunctionDeclarationNameS<'s>,
   pub parent_env: Option<Box<IEnvironmentS<'s>>>,
   pub declared_runes: IndexSet<IRuneS<'s>>,
+  pub declared_param_names: IndexSet<CodeNameS<'s>>,
   pub num_explicit_params: i32,
   pub is_interface_internal_method: bool,
 }
@@ -254,6 +272,7 @@ impl<'s> FunctionEnvironmentS<'s> {
       name: self.name.clone(),
       parent_env: Some(Box::new(IEnvironmentS::FunctionEnvironment(self.clone()))),
       declared_runes: IndexSet::default(),
+      declared_param_names: IndexSet::default(),
       num_explicit_params: self.num_explicit_params,
       is_interface_internal_method: false,
     }

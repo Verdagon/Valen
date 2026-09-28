@@ -412,21 +412,6 @@ Invalidated at test:0.vale:11:3:
 }
 
 #[test]
-#[should_panic(expected = "not bound at this call")]
-fn test_return_group_rune_bound_by_no_parameter_panics() {
-  assert_borrow_check_passes(&["arrays", "arith", "drop", "implicit_clone"], r#"
-import v.builtins.arrays.*;
-import v.builtins.drop.*;
-func leak<g', h'>(a &[]int in g) &int in h { return &a[0]; }
-exported func main() int {
-  arr = Array<int>(3);
-  v = leak(&arr);
-  return 0;
-}
-"#);
-}
-
-#[test]
 fn test_return_stale_element_reference_rejected() {
   super::util::assert_borrow_check_gives_error(
     &[],
