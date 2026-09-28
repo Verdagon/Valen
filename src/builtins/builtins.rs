@@ -76,6 +76,16 @@ where
   Source::from_code_map(&result)
 }
 
+pub fn builtin_source_for_panic<'a, 'ctx>(
+  parse_arena: &'ctx ParseArena<'a>,
+  keywords: &'ctx Keywords<'a>,
+) -> Source<'a>
+where
+    'a: 'ctx,
+{
+  builtin_source_bundle(parse_arena, keywords, &["panic"])
+}
+
 pub fn builtin_source_for_panicutils<'a, 'ctx>(
   parse_arena: &'ctx ParseArena<'a>,
   keywords: &'ctx Keywords<'a>,
