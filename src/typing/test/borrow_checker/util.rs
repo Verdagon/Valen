@@ -1,5 +1,5 @@
 use crate::typing::test::compiler_test_compilation::compiler_test_compilation;
-use crate::builtins::builtins::{builtin_source_for_arith, builtin_source_for_arrays, builtin_source_for_panic, empty_v_builtins_stub};
+use crate::builtins::builtins::{builtin_source_bundle, empty_v_builtins_stub};
 use crate::code_source::{CodeSource, Source};
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;
@@ -14,13 +14,33 @@ pub struct GroupFactsView {
   pub accessed_group_sets: Vec<Vec<u32>>,
 }
 
-pub fn assert_borrow_error_renders(code: &str, expected: &str) {
+fn code_source_for<'a, 'ctx>(
+  builtins: &[&str],
+  code: &str,
+  parse_arena: &'ctx ParseArena<'a>,
+  parser_keywords: &'ctx Keywords<'a>,
+) -> CodeSource<'a>
+where
+  'a: 'ctx,
+{
+  if builtins.is_empty() {
+    CodeSource::new(vec![new_test_code_map(parse_arena, code)])
+  } else {
+    CodeSource::new(vec![
+      builtin_source_bundle(parse_arena, parser_keywords, builtins),
+      new_test_code_map(parse_arena, code),
+      Source::Fn(empty_v_builtins_stub),
+    ])
+  }
+}
+
+pub fn assert_borrow_check_gives_error(builtins: &[&str], code: &str, expected: &str) {
   let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
   let parse_arena = ParseArena::new(&parse_bump);
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let code_source = code_source_for(builtins, code, &parse_arena, &parser_keywords);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
     &typing_interner,
@@ -34,13 +54,13 @@ pub fn assert_borrow_error_renders(code: &str, expected: &str) {
   assert_humanized_eq(&humanize_compile_error(&mut compile, err), expected);
 }
 
-pub fn assert_compiles_clean(code: &str) {
+pub fn assert_borrow_check_passes(builtins: &[&str], code: &str) {
   let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
   let parse_arena = ParseArena::new(&parse_bump);
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let code_source = code_source_for(builtins, code, &parse_arena, &parser_keywords);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
     &typing_interner,
@@ -53,13 +73,13 @@ pub fn assert_compiles_clean(code: &str) {
   compile.expect_compiler_outputs();
 }
 
-pub fn assert_param_noalias(code: &str, function_human_name: &str, expected: &[bool]) {
+pub fn param_noalias_of(builtins: &[&str], code: &str, function_human_name: &str) -> Vec<bool> {
   let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
   let parse_arena = ParseArena::new(&parse_bump);
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let code_source = code_source_for(builtins, code, &parse_arena, &parser_keywords);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
     &typing_interner,
@@ -70,16 +90,16 @@ pub fn assert_param_noalias(code: &str, function_human_name: &str, expected: &[b
     &code_source,
   );
   let hinputs = compile.expect_compiler_outputs();
-  assert_eq!(hinputs.param_noalias(function_human_name), expected);
+  hinputs.param_noalias(function_human_name).to_vec()
 }
 
-pub fn group_facts_of(code: &str, function_human_name: &str) -> GroupFactsView {
+pub fn group_facts_of(builtins: &[&str], code: &str, function_human_name: &str) -> GroupFactsView {
   let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
   let parse_arena = ParseArena::new(&parse_bump);
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let code_source = code_source_for(builtins, code, &parse_arena, &parser_keywords);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
     &typing_interner,
@@ -99,130 +119,4 @@ pub fn group_facts_of(code: &str, function_human_name: &str) -> GroupFactsView {
       .map(|(_loc, set)| set.to_vec())
       .collect(),
   }
-}
-
-pub fn group_facts_of_with_arrays(code: &str, function_human_name: &str) -> GroupFactsView {
-  let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![
-    builtin_source_for_arrays(&parse_arena, &parser_keywords),
-    new_test_code_map(&parse_arena, code),
-    Source::Fn(empty_v_builtins_stub),
-  ]);
-  let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
-    &typing_interner,
-    &scout_arena,
-    &keywords,
-    &parser_keywords,
-    &parse_arena,
-    &code_source,
-  );
-  let hinputs = compile.expect_compiler_outputs();
-  let info = hinputs.aliasing_info(function_human_name);
-  GroupFactsView {
-    group_paths: info.group_paths.iter().map(|g| g.name()).collect(),
-    accessed_group_sets: info
-      .instruction_loc_to_accessed_groups
-      .iter()
-      .map(|(_loc, set)| set.to_vec())
-      .collect(),
-  }
-}
-
-pub fn assert_borrow_error_renders_with_panic(code: &str, expected: &str) {
-  let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![
-    builtin_source_for_panic(&parse_arena, &parser_keywords),
-    new_test_code_map(&parse_arena, code),
-    Source::Fn(empty_v_builtins_stub),
-  ]);
-  let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
-    &typing_interner,
-    &scout_arena,
-    &keywords,
-    &parser_keywords,
-    &parse_arena,
-    &code_source,
-  );
-  let err = compile.get_compiler_outputs().err().expect("expected a borrow error, got Ok");
-  assert_humanized_eq(&humanize_compile_error(&mut compile, err), expected);
-}
-
-pub fn assert_borrow_error_renders_with_arrays(code: &str, expected: &str) {
-  let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![
-    builtin_source_for_arrays(&parse_arena, &parser_keywords),
-    new_test_code_map(&parse_arena, code),
-    Source::Fn(empty_v_builtins_stub),
-  ]);
-  let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
-    &typing_interner,
-    &scout_arena,
-    &keywords,
-    &parser_keywords,
-    &parse_arena,
-    &code_source,
-  );
-  let err = compile.get_compiler_outputs().err().expect("expected a borrow error, got Ok");
-  assert_humanized_eq(&humanize_compile_error(&mut compile, err), expected);
-}
-
-pub fn assert_compiles_clean_with_arith(code: &str) {
-  let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![
-    builtin_source_for_arith(&parse_arena, &parser_keywords),
-    new_test_code_map(&parse_arena, code),
-    Source::Fn(empty_v_builtins_stub),
-  ]);
-  let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
-    &typing_interner,
-    &scout_arena,
-    &keywords,
-    &parser_keywords,
-    &parse_arena,
-    &code_source,
-  );
-  compile.expect_compiler_outputs();
-}
-
-pub fn assert_compiles_clean_with_arrays(code: &str) {
-  let (parse_bump, scout_bump, typing_bump) = (Bump::new(), Bump::new(), Bump::new());
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code_source = CodeSource::new(vec![
-    builtin_source_for_arrays(&parse_arena, &parser_keywords),
-    new_test_code_map(&parse_arena, code),
-    Source::Fn(empty_v_builtins_stub),
-  ]);
-  let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation(
-    &typing_interner,
-    &scout_arena,
-    &keywords,
-    &parser_keywords,
-    &parse_arena,
-    &code_source,
-  );
-  compile.expect_compiler_outputs();
 }

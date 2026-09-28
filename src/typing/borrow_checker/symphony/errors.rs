@@ -14,8 +14,6 @@ pub fn humanize_borrow_error<'s, 't>(
     BorrowErrorKind::BorrowIntoMovedArgument { local, borrow_arg, move_arg } => {
       unimplemented!()
     }
-    // The `At <pos>:` header already points the caret at the argument's own source location,
-    // so the message doesn't name a variable.
     BorrowErrorKind::UseAfterChurn { .. } | BorrowErrorKind::UseAfterChurnTemporary { .. } => {
       format!(
         "Used a borrow after invalidated."

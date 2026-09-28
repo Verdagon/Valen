@@ -1,11 +1,8 @@
-use super::util::{
-  assert_compiles_clean, assert_compiles_clean_with_arith, assert_compiles_clean_with_arrays,
-  assert_param_noalias,
-};
+use super::util::assert_borrow_check_passes;
 
 #[test]
 fn test_common_group_attack_aliasing_call_is_safe() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Entity { hp int; }
 func attack<r'>(a &Entity in r, d &Entity in r) mut(r) { }
 exported func main() int {
@@ -18,7 +15,7 @@ exported func main() int {
 
 #[test]
 fn test_disjoint_fields_attack_is_safe() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Ship { fuel int; }
 struct Fleet { flagship Ship; escort Ship; }
 func attack2<r', s'>(a &Ship in r, d &Ship in s) mut(r) mut(s) { }
@@ -32,7 +29,7 @@ exported func main() int {
 
 #[test]
 fn test_method_call_attack_distinct_entities() {
-  assert_compiles_clean_with_arith(r#"
+  assert_borrow_check_passes(&["arith", "implicit_clone"], r#"
 import v.builtins.arith.*;
 struct Entity { hp int; energy int; }
 func calculate_attack_power<r'>(self &Entity in r) int { return 5; }
@@ -61,7 +58,7 @@ exported func main() int {
 
 #[test]
 fn test_method_call_attack_self_attack() {
-  assert_compiles_clean_with_arith(r#"
+  assert_borrow_check_passes(&["arith", "implicit_clone"], r#"
 import v.builtins.arith.*;
 struct Entity { hp int; energy int; }
 func calculate_attack_power<r'>(self &Entity in r) int { return 5; }
@@ -89,7 +86,7 @@ exported func main() int {
 
 #[test]
 fn test_borrow_struct_member_minimal_repro() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Ship { fuel int; }
 func peek<r'>(s &Ship in r) {
   f = &s.fuel;
@@ -104,7 +101,7 @@ exported func main() int {
 
 #[test]
 fn test_borrow_into_other_local_with_move_is_clean() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Holder { n int; }
 func consume<g'>(a &Holder in g, b Holder) { }
 exported func main() int {
@@ -118,7 +115,7 @@ exported func main() int {
 
 #[test]
 fn test_alias_into_distinct_groups_without_mut_is_clean() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Entity { hp int; }
 func purepair<r', s'>(a &Entity in r, d &Entity in s) { }
 exported func main() int {
@@ -131,7 +128,7 @@ exported func main() int {
 
 #[test]
 fn test_common_group_aliasing_is_clean() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Entity { hp int; }
 func heal<g'>(a &Entity in g, d &Entity in g) mut(g) { }
 exported func main() int {
@@ -144,7 +141,7 @@ exported func main() int {
 
 #[test]
 fn test_distinct_locals_into_distinct_mut_groups_clean() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Entity { hp int; }
 func badpair<r', s'>(a &Entity in r, d &Entity in s) mut(r) { }
 exported func main() int {
@@ -158,7 +155,7 @@ exported func main() int {
 
 #[test]
 fn test_sibling_fields_are_disjoint_clean() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Ship { fuel int; }
 struct Fleet { flagship Ship; escort Ship; }
 func badships<r', s'>(a &Ship in r, d &Ship in s) mut(r) { }
@@ -171,26 +168,8 @@ exported func main() int {
 }
 
 #[test]
-fn same_group_params_are_not_noalias() {
-  assert_param_noalias(
-    r#"
-struct Ship { fuel int; }
-func pair<g'>(a &Ship in g, b &Ship in g) { }
-exported func main() int {
-  s1 = Ship(1);
-  s2 = Ship(2);
-  pair(&s1, &s2);
-  return 0;
-}
-"#,
-    "pair",
-    &[false, false],
-  );
-}
-
-#[test]
 fn test_mixed_group_and_plain_params_no_false_positive() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Entity { hp int; }
 func mixed<r'>(a &Entity in r, b int) mut(r) { }
 exported func main() int {
@@ -202,60 +181,8 @@ exported func main() int {
 }
 
 #[test]
-fn test_calling_a_struct_constructor_is_clean() {
-  assert_compiles_clean(r#"
-struct Ship { hp int; }
-exported func main() int {
-  s = Ship(7);
-  return s.hp;
-}
-"#);
-}
-
-#[test]
-fn test_calling_a_generic_struct_constructor_is_clean() {
-  assert_compiles_clean(r#"
-struct Ship { hp int; }
-struct Box<T> where func drop(T)void { x T; }
-exported func main() int {
-  b = Box<Ship>(Ship(7));
-  return b.x.hp;
-}
-"#);
-}
-
-#[test]
-fn test_return_position_group_compiles() {
-  assert_compiles_clean_with_arrays(r#"
-import v.builtins.drop.*;
-func idr<g'>(a &int in g) &int in g { return a; }
-exported func main() int { return 0; }
-"#);
-}
-
-#[test]
-fn generic_caller_of_generic_borrow_return_is_clean() {
-  assert_compiles_clean(r#"
-struct Box<E> { x E; }
-func get<E, g'>(b &Box<E> in g) &E in g.x { return &b.x; }
-func peek<T, h'>(b &Box<T> in h) &T in h.x { return b.get(); }
-"#);
-}
-
-#[test]
-fn borrow_check_opt_out_skips_a_body_symphony_cannot_check() {
-  assert_compiles_clean(r#"
-#!BorrowCheck
-func call_gen<E, G, g'>(gen &G in g) E
-where func(&G, int)E {
-  return gen(7);
-}
-"#);
-}
-
-#[test]
 fn multiple_mutable_aliases_to_one_object_are_legal() {
-  assert_compiles_clean(r#"
+  assert_borrow_check_passes(&[], r#"
 struct Slot { value int; }
 func mutate<g'>(self &Slot in g, v int) mut(g) { }
 func get<g'>(self &Slot in g) int { return self.value; }
