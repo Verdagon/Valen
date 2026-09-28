@@ -1,5 +1,5 @@
 
-use super::util::assert_borrow_error_renders_with_arrays;
+use super::util::{assert_borrow_error_renders, assert_borrow_error_renders_with_arrays, assert_borrow_error_renders_with_panic};
 
 #[test]
 fn test_use_element_after_churn_rejected() {
@@ -223,3 +223,38 @@ Invalidated at test:0.vale:9:13:
 "#,
   );
 }
+
+
+
+#[test]
+fn use_after_churn_through_a_rustlike_borrow_return_is_rejected() {
+  assert_borrow_error_renders_with_panic(
+    r#"
+import v.builtins.panic.*;
+
+struct Domino { }
+func add_glyph<d'>(self &Domino in d) mut(d) { __vbi_panic(); }
+func get_glyph<d'>(self &Domino in d) &Glyph in d... { __vbi_panic(); }
+struct Glyph { }
+func location<g'>(self &Glyph in g) &int in g... { __vbi_panic(); }
+
+exported func foo(d &Domino) int mut(d) {
+  d.add_glyph();
+  d_ref = d.get_glyph();
+  d.add_glyph();
+  return d_ref.location();
+}
+"#,
+    r#"At test:0.vale:14:10:
+  return d_ref.location();
+         ^^^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:13:4:
+  d.add_glyph();
+   ^^^^^^^^^^^^
+"#,
+  );
+}
+
+
+

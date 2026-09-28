@@ -433,17 +433,38 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             GroupRootG::Rune(rune) => GroupStep::Rune(rune),
             GroupRootG::ParamAnonymousGroup(_) => unimplemented!(),
             GroupRootG::Local(var_name) => GroupStep::Local(var_name),
-            GroupRootG::AmbientMulti() => GroupStep::AmbientMulti { }
+            GroupRootG::AmbientMulti() => GroupStep::AmbientMulti {}
           };
       let subroot =
-      group_tree.name_to_child
-          .entry(key)
-          .or_insert_with(|| GroupSubtree {
-            last_mut_effect: None,
-            name_to_child: IndexMap::new(),
-          });
-      self.check_target_group_invalidated_since(
-        subroot, mentioned_group.steps, use_range, group_templata.born_at)?;
+          group_tree.name_to_child
+              .entry(key)
+              .or_insert_with(|| GroupSubtree {
+                last_mut_effect: None,
+                name_to_child: IndexMap::new(),
+              });
+      match mentioned_group.ellipsis {
+        false => {
+          self.check_target_group_invalidated_since(
+            subroot, mentioned_group.steps, use_range, group_templata.born_at)?;
+        }
+        true => {
+          // Will detect any mutations to any ancestors
+          self.check_target_group_invalidated_since(
+            subroot, mentioned_group.steps, use_range, group_templata.born_at)?;
+          // TODO: optimize, we're descending into the subtree twice
+          // Now detect any mutations to the target itself, plus its descendant groups
+          let subtree = self.lookup_group_subtree_inner(subroot, mentioned_group.steps);
+          if let Some(last_mut_effect_loc) = subtree.last_mut_effect {
+            if last_mut_effect_loc.loct.path > group_templata.born_at.path {
+              return Err(ICompileErrorT::BorrowCheckError {
+                range: use_range,
+                kind: BorrowErrorKind::UseAfterChurn { local: RefKey::Held(0), churned_at: last_mut_effect_loc.range }
+              });
+            }
+          }
+          // TODO: look for any changes to any descendants
+        }
+      }
     }
     Ok(())
   }

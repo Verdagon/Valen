@@ -1119,7 +1119,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     GroupPathG {
       root: root,
       steps: bump_g.alloc_slice_copy(path.as_slice()),
-      ellipsis: false,
+      ellipsis: matches!(group_s, GroupS::Ellipsis { .. }),
     }
   }
 
@@ -1192,7 +1192,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           _ => panic!("Unexpected type in group elements expr"),
         }
       }
-      GroupS::Ellipsis { .. } => unimplemented!(),
+      GroupS::Ellipsis { base, .. } => {
+        let (root, mut path, type_gt) =
+            self.groupify_group_expr_inner(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *base, group_born_at_loct);
+        (root, path, type_gt)
+      }
       GroupS::Union { .. } => unimplemented!(),
     }
   }
