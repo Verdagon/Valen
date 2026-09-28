@@ -1,4 +1,5 @@
 use crate::postparsing::ast::LocationInDenizen;
+use crate::postparsing::expressions::FunctionCallSE;
 use crate::postparsing::names::*;
 use crate::postparsing::rules::rules::{IRulexSR, RuneUsage};
 use crate::solver::solver::{FailedSolve, ISolverError};
@@ -37,6 +38,7 @@ where
     explicit_template_arg_runes_s: &[IRuneS<'s>],
     receiving_rune_to_explicit_template_arg_rune: &[(RuneUsage<'s>, RuneUsage<'s>)],
     given_args_exprs_2: &[ExpressionTE<'s, 't>],
+    maybe_source_call: Option<&'s FunctionCallSE<'s>>,
   ) -> Result<
     (ExpressionTE<'s, 't>, PendingTempDrops<'s, 't>),
     ICompileErrorT<'s, 't>
@@ -226,6 +228,13 @@ where
             result_te,
           ))),
         };
+        if let Some(source_call) = maybe_source_call {
+          coutputs
+            .function_to_call_sources
+            .entry(nenv.parent_function_env.id)
+            .or_default()
+            .insert(loct, source_call);
+        }
         // A call can return a &&T (e.g. Opt.get's returned &T with T = &str), so decay to &T.
         let call_expr_decayed = match call_expr.result() {
           KindT::BorrowRef(BorrowRefT { inner: KindT::BorrowRef(_) }) => ExpressionTE::Deref(
@@ -324,6 +333,7 @@ where
       explicit_template_arg_runes_s,
       receiving_rune_to_explicit_template_arg_rune,
       &rewritten_args,
+      None,
     ) {
       Ok(result) => Ok(Some(result)),
       Err(_) => Ok(None),
@@ -505,6 +515,7 @@ where
     explicit_template_arg_runes_s: &[IRuneS<'s>],
     receiving_rune_to_explicit_template_arg_rune: &[(RuneUsage<'s>, RuneUsage<'s>)],
     args_exprs_2: &[ExpressionTE<'s, 't>],
+    maybe_source_call: Option<&'s FunctionCallSE<'s>>,
   ) -> Result<(ExpressionTE<'s, 't>, PendingTempDrops<'s, 't>), ICompileErrorT<'s, 't>> {
     let (call_expr, pending_temp_drops) = self.evaluate_call(
       coutputs,
@@ -518,6 +529,7 @@ where
       explicit_template_arg_runes_s,
       receiving_rune_to_explicit_template_arg_rune,
       args_exprs_2,
+      maybe_source_call,
     )?;
     Ok((call_expr, pending_temp_drops))
   }

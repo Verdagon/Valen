@@ -33,7 +33,7 @@ use crate::postparsing::itemplatatype::{
 };
 use crate::postparsing::names::{
   ArgumentRuneS, CodeNameS, CodeNameValS, CodeRuneS, FunctionNameS, IFunctionDeclarationNameS,
-  IImpreciseNameS, ImplicitRuneValS,
+  IImpreciseNameS, ImplicitGroupRuneS, ImplicitRuneValS,
   CodeVarNameS, IImpreciseNameValS, IRuneValS, IStructDeclarationNameS, IVarDeclarationNameS,
   ReturnRuneS,
   TopLevelInterfaceDeclarationNameS, TopLevelStructDeclarationNameS,
@@ -192,10 +192,7 @@ where
             range,
             result_rune: full_type_rune,
             inner_rune: value_rune,
-            // Unspecified on the outer rule: the group lives on the `tyype` below, matching the
-            // postparser — `region_s_into_region_sr` collapses a group to `Unspecified` on the rule
-            // side, so an `in g` group survives only on the `BorrowRefST`.
-            region: RegionSR::Unspecified,
+            region: RegionSR::Group(group),
           })];
           let tyype = ITypeST::BorrowRef(scout_arena.alloc(BorrowRefST {
             range,
@@ -467,7 +464,10 @@ where
         range,
         result_rune: own_rune,
         inner_rune,
-        region: RegionSR::Unspecified,
+        region: RegionSR::Group(scout_arena.alloc(GroupS::Rune(scout_arena.alloc(RuneUsage {
+          range,
+          rune: scout_arena.intern_rune(IRuneValS::ImplicitGroupRune(ImplicitGroupRuneS { range })),
+        })))),
       }));
       Some(own_rune)
     }
@@ -519,7 +519,10 @@ where
       Some(ITypeST::BorrowRef(scout_arena.alloc(BorrowRefST {
         range,
         inner: scout_arena.alloc(inner_st),
-        region: RegionS::Unspecified,
+        region: RegionS::Group(scout_arena.alloc(GroupS::Rune(scout_arena.alloc(RuneUsage {
+          range,
+          rune: scout_arena.intern_rune(IRuneValS::ImplicitGroupRune(ImplicitGroupRuneS { range })),
+        })))),
       })))
     }
     // A Rust citizen resolves by its SHORT single-segment name: the importer seeds it in the `rust`
@@ -880,8 +883,7 @@ where
             range,
             result_rune: full_type_rune,
             inner_rune: value_rune,
-            // Unspecified on the outer rule: the group lives on the `tyype`, matching the postparser.
-            region: RegionSR::Unspecified,
+            region: RegionSR::Group(group),
           })];
           // The `tyype` is what the anon-substruct macro copies into its `where func __call` bound, and
           // `resolve_citizen_bounds` reifies it with no access to these header rules — so it must be the

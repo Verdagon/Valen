@@ -35,7 +35,8 @@ use crate::postparsing::post_parser::{
 };
 use crate::postparsing::rules::rule_scout::translate_rulexes;
 use crate::postparsing::rules::rules::{ILiteralSL, IRulexSR, IntLiteralSL, LiteralSR, RuneUsage};
-use crate::postparsing::rules::templex_scout::translate_templex;
+use crate::postparsing::rules::templex_scout::{translate_templex, translate_templex_into_type_st};
+use crate::postparsing::rules::types::ITypeST;
 use crate::postparsing::variable_uses::{VariableDeclarations, VariableUses};
 use crate::utils::range::RangeS;
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -593,7 +594,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
               return Ok((stack_frame_arg, result, arg_self_uses, arg_child_uses));
             }
             let mut rule_builder = Vec::new();
-            let container_template_arg_rune_usages = self.translate_maybe_template_args(
+            let (container_template_arg_rune_usages, container_template_arg_types) = self.translate_maybe_template_args(
               &parent_env,
               lidb,
               &mut rule_builder,
@@ -607,6 +608,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             let load_part = self.scout_arena.alloc(LoadPartSE {
               name: load_part_name,
               explicit_template_args: container_template_arg_rune_usages,
+              explicit_template_arg_types: container_template_arg_types,
             });
             let overload_set_se =
               &*self.scout_arena.alloc(IExpressionSE::OverloadSet(OverloadSetSE {
@@ -673,7 +675,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             name: self.scout_arena.intern_str(binary_call.function_name.str().as_str()),
           }));
         let load_part =
-          self.scout_arena.alloc(LoadPartSE { name: part_name, explicit_template_args: &[] });
+          self.scout_arena.alloc(LoadPartSE { name: part_name, explicit_template_args: &[], explicit_template_arg_types: &[] });
         let overload_set_se = &*self.scout_arena.alloc(IExpressionSE::OverloadSet(OverloadSetSE {
           lookup: OutsideLoadSE {
             range: PostParser::eval_range(&file_coordinate, binary_call.range),
@@ -737,7 +739,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         let method_imprecise_name_s =
           translate_imprecise_name(self.scout_arena, &file_coordinate, &method_name_p);
         let mut rule_builder: Vec<IRulexSR<'s>> = Vec::new();
-        let method_template_arg_rune_usages = self.translate_maybe_template_args(
+        let (method_template_arg_rune_usages, method_template_arg_types) = self.translate_maybe_template_args(
           &parent_env,
           lidb,
           &mut rule_builder,
@@ -758,7 +760,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           }) => {
             assert!(uncoerced_subject_self_uses.is_empty());
             assert!(uncoerced_subject_child_uses.is_empty());
-            let container_template_arg_rune_usages = self.translate_maybe_template_args(
+            let (container_template_arg_rune_usages, container_template_arg_types) = self.translate_maybe_template_args(
               &parent_env,
               lidb,
               &mut rule_builder,
@@ -778,6 +780,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             let container_part = self.scout_arena.alloc(LoadPartSE {
               name: container_load_part_name,
               explicit_template_args: container_template_arg_rune_usages,
+              explicit_template_arg_types: container_template_arg_types,
             });
             (stack_frame3, args, self_uses, child_uses, vec![&*container_part])
           }
@@ -814,6 +817,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         let method_load_part = self.scout_arena.alloc(LoadPartSE {
           name: method_imprecise_name_s,
           explicit_template_args: method_template_arg_rune_usages,
+          explicit_template_arg_types: method_template_arg_types,
         });
         let mut parts: Vec<&'s LoadPartSE<'s>> = container_parts;
         parts.push(&*method_load_part);
@@ -1306,7 +1310,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             name: self.keywords.not,
           }));
         let load_part =
-          self.scout_arena.alloc(LoadPartSE { name: not_name, explicit_template_args: &[] });
+          self.scout_arena.alloc(LoadPartSE { name: not_name, explicit_template_args: &[], explicit_template_arg_types: &[] });
         let callable_expr_s = &*self.scout_arena.alloc(IExpressionSE::OverloadSet(OverloadSetSE {
           lookup: OutsideLoadSE {
             range: PostParser::eval_range(&file_coordinate, not.range),
@@ -1487,7 +1491,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
               name: self.keywords.plus,
             }));
           let load_part =
-            self.scout_arena.alloc(LoadPartSE { name: plus_name, explicit_template_args: &[] });
+            self.scout_arena.alloc(LoadPartSE { name: plus_name, explicit_template_args: &[], explicit_template_arg_types: &[] });
           let callable_expr = self.scout_arena.alloc(IExpressionSE::OverloadSet(OverloadSetSE {
             lookup: OutsideLoadSE {
               range: add_call_range,
@@ -1549,7 +1553,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
             name: self.keywords.range,
           }));
         let load_part =
-          self.scout_arena.alloc(LoadPartSE { name: range_name, explicit_template_args: &[] });
+          self.scout_arena.alloc(LoadPartSE { name: range_name, explicit_template_args: &[], explicit_template_arg_types: &[] });
         let callable_se = &*self.scout_arena.alloc(IExpressionSE::OverloadSet(OverloadSetSE {
           lookup: OutsideLoadSE {
             range: PostParser::eval_range(&file_coordinate, range_pe.range),
@@ -1670,26 +1674,33 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
     rule_builder: &mut Vec<IRulexSR<'s>>,
     context_region: IRuneS<'s>,
     maybe_template_args: Option<&'p [&'p ITemplexPT<'p>]>,
-  ) -> &'s [RuneUsage<'s>] {
+  ) -> (&'s [RuneUsage<'s>], &'s [ITypeST<'s>]) {
     match maybe_template_args {
-      None => &[],
+      None => (&[], &[]),
       Some(template_args) => {
-        let runes: Vec<RuneUsage<'s>> = template_args
-          .iter()
-          .map(|template_arg| {
-            let mut child_lidb = lidb.child();
-            translate_templex(
-              self.scout_arena,
-              self.keywords,
-              parent_env.clone(),
-              &mut child_lidb,
-              rule_builder,
-              context_region.clone(),
-              template_arg,
-            )
-          })
-          .collect();
-        self.scout_arena.alloc_slice_from_vec(runes)
+        let mut runes: Vec<RuneUsage<'s>> = Vec::new();
+        let mut types: Vec<ITypeST<'s>> = Vec::new();
+        for template_arg in template_args {
+          let mut child_lidb = lidb.child();
+          runes.push(translate_templex(
+            self.scout_arena,
+            self.keywords,
+            parent_env.clone(),
+            &mut child_lidb,
+            rule_builder,
+            context_region.clone(),
+            template_arg,
+          ));
+          types.push(translate_templex_into_type_st(
+            self.scout_arena,
+            parent_env.clone(),
+            template_arg,
+          ));
+        }
+        (
+          self.scout_arena.alloc_slice_from_vec(runes),
+          self.scout_arena.alloc_slice_from_vec(types),
+        )
       }
     }
   }

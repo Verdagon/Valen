@@ -7,7 +7,12 @@ use crate::collect_where_tnode;
 use crate::interner::StrI;
 use crate::keywords::Keywords;
 use crate::parse_arena::ParseArena;
+use crate::postparsing::expressions::{
+  FunctionCallSE, IExpressionSE, LoadPartSE, OutsideLoadSE, OverloadSetSE,
+};
+use crate::postparsing::names::CodeNameS;
 use crate::postparsing::names::CodeRuneS;
+use crate::postparsing::names::IImpreciseNameS;
 use crate::postparsing::names::IRuneS;
 use crate::scout_arena::ScoutArena;
 use crate::tests::tests::new_test_code_map;
@@ -633,6 +638,56 @@ exported func main() int {
     &code_source,
   );
   let _coutputs = compile.expect_compiler_outputs();
+}
+
+#[test]
+fn typing_records_call_source_for_containing_function() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+func moo(x int) int { return x; }
+exported func main() int { return moo(7); }
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _ = compile.expect_compiler_outputs();
+  let coutputs = compile.cached_coutputs();
+
+  let recorded: Vec<&FunctionCallSE> = coutputs
+    .function_to_call_sources
+    .values()
+    .flat_map(|per_containing_fn| per_containing_fn.values().copied())
+    .collect();
+  match recorded.as_slice() {
+    [fc] => match fc.callable_expr {
+      IExpressionSE::OverloadSet(OverloadSetSE {
+        lookup:
+          OutsideLoadSE {
+            parts:
+              [LoadPartSE {
+                name: IImpreciseNameS::CodeName(CodeNameS { name: StrI("moo"), .. }),
+                ..
+              }],
+            ..
+          },
+      }) => {}
+      other => panic!("expected the recorded call source to be moo, got {:?}", other),
+    },
+    other => panic!("expected exactly one recorded call source, got {:?}", other),
+  }
 }
 
 #[test]

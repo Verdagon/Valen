@@ -744,7 +744,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           result: if diverges(then_call_ge) { else_call_ge.result() } else { then_call_ge.result() },
         })))
       }
-      ExpressionTE::While(WhileTE { range, loct, block: block_te, result, .. }) => {
+      ExpressionTE::While(WhileTE { range, loct, pre_iteration_loct, post_iteration_loct, block: block_te, result, .. }) => {
         let BlockTE { range: block_range, inner: block_inner, .. } = block_te;
         let block_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, *block_inner, local_rune_to_templata, local_to_type_g)?;
         // The loop churns everything its body churns: a reference is spoiled on the first iteration by a
@@ -754,6 +754,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         Ok(ExpressionGE::While(bump_g.alloc(WhileGE {
           range: *range,
           loct: *loct,
+          pre_iteration_loct: *pre_iteration_loct,
+          post_iteration_loct: *post_iteration_loct,
           block: BlockGE { range: *block_range, inner: block_ge, result: block_ge.result() },
           result: self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *result, None),
           mut_effects: bump_g.alloc_slice_copy(churns.as_slice()),
@@ -838,8 +840,21 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         // Str is share-flavored, so a string literal is a share reference, which carries no group.
         let result = bump_g.alloc(ShareRefGT {
           inner: self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, c.result.inner, None),
+          group: GroupTemplataG {
+            group: bump_g.alloc_slice_copy(&[
+              GroupPathG {
+                root: GroupRootG::AmbientMulti(),
+                steps: bump_g.alloc_slice_copy(&[
+                  GroupChildStepG::Variant { variant_name: self.scout_arena.intern_str("str") }
+                ]),
+                ellipsis: false,
+              }
+            ]),
+            kind: KindGT::Str(StrGT {}),
+            born_at: c.loct,
+          },
         });
-        Ok(ExpressionGE::ConstantStr(bump_g.alloc(ConstantStrGE { range: c.range, value: c.value, result })))
+        Ok(ExpressionGE::ConstantStr(bump_g.alloc(ConstantStrGE { range: c.range, loct: c.loct, value: c.value, result })))
       }
       // A virtual, bound, or extern call: no callee signature to read groups or effects off, so the
       // result is groupless and the call churns nothing.
@@ -1207,7 +1222,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             let group_expr_g: GroupExprG<'s, 't, 'g> =
               match bst_group_s {
                 // An unannotated borrow (and a `held` one) lives in its parameter's own anonymous group.
-                RegionS::Unspecified | RegionS::Held => Self::anonymous_group_expr(bump_g, written.name),
+                RegionS::Held => Self::anonymous_group_expr(bump_g, written.name),
                 RegionS::Group(b) => {
                   let paths: Vec<GroupPathG<'s, 't, 'g>> = self
                     .groupify_group_expr(coutputs, bump_g, rune_to_templata, local_to_type_g, b)
@@ -1303,7 +1318,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         };
         let element_gt =
           self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, a.element_type(), element_written.as_ref());
-        KindGT::StaticSizedArray(bump_g.alloc(StaticSizedArrayGT { name: a.name, element_type: element_gt }))
+        let size_gt = self.groupify_templata(coutputs, bump_g, rune_to_templata, local_to_type_g, a.size());
+        KindGT::StaticSizedArray(bump_g.alloc(StaticSizedArrayGT { name: a.name, size: size_gt, element_type: element_gt }))
       }
       KindT::RuntimeSizedArray(a) => {
         let element_written = match maybe_written.map(|w| w.type_s) {
@@ -1339,7 +1355,16 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       // citizen, so the payload recurses against the same written type.
       KindT::ShareRef(ShareRefT { inner: inner_tt }) => {
         let inner_gt = self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, *inner_tt, maybe_written);
-        KindGT::ShareRef(bump_g.alloc(ShareRefGT { inner: inner_gt }))
+        KindGT::ShareRef(bump_g.alloc(ShareRefGT {
+          inner: inner_gt,
+          group: GroupTemplataG {
+            group: bump_g.alloc_slice_copy(&[
+              GroupPathG { root: GroupRootG::AmbientMulti(), steps: &[], ellipsis: false }
+            ]),
+            kind: inner_gt,
+            born_at: LocT { path: &[] },
+          },
+        }))
       }
     }
   }
@@ -1463,7 +1488,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
             match group_s {
               // An unannotated parameter names no rune, so the argument binds nothing.
-              RegionS::Unspecified | RegionS::Held => {}
+              RegionS::Held => {}
               RegionS::Group(group_s) => {
                 match group_s {
                   GroupS::Rune(RuneUsage { rune, .. }) => {

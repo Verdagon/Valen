@@ -673,7 +673,7 @@ where
             );
             let template_arg_runes: Vec<IRuneS<'s>> =
               last_part.explicit_template_args.iter().map(|a| a.rune).collect();
-            let (call_expr_2, pending_from_call) = match self.evaluate_prefix_call(
+            let (call_expr_2, pending_drops_from_call) = match self.evaluate_prefix_call(
               coutputs,
               nenv,
               loct.add(self.typing_interner, 1),
@@ -685,6 +685,7 @@ where
               &template_arg_runes,
               &container_receiving_rune_to_explicit_template_arg_rune,
               &args_exprs_2,
+              Some(fc),
             ) {
               Ok(v) => v,
               Err(e) => {
@@ -693,11 +694,11 @@ where
               }
             };
             let mut all_pending = pending_from_args;
-            all_pending.absorb(pending_from_call);
+            all_pending.absorb(pending_drops_from_call);
             Ok((call_expr_2, returns_from_args, all_pending))
           }
           _ => {
-            let (undecayed_callable_expr_2, returns_from_callable, pending_from_callable) = self.evaluate_expression(
+            let (undecayed_callable_expr_2, returns_from_callable, pending_drops_from_callable) = self.evaluate_expression(
               coutputs,
               nenv,
               loct.add(self.typing_interner, 0),
@@ -726,11 +727,11 @@ where
               ) {
               Ok(v) => v,
               Err(e) => {
-                pending_from_callable.defuse_on_error();
+                pending_drops_from_callable.defuse_on_error();
                 return Err(e);
               }
             };
-            let (function_pointer_call_2, pending_from_call) = match self.evaluate_prefix_call(
+            let (call_te, pending_drops_from_call) = match self.evaluate_prefix_call(
               coutputs,
               nenv,
               loct.add(self.typing_interner, 2),
@@ -746,20 +747,21 @@ where
               &[],
               &[],
               &args_exprs_2,
+              Some(fc),
             ) {
               Ok(v) => v,
               Err(e) => {
-                pending_from_callable.defuse_on_error();
+                pending_drops_from_callable.defuse_on_error();
                 pending_from_args.defuse_on_error();
                 return Err(e);
               }
             };
             let mut all_returns = returns_from_callable;
             all_returns.extend(returns_from_args);
-            let mut all_pending = pending_from_callable;
+            let mut all_pending = pending_drops_from_callable;
             all_pending.absorb(pending_from_args);
-            all_pending.absorb(pending_from_call);
-            Ok((function_pointer_call_2, all_returns, all_pending))
+            all_pending.absorb(pending_drops_from_call);
+            Ok((call_te, all_returns, all_pending))
           }
         }
       }
@@ -1411,12 +1413,13 @@ where
           None,
         ));
         let loop_block_fate_starting = loop_block_fate.snapshot(self.typing_interner);
+        let while_loct = loct.add(self.typing_interner, 0);
         let (body_expressions_with_result, body_returns_from_exprs) = self
           .evaluate_block_statements(
             coutputs,
             loop_block_fate_starting,
             &mut loop_block_fate,
-            loct.add(self.typing_interner, 1),
+            while_loct.add(self.typing_interner, 1),
             parent_ranges,
             outer_call_location,
             nenv.default_region(),
@@ -1464,7 +1467,9 @@ where
 
         let loop_expr_2 = ExpressionTE::While(self.typing_interner.alloc(WhileTE::new(
           w.range,
-          loct.add(self.typing_interner, 0),
+          while_loct,
+          while_loct.add(self.typing_interner, 0),
+          while_loct.add(self.typing_interner, 2),
           uncoerced_body_block_2,
         )));
         Ok((loop_expr_2, body_returns_from_exprs, PendingTempDrops::none()))
@@ -1522,7 +1527,8 @@ where
             &[rune_parent_env_lookup_rule],
             &[self_rune_irune],
             &[],
-            &[])?;
+            &[],
+            None)?;
         let make_list_drops = self.unlet_and_drop_all(coutputs, nenv, loct.add(self.typing_interner, 7), range_with_parent_t, outer_call_location, region, &make_list_pending.take_vars())?;
 
         let list_local = self.make_temporary_local(
@@ -1537,12 +1543,14 @@ where
                 self.scout_arena.alloc(IExpressionSE::Block(m.body));
             let mut loop_block_fate = NodeEnvironmentBox::new(loop_nenv.make_child(self.typing_interner, body_se_as_expr, None));
             let loop_block_fate_starting = loop_block_fate.snapshot(self.typing_interner);
+            let while_loct = loct.add(self.typing_interner, 0);
+            let body_loct = while_loct.add(self.typing_interner, 1);
             let (user_body_te, body_returns_from_exprs) =
                 self.evaluate_block_statements(
                     coutputs,
                     loop_block_fate_starting,
                     &mut loop_block_fate,
-                    loct.add(self.typing_interner, 4),
+                    body_loct.add(self.typing_interner, 4),
                     parent_ranges,
                     outer_call_location,
                     nenv.default_region(),
@@ -1551,7 +1559,7 @@ where
             // We store the iteration result in a local because the loop body will have
             // breaks, and we can't have a BreakTE inside a FunctionCallTE, see BRCOBS.
             let iteration_result_local = self.make_temporary_local(
-                &mut loop_block_fate, loct.add(self.typing_interner, 5), user_body_te.result());
+                &mut loop_block_fate, body_loct.add(self.typing_interner, 5), user_body_te.result());
             let let_iteration_result_te = ExpressionTE::LetNormal(self.typing_interner.alloc(
                 LetNormalTE::new(m.range, iteration_result_local, user_body_te)));
 
@@ -1559,12 +1567,12 @@ where
                 IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner)), coutputs, m.range, region,
                 self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(CodeNameValS { name: self.keywords.add })));
             let local_lookup_te = ExpressionTE::LocalLookup(self.typing_interner.alloc(
-                LocalLookupTE::new(self.typing_interner, m.range, loct.add(self.typing_interner, 9), list_local)));
+                LocalLookupTE::new(self.typing_interner, m.range, body_loct.add(self.typing_interner, 9), list_local)));
             let unlet_iter = ExpressionTE::Unlet(self.typing_interner.alloc(self.unlet_local_without_dropping(m.range, &mut loop_block_fate, iteration_result_local)));
             let (add_call, add_pending) = self.evaluate_prefix_call(
                 coutputs,
                 &mut loop_block_fate,
-                loct.add(self.typing_interner, 6),
+                body_loct.add(self.typing_interner, 6),
                 range_with_parent_t,
                 outer_call_location,
                 region,
@@ -1572,8 +1580,9 @@ where
                 &[],
                 &[],
                 &[],
-                &[local_lookup_te, unlet_iter])?;
-            let add_drops = self.unlet_and_drop_all(coutputs, &mut loop_block_fate, loct.add(self.typing_interner, 8), range_with_parent_t, outer_call_location, region, &add_pending.take_vars())?;
+                &[local_lookup_te, unlet_iter],
+                None)?;
+            let add_drops = self.unlet_and_drop_all(coutputs, &mut loop_block_fate, body_loct.add(self.typing_interner, 8), range_with_parent_t, outer_call_location, region, &add_pending.take_vars())?;
             let mut body_exprs: Vec<ExpressionTE<'s, 't>> = vec![let_iteration_result_te, add_call];
             body_exprs.extend(add_drops);
             let body_te = BlockTE::new(m.body.range, ExpressionTE::Consecutor(self.typing_interner.alloc(
@@ -1595,7 +1604,7 @@ where
             }
 
             let while_te = ExpressionTE::While(self.typing_interner.alloc(WhileTE::new(
-                m.range, loct.add(self.typing_interner, 0), body_te)));
+                m.range, while_loct, while_loct.add(self.typing_interner, 0), while_loct.add(self.typing_interner, 2), body_te)));
             (while_te, body_returns_from_exprs)
         };
 
@@ -1822,7 +1831,7 @@ where
         ))
       }
       IExpressionSE::StaticArrayFromCallable(sa) => {
-        let (callable_te, returns_from_callable, pending_from_callable) = self.evaluate_expression(
+        let (callable_te, returns_from_callable, pending_drops_from_callable) = self.evaluate_expression(
           coutputs,
           nenv,
           loct.add(self.typing_interner, 0),
@@ -1846,14 +1855,14 @@ where
         ) {
           Ok(v) => v,
           Err(e) => {
-            pending_from_callable.defuse_on_error();
+            pending_drops_from_callable.defuse_on_error();
             return Err(e);
           }
         };
         Ok((
           ExpressionTE::StaticArrayFromCallable(self.typing_interner.alloc(expr_2)),
           returns_from_callable,
-          pending_from_callable,
+          pending_drops_from_callable,
         ))
       }
       IExpressionSE::NewRuntimeSizedArray(nrsa) => {
@@ -1866,7 +1875,7 @@ where
           region,
           nrsa.size,
         )?;
-        let (maybe_callable_te, returns_from_callable, pending_from_callable) = match nrsa.callable {
+        let (maybe_callable_te, returns_from_callable, pending_drops_from_callable) = match nrsa.callable {
           None => (None, HashSet::default(), PendingTempDrops::none()),
           Some(callable_ae) => {
             let (callable_te, rets, cb_pending) = self.evaluate_expression(
@@ -1898,14 +1907,14 @@ where
           Ok(v) => v,
           Err(e) => {
             pending_from_size.defuse_on_error();
-            pending_from_callable.defuse_on_error();
+            pending_drops_from_callable.defuse_on_error();
             return Err(e);
           }
         };
         let mut returns = returns_from_size;
         returns.extend(returns_from_callable);
         let mut all_pending = pending_from_size;
-        all_pending.absorb(pending_from_callable);
+        all_pending.absorb(pending_drops_from_callable);
         Ok((expr_2, returns, all_pending))
       }
       IExpressionSE::Block(b) => {

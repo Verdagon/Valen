@@ -116,7 +116,7 @@ func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -149,7 +149,7 @@ func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -183,7 +183,7 @@ func main() int {
 ";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,

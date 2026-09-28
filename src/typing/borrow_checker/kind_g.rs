@@ -110,6 +110,7 @@ pub struct USizeGT;
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StaticSizedArrayGT<'s, 't, 'g> {
   pub name: IdT<'s, 't>,
+  pub size: ITemplataG<'s, 't, 'g>,
   pub element_type: KindGT<'s, 't, 'g>,
 }
 

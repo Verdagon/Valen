@@ -337,6 +337,8 @@ where
 {
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
+  pub pre_iteration_loct: LocT<'t>,
+  pub post_iteration_loct: LocT<'t>,
   pub block: BlockTE<'s, 't>,
   pub result: KindT<'s, 't>,
   _sealed: (),
@@ -346,14 +348,20 @@ impl<'s, 't> WhileTE<'s, 't>
 where
   's: 't,
 {
-  pub fn new(range: RangeS<'s>, loct: LocT<'t>, block: BlockTE<'s, 't>) -> WhileTE<'s, 't> {
+  pub fn new(
+    range: RangeS<'s>,
+    loct: LocT<'t>,
+    pre_iteration_loct: LocT<'t>,
+    post_iteration_loct: LocT<'t>,
+    block: BlockTE<'s, 't>,
+  ) -> WhileTE<'s, 't> {
     let result = match block.result {
       KindT::Void(_) => block.result,
       KindT::Never(NeverT { from_break: true }) => KindT::Void(VoidT),
       KindT::Never(NeverT { from_break: false }) => block.result,
       _ => panic!("vwat"),
     };
-    WhileTE { range, loct, block, result, _sealed: () }
+    WhileTE { range, loct, pre_iteration_loct, post_iteration_loct, block, result, _sealed: () }
   }
 }
 #[derive(Debug)]

@@ -99,6 +99,7 @@ pub fn flatten<'s, 't, 'g>(path: &GroupPathG<'s, 't, 'g>) -> Vec<GroupStep<'s, '
     GroupRootG::Rune(r) => GroupStep::Rune(r),
     GroupRootG::ParamAnonymousGroup(n) => GroupStep::ParamAnonymousGroup(n),
     GroupRootG::Local(n) => GroupStep::Local(n),
+    GroupRootG::AmbientMulti() => GroupStep::AmbientMulti(),
   });
   for step in path.steps {
     v.push(match *step {

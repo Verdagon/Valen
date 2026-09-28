@@ -234,6 +234,15 @@ exported func main() int { return 0; }
 }
 
 #[test]
+fn generic_caller_of_generic_borrow_return_is_clean() {
+  assert_compiles_clean(r#"
+struct Box<E> { x E; }
+func get<E, g'>(b &Box<E> in g) &E in g.x { return &b.x; }
+func peek<T, h'>(b &Box<T> in h) &T in h.x { return b.get(); }
+"#);
+}
+
+#[test]
 fn multiple_mutable_aliases_to_one_object_are_legal() {
   assert_compiles_clean(r#"
 struct Slot { value int; }

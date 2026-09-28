@@ -8,7 +8,7 @@ use crate::utils::range::RangeS;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ITypeST<'s> {
-  AnonymousRune(&'s AnonymousRuneST<'s>),
+  AnonymousRune(&'s AnonymousRuneST<'s>), // We should get rid of this, name them in postparser
   Bool(&'s BoolST<'s>),
   Call(&'s CallST<'s>),
   Function(&'s FunctionST<'s>),

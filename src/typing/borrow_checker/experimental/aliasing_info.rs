@@ -172,6 +172,9 @@ fn group_id_step<'s, 't>(step: &GroupStep<'s, 't>) -> GroupIdStepT<'s> {
     GroupStep::Variant { .. } => {
       panic!("vfail: variant group step in aliasing info is not yet supported")
     }
+    GroupStep::AmbientMulti() => {
+      panic!("vfail: ambient multi group step in aliasing info is not yet supported")
+    }
   }
 }
 

@@ -3,6 +3,7 @@ use crate::parsing::ast::LoadAsP;
 use crate::postparsing::ast::{FunctionS, IExpressionSE as IExpressionSETrait, LocationInDenizen};
 use crate::postparsing::names::{CodeNameS, IImpreciseNameS, IRuneS, IVarDeclarationNameS};
 use crate::postparsing::patterns::AtomSP;
+use crate::postparsing::rules::types::ITypeST;
 use crate::postparsing::rules::{IRulexSR, RuneUsage};
 use crate::utils::range::RangeS;
 
@@ -297,7 +298,8 @@ pub struct LocalLoadSE<'s> {
 #[derive(Debug, PartialEq)]
 pub struct LoadPartSE<'s> {
   pub name: IImpreciseNameS<'s>,
-  pub explicit_template_args: &'s [RuneUsage<'s>],
+  pub explicit_template_args: &'s [RuneUsage<'s>], // Remove this in favor of explicit_template_arg_types, rules going away soon
+  pub explicit_template_arg_types: &'s [ITypeST<'s>], // After we remove the above, rename this to explicit_template_args
 }
 
 #[derive(Debug, PartialEq)]

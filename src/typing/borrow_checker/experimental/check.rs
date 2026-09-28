@@ -48,13 +48,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   /// return type that is a borrow with no group.
   fn check_return_group(
     &self,
-    function_s: &'s FunctionS<'s>,
+    _function_s: &'s FunctionS<'s>,
   ) -> Result<(), ICompileErrorT<'s, 't>> {
-    if let Some(ITypeST::BorrowRef(st)) = &function_s.maybe_return_type {
-      if matches!(st.region, RegionS::Unspecified) {
-        return Err(self.borrow_error(BorrowErrorKind::GrouplessReturnBorrow, st.range));
-      }
-    }
     Ok(())
   }
 }

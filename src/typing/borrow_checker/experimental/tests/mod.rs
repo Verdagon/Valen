@@ -1,5 +1,3 @@
-// Borrow-checker tests, re-enabled against the rewritten checker; their diagnostics now point at the
-// use site. `util` holds the shared harness helpers.
 mod attack_tests;
 mod ellipsis_tests;
 mod held_register_tests;

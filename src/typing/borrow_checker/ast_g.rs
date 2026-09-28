@@ -195,6 +195,10 @@ where
 {
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
+  // Before the loop, we issue all the contained mutations, at this location.
+  pub pre_iteration_loct: LocT<'t>,
+  // After the loop, we issue all the contained mutations, at this location.
+  pub post_iteration_loct: LocT<'t>,
   pub block: BlockGE<'s, 't, 'g>,
   pub result: KindGT<'s, 't, 'g>,
   pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],

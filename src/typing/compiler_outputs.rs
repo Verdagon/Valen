@@ -1,6 +1,7 @@
 use crate::interner::{Interner, StrI};
 use crate::postparsing::ast::{ICitizenDenizenS, IDenizenS, LocationInDenizen};
 use crate::postparsing::ast::{FunctionS, ImplS, InterfaceS, StructS};
+use crate::postparsing::expressions::FunctionCallSE;
 use crate::postparsing::names::*;
 use crate::postparsing::*;
 use crate::typing::ast::ast::*;
@@ -57,6 +58,9 @@ where
 
   pub signature_to_aliasing_info: IndexMap<SignatureT<'s, 't>, &'t FunctionAliasingInfoT<'s, 't>>,
 
+  pub function_to_call_sources:
+    IndexMap<IdT<'s, 't>, IndexMap<LocT<'t>, &'s FunctionCallSE<'s>>>,
+
   // VCOORD: whether a postparsed already exists in these tables must be undetectable to callers.
   template_id_to_postparsed_function: IndexMap<&'t IdT<'s, 't>, &'s FunctionS<'s>>,
   template_id_to_postparsed_struct: IndexMap<&'t IdT<'s, 't>, &'s StructS<'s>>,
@@ -108,6 +112,7 @@ where
       return_types_by_signature: HashMap::default(),
       signature_to_function: IndexMap::default(),
       signature_to_aliasing_info: IndexMap::default(),
+      function_to_call_sources: IndexMap::default(),
       template_id_to_postparsed_function,
       template_id_to_postparsed_struct,
       template_id_to_postparsed_interface,
