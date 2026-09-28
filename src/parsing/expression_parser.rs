@@ -881,7 +881,9 @@ where
 
     assert!(iter.has_next());
 
-    let let_or_lone_expr: &'p IExpressionPE<'p> = if self.next_is_set_expr(iter) {
+    let saw_let = iter.try_skip_word(self.keywords.let_).is_some();
+
+    let let_or_lone_expr: &'p IExpressionPE<'p> = if !saw_let && self.next_is_set_expr(iter) {
       self.parse_arena.alloc(
         self
           .parse_mut_expr(iter, stop_on_curlied, templex_parser, pattern_parser)?

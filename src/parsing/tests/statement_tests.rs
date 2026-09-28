@@ -38,6 +38,36 @@ fn simple_let() {
 }
 
 #[test]
+fn let_keyword_prefix() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let expr = compile_block_contents_expect(&parse_arena, &keywords, "let x = 4;");
+  match &expr {
+    IExpressionPE::Consecutor(ConsecutorPE {
+      inners:
+        [IExpressionPE::Let(LetPE {
+          pattern:
+            PatternPP {
+              destination:
+                Some(DestinationLocalP {
+                  decl: INameDeclarationP::LocalNameDeclaration(NameP(_, StrI("x"))),
+                  ..
+                }),
+              templex: None,
+              destructure: None,
+              ..
+            },
+          source: IExpressionPE::ConstantInt(ConstantIntPE { value: 4, .. }),
+          ..
+        }), IExpressionPE::Void(_), ..],
+      ..
+    }) => {}
+    _ => panic!("expected let x = 4; to parse like x = 4;"),
+  }
+}
+
+#[test]
 fn multiple_statements() {
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
