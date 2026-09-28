@@ -40,7 +40,7 @@ fn interfacemutparamexport()  { run("programs/externs/interfacemutparamexport", 
 fn structmutreturnexport()    { run("programs/externs/structmutreturnexport", 42); }
 
 #[test]
-fn structmutparamexport()     { run_without_borrow_check("programs/externs/structmutparamexport", 42); }
+fn structmutparamexport()     { run("programs/externs/structmutparamexport", 42); }
 #[test]
 #[ignore]
 fn rsamutparamexport()        { run("programs/externs/rsamutparamexport", 10); }
@@ -56,10 +56,10 @@ fn ssamutparamexport()        { run_without_borrow_check("programs/externs/ssamu
 fn ssamutreturnexport()       { run("programs/externs/ssamutreturnexport", 42); }
 
 #[test]
-fn simpleexternreturn()        { run_without_borrow_check("programs/externs/simpleexternreturn", 42); }
+fn simpleexternreturn()        { run("programs/externs/simpleexternreturn", 42); }
 
 #[test]
-fn simpleexternparam()         { run_without_borrow_check("programs/externs/simpleexternparam", 42); }
+fn simpleexternparam()         { run("programs/externs/simpleexternparam", 42); }
 #[test]
 #[ignore]
 fn structimmreturnextern()     { run("programs/externs/structimmreturnextern", 42); }

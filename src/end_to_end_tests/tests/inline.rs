@@ -5,7 +5,7 @@ use crate::end_to_end_tests::{
 
 #[test]
 fn pass_manager_main_builds_simple_program_end_to_end() {
-    assert_inline_compile_and_run_dbg_without_borrow_check(
+    assert_inline_compile_and_run_dbg(
         "exported func main() int { return 3; }",
         3,
         &[
@@ -18,7 +18,7 @@ fn pass_manager_main_builds_simple_program_end_to_end() {
 
 #[test]
 fn pass_manager_main_builds_program_using_builtin_some() {
-    assert_inline_compile_and_run_dbg_without_borrow_check(
+    assert_inline_compile_and_run_dbg(
         "exported func main() int { x = Some<int>(3); return 0; }",
         0,
         &[
@@ -31,7 +31,7 @@ fn pass_manager_main_builds_program_using_builtin_some() {
 
 #[test]
 fn basic_function_call() {
-    assert_inline_compile_and_run_dbg_without_borrow_check(
+    assert_inline_compile_and_run_dbg(
         "func helper() int { return 42; }\nexported func main() int { return helper(); }",
         42,
         &[

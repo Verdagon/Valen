@@ -50,6 +50,7 @@ where func drop(E)void {
   drop_into(^arr, &DropFunctor<E>());
 }
 
+#!BorrowCheck
 func Array<E, G, g'>(n int, generator &G in g) []E
 where
   func(&G, int)E,

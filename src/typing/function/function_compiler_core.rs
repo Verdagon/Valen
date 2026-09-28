@@ -110,7 +110,7 @@ where
           .function
           .attributes
           .iter()
-          .filter(|a| !matches!(a, IFunctionAttributeS::Export(_)))
+          .filter(|a| !matches!(a, IFunctionAttributeS::Export(_) | IFunctionAttributeS::MacroCall(_)))
           .collect();
         let attributes_t = self.translate_attributes(&attributes_without_export);
 
@@ -525,6 +525,7 @@ where
     a: &[IFunctionAttributeS<'s>],
   ) -> Vec<IFunctionAttributeT<'s>> {
     a.iter()
+      .filter(|attr| !matches!(attr, IFunctionAttributeS::MacroCall(_)))
       .map(|attr| {
         match attr {
           IFunctionAttributeS::UserFunction(_) => IFunctionAttributeT::UserFunction,

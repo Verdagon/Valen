@@ -114,6 +114,18 @@ where
       }));
     }
 
+    if iter.try_skip_complete_word("#!BorrowCheck") {
+      let end = iter.get_pos();
+      return Ok(Some(IAttributeL::MacroCall {
+        range: RangeL::new(attribute_begin, end),
+        inclusion: IMacroInclusionL::DontCallMacro,
+        name: WordLE {
+          range: RangeL::new(attribute_begin, end),
+          str: self.keywords.borrow_check,
+        },
+      }));
+    }
+
     if iter.try_skip_complete_word("abstract") {
       let end = iter.get_pos();
       return Ok(Some(IAttributeL::AbstractAttribute(RangeL::new(attribute_begin, end))));

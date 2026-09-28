@@ -698,7 +698,7 @@ exported func main() int {
   return __copy_prim(&a.3);
 }
 "#;
-    let mut compile = test_with_array_builtins_without_borrow_check(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
+    let mut compile = test_with_array_builtins(&compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena, &instantiating_bump, code);
     let monouts = compile.get_monouts();
     let main = monouts.lookup_function_by_str("main");
     collect_only_inode!(

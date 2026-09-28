@@ -3180,7 +3180,7 @@ struct Pattern share {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -3778,7 +3778,7 @@ func main() int {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -4079,7 +4079,7 @@ exported func main() int {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,
@@ -5669,7 +5669,7 @@ exported func main() void {
     Source::Fn(empty_v_builtins_stub),
   ]);
   let typing_interner = TypingInterner::new(&typing_bump);
-  let mut compile = compiler_test_compilation_without_borrow_check(
+  let mut compile = compiler_test_compilation(
     &typing_interner,
     &scout_arena,
     &keywords,

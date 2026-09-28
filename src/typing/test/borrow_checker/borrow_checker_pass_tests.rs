@@ -243,6 +243,17 @@ func peek<T, h'>(b &Box<T> in h) &T in h.x { return b.get(); }
 }
 
 #[test]
+fn borrow_check_opt_out_skips_a_body_symphony_cannot_check() {
+  assert_compiles_clean(r#"
+#!BorrowCheck
+func call_gen<E, G, g'>(gen &G in g) E
+where func(&G, int)E {
+  return gen(7);
+}
+"#);
+}
+
+#[test]
 fn multiple_mutable_aliases_to_one_object_are_legal() {
   assert_compiles_clean(r#"
 struct Slot { value int; }

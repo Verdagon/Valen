@@ -44,7 +44,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put(parse_arena.intern_file_coordinate(module_b_coord, "moduleB.vale"), module_b_code.to_string());
 
-    let mut compile = test_multi_without_borrow_check(
+    let mut compile = test_multi(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],
@@ -84,7 +84,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put(parse_arena.intern_file_coordinate(module_b_coord, "moduleB.vale"), module_b_code.to_string());
 
-    let mut compile = test_multi_without_borrow_check(
+    let mut compile = test_multi(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],
@@ -128,7 +128,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put(parse_arena.intern_file_coordinate(module_b_coord, "moduleB.vale"), module_b_code.to_string());
 
-    let mut compile = test_multi_without_borrow_check(
+    let mut compile = test_multi(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],
@@ -171,7 +171,7 @@ exported func main() int {
     map.put(parse_arena.intern_file_coordinate(module_a_coord, "moduleA.vale"), module_a_code.to_string());
     map.put_package(module_b_bork_coord, HashMap::default());
 
-    let mut compile = test_multi_without_borrow_check(
+    let mut compile = test_multi(
         &compilation_bump, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         vec![module_a_coord],
