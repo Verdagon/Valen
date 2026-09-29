@@ -196,3 +196,16 @@ exported func main() int {
 }
 "#);
 }
+
+#[test]
+fn mut_param_is_accepted() {
+  assert_borrow_check_passes(&[], r#"
+struct Entity { hp int; }
+func heal(e &Entity mut) { set e.hp = 5; }
+exported func main() int {
+  x = Entity(3);
+  heal(&x);
+  return 0;
+}
+"#);
+}

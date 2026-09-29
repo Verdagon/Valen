@@ -2014,6 +2014,42 @@ exported func foo(g &int, x &int in g) int { return 0; }
 }
 
 #[test]
+fn param_mut_lowers_to_group_and_mut_effect() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let program = compile(
+    &scout_arena,
+    &keywords,
+    &parse_arena,
+    r#"
+struct Entity { hp int; }
+exported func f(e &Entity mut) int { return 0; }
+"#,
+  );
+  let foo = program.lookup_function("f");
+  let param_rune = match foo.params {
+    [ParameterS {
+      tyype:
+        ITypeST::BorrowRef(BorrowRefST {
+          region: RegionS::Group(GroupS::Rune(RuneUsage { rune: param_rune, .. })),
+          ..
+        }),
+      ..
+    }] => *param_rune,
+    other => panic!("bad param rune: {:?}", other),
+  };
+  let effect_rune =
+      match foo.effects {
+        [EffectS::Mut(GroupS::Rune(RuneUsage { rune: effect_rune, .. }))] => *effect_rune,
+        other => panic!("bad effects: {:?}", other),
+      };
+  assert_eq!(param_rune, effect_rune);
+}
+
+#[test]
 fn unanchored_group_rune_is_rejected() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

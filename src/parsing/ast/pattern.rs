@@ -28,6 +28,7 @@ pub struct PatternPP<'p> {
   pub destination: Option<DestinationLocalP<'p>>,
   pub templex: Option<ITemplexPT<'p>>,
   pub destructure: Option<DestructureP<'p>>,
+  pub mut_effect: Option<RangeL>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

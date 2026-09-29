@@ -45,7 +45,7 @@ use crate::postparsing::rules::templex_scout::{
   translate_signature_type_st, translate_templex_into_type_st,
 };
 use crate::postparsing::rules::types::{
-  CallST, EffectS, GroupS, ITypeST, NameST, RegionS, RuneUsageST,
+  BorrowRefST, CallST, EffectS, GroupS, ITypeST, NameST, RegionS, RuneUsageST,
 };
 use crate::postparsing::variable_uses::{VariableDeclarationS, VariableDeclarations, VariableUses};
 use crate::utils::arena_index_map::ArenaIndexMap;
@@ -129,6 +129,7 @@ struct ExplicitParamExtras<'s> {
   range: RangeS<'s>,
   abi_name: IVarDeclarationNameS<'s>,
   destructure: Option<(AtomSP<'s>, &'s [IRulexSR<'s>])>,
+  mut_group: Option<RuneUsage<'s>>,
 }
 
 impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
@@ -315,7 +316,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
         .unwrap_or(0),
       is_interface_internal_method: matches!(&maybe_parent, IFunctionParent::ParentCitizen(_)),
     };
-    let effects_s = translate_effects_p_into_effects_s(
+    let mut effects_s = translate_effects_p_into_effects_s(
       self.scout_arena,
       &IEnvironmentS::FunctionEnvironment(function_environment.clone()),
       function.header.effects,
@@ -480,6 +481,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
                 range: param_range.clone(),
                 abi_name: self_name,
                 destructure: None,
+                mut_group: None,
               },
             )
           }
@@ -603,6 +605,17 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
               }
             };
 
+            let mut_group =
+                match (pattern.mut_effect, tyype) {
+                  (Some(_), ITypeST::BorrowRef(borrow_ref)) => {
+                    match borrow_ref.region {
+                      RegionS::Group(GroupS::Rune(rune_usage)) => Some(**rune_usage),
+                      _ => None,
+                    }
+                  }
+                  _ => None,
+                };
+
             (
               ParameterS::new(
                 param_range.clone(),
@@ -616,7 +629,12 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
                 value_type_rules,
               ),
               synthesized,
-              ExplicitParamExtras { range: param_range.clone(), abi_name: name, destructure },
+              ExplicitParamExtras {
+                range: param_range.clone(),
+                abi_name: name,
+                destructure,
+                mut_group,
+              },
             )
           }
           _ => panic!("POSTPARSER_SCOUT_FUNCTION_PARAM_FORM_NOT_YET_IMPLEMENTED"),
@@ -630,6 +648,11 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       explicit_params_s.push(param_s);
       if let Some(rune) = maybe_rune {
         explicit_params_synthesized_runes.push(rune);
+      }
+      if let Some(mut_group_rune) = extras.mut_group {
+        effects_s.push(EffectS::Mut(
+          self.scout_arena.alloc(GroupS::Rune(self.scout_arena.alloc(mut_group_rune))),
+        ));
       }
       explicit_param_extras.push(extras);
     }

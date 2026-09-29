@@ -161,7 +161,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           self.note_mut_effect(group_tree, mel, mut_effect.steps);
         }
       }
-      ExpressionGE::Mutate(_) => unimplemented!(),
+      ExpressionGE::Mutate(MutateGE { destination_expr, source_expr, .. }) => {
+        self.check_expr(coutputs, function_s, arena, group_tree, *source_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, group_tree, *destination_expr, next_held_num)?;
+
+        // TODO: issue mut effects for `set` statements
+        // let dest_group_path = ...
+        // self.note_mut_effect(group_tree, MutEffectLoc { loct, range }, dest_group_path);
+      }
       ExpressionGE::Restackify(_) => unimplemented!(),
       ExpressionGE::Break(_) => {
         // Do nothing

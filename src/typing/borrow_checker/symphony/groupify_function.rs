@@ -442,7 +442,32 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           mut_effects: &[], // TODO
         })))
       }
-      ExpressionTE::Mutate(MutateTE { .. }) => unimplemented!(),
+      ExpressionTE::Mutate(MutateTE { range, loct, destination_expr, source_expr, result, ..}) => {
+        let destination_expr =
+            self.groupify_expression(
+                coutputs,
+                function_s,
+                function_t,
+                bump_g,
+                access_log,
+                *destination_expr,
+                local_rune_to_templata,
+                local_to_type_g)?;
+        let source_expr =
+            self.groupify_expression(
+                coutputs,
+                function_s,
+                function_t,
+                bump_g,
+                access_log,
+                *source_expr,
+                local_rune_to_templata,
+                local_to_type_g)?;
+        let result = expect_borrowref_gt(destination_expr.result()).inner;
+        let mutate_ge =
+            MutateGE { range: *range, loct: *loct, destination_expr, source_expr, result };
+        Ok(ExpressionGE::Mutate(bump_g.alloc(mutate_ge)))
+      }
       ExpressionTE::Restackify(RestackifyTE { .. }) => unimplemented!(),
       ExpressionTE::Break(BreakTE { range, result, .. }) => {
         Ok(ExpressionGE::Break(bump_g.alloc(BreakGE {
