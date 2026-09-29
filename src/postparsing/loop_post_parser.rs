@@ -65,6 +65,7 @@ pub(crate) fn scout_each<'s, 'p, 'ctx>(
             }),
             templex: None,
             destructure: None,
+            mut_effect: None,
           }),
           source: iterable_expr,
         }));
@@ -114,6 +115,7 @@ pub(crate) fn scout_each<'s, 'p, 'ctx>(
             }),
             templex: None,
             destructure: None,
+            mut_effect: None,
           }),
           source: begin_call_expr_p,
         }));
@@ -238,6 +240,7 @@ fn scout_each_body<'s, 'p, 'ctx>(
           }),
           templex: None,
           destructure: None,
+          mut_effect: None,
         }),
         source: next_call_expr_p,
       });

@@ -237,9 +237,12 @@ where
       }
     };
 
-    if is_parameter {
-      let _ = iter.try_skip_word(self.keywords.r#mut);
-    }
+    let mut_effect =
+        if is_parameter {
+          iter.try_skip_word(self.keywords.r#mut)
+        } else {
+          None
+        };
 
     let maybe_destructure = match iter.peek_cloned() {
       Some(INodeLEEnum::Squared(SquaredLE {
@@ -283,6 +286,7 @@ where
       destination: maybe_destination_local,
       templex: maybe_type,
       destructure: maybe_destructure,
+      mut_effect,
     })
   }
 }

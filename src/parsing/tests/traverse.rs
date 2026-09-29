@@ -366,7 +366,7 @@ where
   F: Fn(NodeRefP<'p>) -> Option<T>,
 {
   collect_if(pred, out, NodeRefP::Pattern(pattern));
-  let PatternPP { range: _range, destination, templex, destructure } = pattern;
+  let PatternPP { range: _range, destination, templex, destructure, mut_effect: _mut_effect } = pattern;
   if let Some(destination) = destination {
     visit_destination(pred, out, destination);
   }
