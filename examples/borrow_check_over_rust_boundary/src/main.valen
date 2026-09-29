@@ -1,0 +1,24 @@
+// This example shows Valen's borrow checker enforcing Rust's memory safety for Rust objects.
+//
+// From the compiler repo directory (e.g. ~/valen):
+//  1. Build the compiler itself (see ~/valen/README.md)
+//  2. Build this example program:
+//        COMPANION_RUSTC=$(rustup which --toolchain rustc-for-valen rustc) ./target/debug/valen build --manifest-path examples/borrow_check_over_rust_boundary/Valen.toml
+//  It should fail with a compiler error:
+//      valenc-rs: At main:main.valen:19:10:
+//        return gem.get();
+//               ^^^
+//      Used a borrow after invalidated.
+//      Invalidated at main:main.valen:18:8:
+//        chest.replace(8i64);
+//             ^^^^^^^^^^^^^^
+
+import chest.Chest;
+import chest.Gem;
+
+exported func main() i64 {
+  chest = Chest.new();
+  gem = chest.gem();
+  chest.replace(8i64);
+  return gem.get();
+}

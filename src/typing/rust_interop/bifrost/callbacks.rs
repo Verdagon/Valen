@@ -17,7 +17,11 @@ use crate::interner::StrI;
 use crate::typing::compiler::Compiler;
 use crate::typing::oracles::Oracles;
 use crate::typing::TypingPassOptions;
+use crate::typing::compiler_error_humanizer::humanize;
 use crate::utils::code_hierarchy::PackageCoordinate;
+use crate::utils::source_code_utils::{
+  humanize_pos_code_map, line_containing, line_range_containing, lines_between,
+};
 
 #[derive(Clone, Copy)]
 pub enum BifrostPhase {
@@ -114,7 +118,18 @@ impl<'ctx, 's, 't, 'i, 'p> Callbacks for BifrostRustcCallbacks<'ctx, 's, 't, 'i,
             coutputs
           }
           Err(err) => {
-            *self.typing_error_slot.borrow_mut() = Some(format!("{err:?}"));
+            let humanized =
+                humanize(
+                  self.state.scout_arena,
+                  &self.state.typing_interner,
+                  false,
+                  &|x| humanize_pos_code_map(&code_map, &x),
+                  &|a, b| lines_between(&code_map, &a, &b),
+                  &|x| line_range_containing(&code_map, &x),
+                  &|x| line_containing(&code_map, &x),
+                  err,
+                );
+            *self.typing_error_slot.borrow_mut() = Some(humanized);
             return Compilation::Stop;
           }
         };

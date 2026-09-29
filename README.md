@@ -1,37 +1,56 @@
 
 # Valen 
 
-Valen is a programming language that's aims to be not only **fast** and **memory-safe**, but also **easy and flexible**.
+Valen is a programming language that aims to be not only **fast** and **memory-safe**, but also **easy and flexible**.
 
 NOTE: Valen is _still a prototype_ and barely past the proof-of-concept stage. There are holes and sharp edges. We'll release a 0.1 version once it's stable enough to use, stay tuned!
 
 Our plans for Valen:
 
  * **Ecosystem:** Valen is able to call into existing Rust libraries, see [The Golden Spike, and Resurrecting the Vale(n) Programming Language](https://verdagon.dev/blog/golden-spike-reviving-vale-valen)
- * **Speed:** Valen is AOT compiled to LLVM, statically-typed, and aims to be the fastest native language, by giving more fine-grained aliasing information to LLVM. 
- * **Safety:** For memory safety and data-race safety, it is the uses the new [group borrowing](https://verdagon.dev/blog/group-borrowing) technique, which is like a more flexible borrow checking, with mutable aliasing.
+ * **Speed:** Valen is AOT compiled to LLVM, statically-typed, and aims to be the fastest safe language, by giving more fine-grained aliasing information to LLVM. 
+ * **Safety:** For memory safety and data-race safety, it uses the new [group borrowing](https://verdagon.dev/blog/group-borrowing) technique, which is like a more flexible borrow checking, with mutable aliasing.
  * **Flexibility:** We'll be adding generational references and reference counting, which should be usable without `Cell`, `RefCell`, etc.
 
 ## Running a Valen Program
 
- 1. Make a directory for your Valen project:
-    * `mkdir my_valen_project`
-    * `cd my_valen_project`
+ 1. Build the Valen compiler:
+    * Clone the repo, `git clone https://github.com/valen-lang/valen ~/valen`
+    * `cd ~/valen`
+    * `cargo build --bin valec`
+ 2. Make a directory for your Valen project:
+    * `mkdir ~/my_valen_project`
+    * `cd ~/my_valen_project`
     * `mkdir src`
     * Make a `src/main.valen` containing `exported func main() int { return 42; }`
- 2. Build the Valen compiler:
-    * Clone the repo, `git clone https://github.com/valen-lang/valen`
-    * `cd valen`
-    * `cargo build --bin valec`
  3. Compile and run your Valen project:
-    * Compile: `./target/debug/valec build --no-std --builtins-dir-override src/builtins/resources main=test.vale`
+    * Compile: `~/valen/target/debug/valec build --no-std --builtins-dir-override ~/valen/src/builtins/resources main=src`
     * Run: `build/main`
     * See the result: `echo $?` (should be `42`)
 
 ## Running a Valen Program with Rust Libraries
 
- 1. Make a directory for your Valen project:
-    * `mkdir my_valen_project && cd my_valen_project`
+ 1. Install and compile the [patched version of rustc](https://github.com/valen-lang/rust). WARNING: This is a version of rustc that we modified, it is _NOT_ the official rustc!
+    * `git clone https://github.com/valen-lang/rust ~/rust`
+    * `cd ~/rust`
+    * `git checkout per-instance-mir` (This is the branch with our rustc patches)
+    * Add to `config.toml`:
+      ```
+      [llvm]
+      download-ci-llvm = false
+      link-shared = true
+      ```
+    * `./x build`
+    * `./x build --stage 2`
+    * `rustup toolchain link rustc-for-valen ~/rust/build/host/stage1`
+    * `ln -sf ~/rust/build/host/stage0/bin/cargo ~/rust/build/host/stage1/bin/cargo`
+ 2. Build the Valen compiler:
+    * Clone the repo, `git clone https://github.com/valen-lang/valen ~/valen`
+    * `cd ~/valen`
+    * `cargo +rustc-for-valen build --features rust_interop --bin valenc-rs --bin valen`
+ 3. Make a directory for your Valen project:
+    * `mkdir ~/my_valen_project`
+    * `cd ~/my_valen_project`
     * Add a `Valen.toml`:
       ```
       [project]
@@ -55,28 +74,12 @@ Our plans for Valen:
         return d.num_seconds();
       }
       ```
- 2. Install and compile the [patched version of rustc](https://github.com/verdagon/rust). WARNING: This is a version of rustc that we modified, it is _NOT_ the official rustc!
-    * `git clone https://github.com/valen-lang/rust ~/rust`
-    * `cd rust`
-    * `git checkout per-instance-mir` (This is the branch with our rustc patches)
-    * Add to `config.toml`:
-      ```
-      [llvm]
-      download-ci-llvm = false
-      link-shared = true
-      ```
-    * `./x build`
-    * `./x build --stage 2`
-    * `rustup toolchain link rustc-for-valen ~/rust/build/host/stage1`
-    * `ln -sf ~/rust/build/host/stage0/bin/cargo ~/rust/build/host/stage1/bin/cargo`
- 3. Build the Valen compiler:
-    * Clone the repo, `git clone --single-branch --branch experimental https://github.com/verdagon/valen` (Note, this is the experimental branch on my personal fork. It'll get into valen-lang/valen once it's rewritten and stabilized, around mid-November)
-    * `cd valen`
-    * `cargo +rustc-for-valen build --features rust_interop --bin valenc-rs --bin valen`
- 4. Compile and run your Valen project:
-    * Compile: `RUSTUP_TOOLCHAIN=rustc-for-valen ./target/debug/valen build --manifest-path ../testproj/Valen.toml`
-    * Run: `build/main`
+4. Compile and run your Valen project:
+    * Compile: `COMPANION_RUSTC=$(rustup which --toolchain rustc-for-valen rustc) ~/valen/target/debug/valen build --manifest-path Valen.toml`
+    * Run: `target/valen-build/target/debug/main`
     * See the result: `echo $?` (should be `42`)
+
+Let us know if the above sequence of commands doesn't work for you.
 
 ## Historical Notes
 

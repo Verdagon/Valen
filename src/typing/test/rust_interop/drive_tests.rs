@@ -300,7 +300,7 @@ fn chest_gem_use_after_churn_detected() {
       };
 
   let message = err.to_string();
-  assert!(message.contains("BorrowCheckError"), "err:\n{message}");
+  assert!(message.contains("Used a borrow after invalidated"), "err:\n{message}");
 }
 
 #[test]

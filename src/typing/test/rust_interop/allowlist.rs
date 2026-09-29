@@ -7,7 +7,10 @@ exported func main() int {
   return add_two_numbers(20, 22);
 }
 "#, |_| ());
-  assert!(outcome.expect_failure().is("CouldntFindFunctionToCallT"));
+  let failure = outcome.expect_failure();
+  assert!(
+    failure.detail.contains("Couldn't find a suitable function add_two_numbers"),
+    "failure:\n{}", failure.detail);
 }
 
 #[test]
@@ -18,5 +21,8 @@ exported func main() int {
   return seven();
 }
 "#, |_| ());
-  assert!(outcome.expect_failure().is("CouldntFindFunctionToCallT"));
+  let failure = outcome.expect_failure();
+  assert!(
+    failure.detail.contains("Couldn't find a suitable function seven"),
+    "failure:\n{}", failure.detail);
 }

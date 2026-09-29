@@ -1,0 +1,13 @@
+# See main.valen for how to build and run.
+
+[project]
+name = "use_rust_chrono_lib"
+version = "0.1.0"
+edition = "2021"
+
+[rust-dependencies]
+chrono = "0.4"
+
+[[bin]]
+name = "main"
+source = "src/main.valen"

@@ -1,0 +1,15 @@
+// This example shows calling into a Rust library from cargo.
+//
+// From the compiler repo directory (e.g. ~/valen):
+//  1. Build the compiler itself (see ~/valen/README.md)
+//  2. Build this example program:
+//        COMPANION_RUSTC=$(rustup which --toolchain rustc-for-valen rustc) ./target/debug/valen build --manifest-path examples/use_rust_chrono_lib/Valen.toml
+//  3. Run this program with:
+//        examples/use_rust_chrono_lib/target/valen-build/target/debug/main
+
+import chrono.TimeDelta;
+
+exported func main() i64 {
+  d = TimeDelta.seconds(42i64);
+  return d.num_seconds();
+}

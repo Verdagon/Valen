@@ -1,0 +1,13 @@
+# See main.valen for how to build and what error to expect.
+
+[project]
+name = "borrow_check_over_rust_boundary"
+version = "0.1.0"
+edition = "2021"
+
+[rust-dependencies]
+chest = { path = "../../chest" }
+
+[[bin]]
+name = "main"
+source = "src/main.valen"
