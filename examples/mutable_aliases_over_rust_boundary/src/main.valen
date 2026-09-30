@@ -1,0 +1,19 @@
+// This example shows Valen having multiple references to a Rust object, and mutating it through both of them.
+//
+// From the compiler repo directory (e.g. ~/valen):
+//  1. Build the compiler itself (see ~/valen/README.md)
+//  2. Build this example program:
+//        COMPANION_RUSTC=$(rustup which --toolchain rustc-for-valen rustc) ./target/debug/valen build --manifest-path examples/mutable_aliases_over_rust_boundary/Valen.toml
+//  3. Run it:
+//        examples/mutable_aliases_over_rust_boundary/target/valen-build/target/debug/main
+
+import slotlib.Slot;
+
+exported func main() int {
+  slot = Slot.new();
+  ref_a = &slot;
+  ref_b = &slot;
+  ref_a.mutate(42);
+  ref_b.mutate(73);
+  return ref_a.get();
+}
