@@ -1,0 +1,6 @@
+/target
+target
+
+# npm-installed tree-sitter CLI used to regenerate the grammar (see
+# tree-sitter-vale/package.json); not part of the checked-in source.
+node_modules

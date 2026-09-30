@@ -135,6 +135,64 @@ exported func main() {
 
 #[test]
 #[ignore]
+fn lambda_body_type_matches_anonymous_interface_return_type() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+interface AFunction1<P> {
+  func __call(virtual this &AFunction1<P>, a P) int;
+}
+exported func main() {
+  arr = AFunction1<int>((_) => { 4 });
+}
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
+}
+
+#[test]
+#[ignore]
+fn minimal_anonymous_interface_construction() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+interface AFn { func __call(virtual this &AFn); }
+exported func main() { AFn(() => { }); }
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
+}
+
+#[test]
+#[ignore]
 fn tuple_with_all_imm_fields_is_imm() {
   panic!("Unimplemented test: tuple_with_all_imm_fields_is_imm");
 }
@@ -630,6 +688,109 @@ exported func main() int { return moo(7); }
     },
     other => panic!("expected exactly one recorded call source, got {:?}", other),
   }
+}
+
+#[test]
+fn basic_ifunction1_anonymous_subclass() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+import ifunction.ifunction1.*;
+
+exported func main() int {
+  f = IFunction1<int, int>({^_});
+  return (^f)(7);
+}
+";
+  let code_source = CodeSource::new(vec![
+    new_test_code_map(&parse_arena, code),
+    new_test_package_source(&parse_arena, "ifunction.ifunction1"),
+  ]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation_without_borrow_check(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
+}
+
+#[test]
+fn native_anon_substruct_with_multi_param_abstract_method_compiles() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+interface TwoArg {
+  func apply(virtual self &TwoArg, a int, b int) int;
+}
+
+exported func main() int {
+  f = TwoArg((a, b) => { 5 });
+  return f.apply(3, 4);
+}
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation_without_borrow_check(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
+}
+
+#[test]
+fn native_anon_substruct_with_concrete_citizen_borrow_param_compiles() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+#!DeriveStructDrop
+struct W { }
+
+interface IH {
+  func handle(virtual self &IH, w &W) void;
+}
+
+exported func main() {
+  h = IH((w) => { });
+}
+";
+  let code_source = CodeSource::new(vec![
+    Source::builtin_module(&parse_arena, &parser_keywords, "drop"),
+    new_test_code_map(&parse_arena, code),
+    Source::Fn(empty_v_builtins_stub),
+  ]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation_without_borrow_check(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let _coutputs = compile.expect_compiler_outputs();
 }
 
 #[test]

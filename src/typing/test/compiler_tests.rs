@@ -3320,6 +3320,34 @@ exported func main() int {
 }
 
 #[test]
+fn zero_method_anonymous_interface() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r#"
+interface MyInterface {}
+exported func main() {
+  x = MyInterface();
+}
+"#;
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation_without_borrow_check(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  compile.expect_compiler_outputs();
+}
+
+#[test]
 #[ignore]
 fn reports_when_exported_function_depends_on_non_exported_param() {
   let parse_bump = Bump::new();

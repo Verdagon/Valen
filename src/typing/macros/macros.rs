@@ -276,6 +276,7 @@ impl OnStructDefinedMacro {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OnInterfaceDefinedMacro {
+  AnonymousInterface,
   InterfaceDrop,
 }
 
@@ -290,6 +291,9 @@ impl OnInterfaceDefinedMacro {
     's: 't,
   {
     match self {
+      OnInterfaceDefinedMacro::AnonymousInterface => {
+        compiler.get_interface_sibling_entries_anonymous_interface(interface_name, interface_a)
+      }
       OnInterfaceDefinedMacro::InterfaceDrop => {
         compiler.get_interface_sibling_entries_interface_drop(interface_name, interface_a)
       }

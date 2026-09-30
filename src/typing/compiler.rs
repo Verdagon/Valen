@@ -527,6 +527,10 @@ where
     let name_to_interface_defined_macro: HashMap<StrI<'s>, OnInterfaceDefinedMacro> = {
       let mut m = HashMap::default();
       m.insert(self.keywords.derive_interface_drop, OnInterfaceDefinedMacro::InterfaceDrop);
+      m.insert(
+        self.keywords.derive_anonymous_substruct,
+        OnInterfaceDefinedMacro::AnonymousInterface,
+      );
       m
     };
 
@@ -1558,7 +1562,12 @@ where
       include: IMacroInclusionP::CallMacro,
       macro_name: self.keywords.derive_interface_drop,
     }) as &'s MacroCallS<'s>;
-    let default_called_macros = [macro1];
+    let macro2 = self.scout_arena.alloc(MacroCallS {
+      range: interface_a.range,
+      include: IMacroInclusionP::CallMacro,
+      macro_name: self.keywords.derive_anonymous_substruct,
+    }) as &'s MacroCallS<'s>;
+    let default_called_macros = [macro1, macro2];
     let attr_refs: Vec<&'s ICitizenAttributeS<'s>> = interface_a.attributes.iter().collect();
     let macros_to_call = self.determine_macros_to_call(
       name_to_interface_defined_macro,

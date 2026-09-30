@@ -1,4 +1,5 @@
 pub mod abstract_body_macro;
+pub mod anonymous_interface_macro;
 pub mod as_subtype_macro;
 pub mod citizen;
 pub mod functor_helper;
