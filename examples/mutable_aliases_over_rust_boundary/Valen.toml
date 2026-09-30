@@ -1,0 +1,13 @@
+# See main.valen for how to build and run.
+
+[project]
+name = "mutable_aliases_over_rust_boundary"
+version = "0.1.0"
+edition = "2021"
+
+[rust-dependencies]
+slotlib = { path = "../../slotlib" }
+
+[[bin]]
+name = "main"
+source = "src/main.valen"

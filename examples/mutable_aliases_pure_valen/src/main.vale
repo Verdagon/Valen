@@ -1,0 +1,23 @@
+// This example has multiple mutable references to the same object, and mutates it through both of them.
+//
+// From the compiler repo directory (e.g. ~/valen):
+//  1. Build the compiler: cargo build --bin valec
+//  2. Build this example program:
+//        ./target/debug/valec build --no-std --builtins-dir-override src/builtins/resources --output-dir examples/mutable_aliases_pure_valen/build main=examples/mutable_aliases_pure_valen/src
+//  3. Run it:
+//        examples/mutable_aliases_pure_valen/build/main
+
+struct Slot { value int; }
+
+func mutate(self &Slot mut, v int) { set self.value = v; }
+
+func get(self &Slot) int { return self.value; }
+
+exported func main() int {
+  slot = Slot(0);
+  ref_a = &slot;
+  ref_b = &slot;
+  ref_a.mutate(42);
+  ref_b.mutate(73);
+  return ref_a.get();
+}

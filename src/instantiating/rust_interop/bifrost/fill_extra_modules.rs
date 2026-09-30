@@ -101,5 +101,19 @@ fn emit_vale_into_fresh_module<'tcx>(
     }),
     absolute_source_paths: vec![],
   });
+  if let Ok(ir_path) = std::env::var("VALEN_EMIT_LLVM_IR") {
+    let c_path = std::ffi::CString::new(ir_path).expect("bad VALEN_EMIT_LLVM_IR");
+    let mut error: *mut std::os::raw::c_char = std::ptr::null_mut();
+    let failed = unsafe { LLVMPrintModuleToFile(llmod, c_path.as_ptr(), &mut error) };
+    assert_eq!(failed, 0, "LLVMPrintModuleToFile failed");
+  }
   (rc, ModuleCodegen::new_regular(name, module))
+}
+
+extern "C" {
+  fn LLVMPrintModuleToFile(
+    module: *mut std::ffi::c_void,
+    filename: *const std::os::raw::c_char,
+    error_message: *mut *mut std::os::raw::c_char,
+  ) -> std::os::raw::c_int;
 }

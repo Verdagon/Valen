@@ -124,6 +124,7 @@ impl<'tcx, 's> RealRustcOracle<'tcx, 's> {
         }
       }
       TyKind::Int(rustc_middle::ty::IntTy::I64) => Ok(TypeR::Primitive(PrimitiveR::Int64)),
+      TyKind::Int(rustc_middle::ty::IntTy::I32) => Ok(TypeR::Primitive(PrimitiveR::Int32)),
       _ => unimplemented!(),
     }
   }
