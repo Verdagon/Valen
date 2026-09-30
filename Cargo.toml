@@ -12,7 +12,9 @@ rustc_private = true
 # Enables rust interop. Take this out to get a standalone Valen compiler.
 rust_interop = []
 
-horizon = ["rust_interop"]
+anonymous_substruct = []
+
+horizon = ["rust_interop", "anonymous_substruct"]
 
 borrow_checker_experimental = []
 

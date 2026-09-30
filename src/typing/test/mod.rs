@@ -1,5 +1,7 @@
 mod after_regions_error_tests;
 mod after_regions_tests;
+#[cfg(feature = "anonymous_substruct")]
+mod anonymous_substruct_tests;
 mod compiler_drop_tests;
 mod compiler_generics_tests;
 mod compiler_humanizer_tests;
