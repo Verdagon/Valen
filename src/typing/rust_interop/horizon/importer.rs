@@ -155,7 +155,7 @@ where
           });
           let native_iface_id = anon_pkg_id.add_step(interner, id.local_name);
           for aht_denizen in
-            compiler.get_interface_sibling_entries_anonymous_interface(*native_iface_id, i)
+            compiler.get_interface_sibling_entries_anonymous_substruct(*native_iface_id, i)
           {
             let denizen_id = aht_denizen.template_id();
             match aht_denizen {

@@ -55,7 +55,7 @@ use crate::utils::range::RangeS;
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't>
 where 's: 't,
 {
-    pub fn get_interface_sibling_entries_anonymous_interface(
+    pub fn get_interface_sibling_entries_anonymous_substruct(
         &self,
         interface_name: IdT<'s, 't>,
         interface_a: &'s InterfaceS<'s>,
@@ -99,7 +99,7 @@ where 's: 't,
         });
         let struct_name_t = *struct_name_t_ref;
 
-        let struct_a = self.make_struct_anonymous_interface(
+        let struct_a = self.make_struct_anonymous_substruct(
             interface_a,
             &member_runes,
             &members,
@@ -117,7 +117,7 @@ where 's: 't,
                 init_steps: struct_name_t.init_steps,
                 local_name,
             });
-            let forwarder = self.make_forwarder_function_anonymous_interface(
+            let forwarder = self.make_forwarder_function_anonymous_substruct(
                 struct_name_s, interface_a, struct_a, *method, method_index as i32);
             generated_aht_denizens.push(GeneratedAhtDenizen::Function(name_ref, forwarder));
         }
@@ -241,7 +241,7 @@ where 's: 't,
         self.scout_arena.alloc(mapped)
     }
 
-    pub fn map_runes_anonymous_interface(
+    pub fn map_runes_anonymous_substruct(
         &self,
         rule: IRulexSR<'s>,
         func: impl Fn(IRuneS<'s>) -> IRuneS<'s>,
@@ -253,7 +253,7 @@ where 's: 't,
                 parts: x.parts,
             }),
             // IRulexSR::MaybeCoercingLookup(_) => {
-                // panic!("implement: map_runes_anonymous_interface MaybeCoercingLookup");
+                // panic!("implement: map_runes_anonymous_substruct MaybeCoercingLookup");
                 // LookupSR(range, RuneUsage(a, func(rune)), name)
             // }
             IRulexSR::RuneParentEnvLookup(x) => IRulexSR::RuneParentEnvLookup(RuneParentEnvLookupSR {
@@ -266,23 +266,23 @@ where 's: 't,
                 right: RuneUsage { range: x.right.range, rune: func(x.right.rune) },
             }),
             // IRulexSR::DefinitionCoordIsa(_) => {
-                // panic!("implement: map_runes_anonymous_interface DefinitionCoordIsa");
+                // panic!("implement: map_runes_anonymous_substruct DefinitionCoordIsa");
                 // DefinitionCoordIsaSR(range, RuneUsage(z, func(result)), RuneUsage(a, func(sub)), RuneUsage(b, func(suuper)))
             // }
             // IRulexSR::CallSiteCoordIsa(_) => {
-                // panic!("implement: map_runes_anonymous_interface CallSiteCoordIsa");
+                // panic!("implement: map_runes_anonymous_substruct CallSiteCoordIsa");
                 // CallSiteCoordIsaSR(range, maybeResult.map(r => RuneUsage(r.rune.range, func(r.rune))), RuneUsage(a, func(sub)), RuneUsage(b, func(suuper)))
             // }
             // IRulexSR::KindComponents(_) => {
-                // panic!("implement: map_runes_anonymous_interface KindComponents");
+                // panic!("implement: map_runes_anonymous_substruct KindComponents");
                 // KindComponentsSR(range, RuneUsage(a, func(resultRune)), RuneUsage(b, func(mutabilityRune)))
             // }
             // IRulexSR::CoordComponents(_) => {
-                // panic!("implement: map_runes_anonymous_interface CoordComponents");
+                // panic!("implement: map_runes_anonymous_substruct CoordComponents");
                 // CoordComponentsSR(range, RuneUsage(a, func(resultRune)), RuneUsage(b, func(ownershipRune)), RuneUsage(c, func(kindRune)))
             // }
             // IRulexSR::PrototypeComponents(_) => {
-                // panic!("implement: map_runes_anonymous_interface PrototypeComponents");
+                // panic!("implement: map_runes_anonymous_substruct PrototypeComponents");
                 // PrototypeComponentsSR(range, RuneUsage(a, func(resultRune)), RuneUsage(b, func(paramsRune)), RuneUsage(c, func(returnRune)))
             // }
             IRulexSR::Resolve(x) => {
@@ -319,19 +319,19 @@ where 's: 't,
                 return_rune: RuneUsage { range: x.return_rune.range, rune: func(x.return_rune.rune) },
             }),
             // IRulexSR::OneOf(_) => {
-                // panic!("implement: map_runes_anonymous_interface OneOf");
+                // panic!("implement: map_runes_anonymous_substruct OneOf");
                 // OneOfSR(range, RuneUsage(a, func(rune)), literals)
             // }
             // IRulexSR::IsConcrete(_) => {
-                // panic!("implement: map_runes_anonymous_interface IsConcrete");
+                // panic!("implement: map_runes_anonymous_substruct IsConcrete");
                 // IsConcreteSR(range, RuneUsage(a, func(rune)))
             // }
             // IRulexSR::IsInterface(_) => {
-                // panic!("implement: map_runes_anonymous_interface IsInterface");
+                // panic!("implement: map_runes_anonymous_substruct IsInterface");
                 // IsInterfaceSR(range, RuneUsage(a, func(rune)))
             // }
             // IRulexSR::IsStruct(_) => {
-                // panic!("implement: map_runes_anonymous_interface IsStruct");
+                // panic!("implement: map_runes_anonymous_substruct IsStruct");
                 // IsStructSR(range, RuneUsage(a, func(rune)))
             // }
             IRulexSR::Literal(x) => IRulexSR::Literal(LiteralSR {
@@ -348,7 +348,7 @@ where 's: 't,
                 // })
             // }
             // IRulexSR::MaybeCoercingCall(_) => {
-                // panic!("implement: map_runes_anonymous_interface MaybeCoercingCall");
+                // panic!("implement: map_runes_anonymous_substruct MaybeCoercingCall");
                 // MaybeCoercingCallSR(range, RuneUsage(a, func(resultRune)), RuneUsage(b, func(templateRune)), args.map({ case RuneUsage(c, rune) => RuneUsage(c, func(rune)) }))
             // }
             IRulexSR::Call(x) => {
@@ -363,11 +363,11 @@ where 's: 't,
                 })
             }
             // IRulexSR::Pack(_) => {
-                // panic!("implement: map_runes_anonymous_interface Pack");
+                // panic!("implement: map_runes_anonymous_substruct Pack");
                 // KindListSR(range, RuneUsage(a, resultRune), members.map({ case RuneUsage(c, rune) => RuneUsage(c, func(rune)) }))
             // }
             // IRulexSR::RefListCompoundMutability(_) => {
-                // panic!("implement: map_runes_anonymous_interface RefListCompoundMutability");
+                // panic!("implement: map_runes_anonymous_substruct RefListCompoundMutability");
                 // RefListCompoundMutabilitySR(range, RuneUsage(a, func(resultRune)), RuneUsage(b, func(coordListRune)))
             // }
             IRulexSR::BorrowRef(x) => IRulexSR::BorrowRef(BorrowRefSR {
@@ -402,7 +402,7 @@ where 's: 't,
         }
     }
 
-    pub fn inherited_method_rune_anonymous_interface(
+    pub fn inherited_method_rune_anonymous_substruct(
         &self,
         interface_a: &'s InterfaceS<'s>,
         method: &'s FunctionS<'s>,
@@ -416,7 +416,7 @@ where 's: 't,
             }))
     }
 
-    pub fn make_struct_anonymous_interface(
+    pub fn make_struct_anonymous_substruct(
         &self,
         interface_a: &'s InterfaceS<'s>,
         member_runes: &[RuneUsage<'s>],
@@ -469,11 +469,11 @@ where 's: 't,
                 if iface_gp_runes.iter().any(|r| r.ptr_eq(&method_rune)) {
                     method_rune
                 } else {
-                    self.inherited_method_rune_anonymous_interface(interface_a, internal_method, method_rune)
+                    self.inherited_method_rune_anonymous_substruct(interface_a, internal_method, method_rune)
                 }
             };
             for rule in internal_method.header_rules.iter() {
-                let mapped = self.map_runes_anonymous_interface(*rule, &inherit);
+                let mapped = self.map_runes_anonymous_substruct(*rule, &inherit);
                 rules_builder.push(mapped);
             }
 
@@ -501,7 +501,7 @@ where 's: 't,
                     match param.virtuality {
                         None => {
                             for rule in param.type_outer_ref_rules.iter().chain(param.value_type_rules.iter()) {
-                                rules_builder.push(self.map_runes_anonymous_interface(*rule, &inherit));
+                                rules_builder.push(self.map_runes_anonymous_substruct(*rule, &inherit));
                             }
                             param_runes.push(RuneUsage {
                                 range: param.range,
@@ -661,11 +661,11 @@ where 's: 't,
                                 RuneUsage { range: param.value_type_rune.range, rune: inherit(param.value_type_rune.rune) },
                                 self.scout_arena.alloc_slice_from_vec(
                                     param.type_outer_ref_rules.iter()
-                                        .map(|r| self.map_runes_anonymous_interface(*r, &inherit))
+                                        .map(|r| self.map_runes_anonymous_substruct(*r, &inherit))
                                         .collect::<Vec<_>>()),
                                 self.scout_arena.alloc_slice_from_vec(
                                     param.value_type_rules.iter()
-                                        .map(|r| self.map_runes_anonymous_interface(*r, &inherit))
+                                        .map(|r| self.map_runes_anonymous_substruct(*r, &inherit))
                                         .collect::<Vec<_>>()),
                             )
                         }
@@ -855,7 +855,7 @@ where 's: 't,
         self.scout_arena.alloc(struct_a)
     }
 
-    pub fn make_forwarder_function_anonymous_interface(
+    pub fn make_forwarder_function_anonymous_substruct(
         &self,
         struct_name_s: AnonymousSubstructTemplateNameS<'s>,
         interface: &'s InterfaceS<'s>,
@@ -879,7 +879,7 @@ where 's: 't,
         assert!(starts_with, "vassert: struct.genericParameters.startsWith(methodOriginalIdentifyingRunes)");
 
         let inherit = |rune: IRuneS<'s>| -> IRuneS<'s> {
-            self.inherited_method_rune_anonymous_interface(interface, method, rune)
+            self.inherited_method_rune_anonymous_substruct(interface, method, rune)
         };
 
         let mut generic_params_vec: Vec<&'s GenericParameterS<'s>> = Vec::new();
@@ -896,7 +896,7 @@ where 's: 't,
         let mut rules: Vec<IRulexSR<'s>> = Vec::new();
 
         for rule in method_original_rules.iter() {
-            let mapped = self.map_runes_anonymous_interface(*rule, &inherit);
+            let mapped = self.map_runes_anonymous_substruct(*rule, &inherit);
             rules.push(mapped);
         }
         let original_ret_rune = method.maybe_ret_kind_rune.unwrap();
@@ -931,7 +931,7 @@ where 's: 't,
         let inherited_abstract_full_rune = inherit(abstract_param.full_type_rune.rune);
         let inherited_abstract_value_rune = inherit(abstract_param.value_type_rune.rune);
         let self_outer_ref_rules_vec: Vec<IRulexSR<'s>> = abstract_param.type_outer_ref_rules.iter()
-            .map(|rule| self.map_runes_anonymous_interface(*rule, |rune| {
+            .map(|rule| self.map_runes_anonymous_substruct(*rule, |rune| {
                 let inherited = inherit(rune);
                 if inherited.ptr_eq(&inherited_abstract_full_rune) { self_full_type_rune }
                 else if inherited.ptr_eq(&inherited_abstract_value_rune) { self_kind_rune }
@@ -992,7 +992,7 @@ where 's: 't,
                     };
                     let remap_rules = |rules: &'s [IRulexSR<'s>]| {
                         let mapped: Vec<IRulexSR<'s>> = rules.iter()
-                            .map(|r| self.map_runes_anonymous_interface(*r, &inherit))
+                            .map(|r| self.map_runes_anonymous_substruct(*r, &inherit))
                             .collect();
                         self.scout_arena.alloc_slice_from_vec(mapped)
                     };
