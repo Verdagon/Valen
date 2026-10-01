@@ -1,7 +1,7 @@
 
 import stdlib.math.*; // for clamp
 
-struct StrSlice imm {
+class StrSlice {
   string str;
   begin int;
   end int;

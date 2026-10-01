@@ -1,13 +1,13 @@
 
-interface I<T> share { }
+classinterface I<T> { }
 
-interface J<T> share { }
+classinterface J<T> { }
 impl<T> I<T> for J<T>;
 
-interface K<T> share { }
+classinterface K<T> { }
 impl<T> J<T> for K<T>;
 
-struct L<T> share { }
+class L<T> { }
 impl<T> K<T> for L<T>;
 
 exported func main() int {

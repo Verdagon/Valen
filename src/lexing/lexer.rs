@@ -399,9 +399,13 @@ where
     begin: i32,
     attributes: &'p [IAttributeL<'p>],
   ) -> Result<Option<StructL<'p>>> {
-    if !iter.try_skip_complete_word("struct") {
+    let sharedness = if iter.try_skip_complete_word("struct") {
+      SharednessP::Single
+    } else if iter.try_skip_complete_word("class") {
+      SharednessP::Shared
+    } else {
       return Ok(None);
-    }
+    };
 
     iter.consume_comments_and_whitespace();
 
@@ -409,10 +413,6 @@ where
     iter.consume_comments_and_whitespace();
 
     let maybe_generic_args = self.lex_angled(iter)?;
-    iter.consume_comments_and_whitespace();
-
-    let sharedness =
-      if iter.try_skip_complete_word("share") { SharednessP::Shared } else { SharednessP::Single };
     iter.consume_comments_and_whitespace();
 
     let maybe_rules = if iter.try_skip_complete_word("where") {
@@ -499,9 +499,13 @@ where
     begin: i32,
     attributes: &'p [IAttributeL<'p>],
   ) -> Result<Option<InterfaceL<'p>>> {
-    if !iter.try_skip_complete_word("interface") {
+    let sharedness = if iter.try_skip_complete_word("interface") {
+      SharednessP::Single
+    } else if iter.try_skip_complete_word("classinterface") {
+      SharednessP::Shared
+    } else {
       return Ok(None);
-    }
+    };
 
     iter.consume_comments_and_whitespace();
 
@@ -509,10 +513,6 @@ where
     iter.consume_comments_and_whitespace();
 
     let maybe_generic_args = self.lex_angled(iter)?;
-    iter.consume_comments_and_whitespace();
-
-    let sharedness =
-      if iter.try_skip_complete_word("share") { SharednessP::Shared } else { SharednessP::Single };
     iter.consume_comments_and_whitespace();
 
     let maybe_rules = if iter.try_skip_complete_word("where") {

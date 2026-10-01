@@ -324,7 +324,7 @@ fn test_single_parameter_function() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r"
-struct Functor1<F Prot = func(P1)R> share { }
+class Functor1<F Prot = func(P1)R> { }
 
 func __call<F Prot = func(P1)R>(self &Functor1<F>, param1 P1) R {
   F(param1)
@@ -1164,7 +1164,7 @@ fn pointer_becomes_share_if_kind_is_immutable() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r"
-struct SomeStruct share { i int; }
+class SomeStruct { i int; }
 
 func bork(x &SomeStruct) int {
   return __copy_prim(&x.i);

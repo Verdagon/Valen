@@ -230,7 +230,7 @@ fn make_weak_ref_from_temporary() {
         &instantiating_bump,
         // TSUGAR: .hp is &int; wrap with __copy_prim
         r"
-struct Muta share { hp int; }
+class Muta { hp int; }
 func getHp(weakMuta &&Muta) int { return __copy_prim(&(lock(weakMuta)).get().hp); }
 exported func main() int { return getHp(&&Muta(7)); }
 ",
@@ -550,7 +550,7 @@ fn weak_yonder_member() {
         &hammer_interner, &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         r"
-struct Base share {
+class Base {
   hp int;
 }
 struct Spaceship {

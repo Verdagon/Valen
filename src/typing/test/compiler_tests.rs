@@ -3033,7 +3033,7 @@ fn recursive_struct() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r#"
-struct ListNode share {
+class ListNode {
   tail ListNode;
 }
 func main(a ListNode) {}
@@ -3095,7 +3095,7 @@ fn templated_imm_struct() {
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r#"
 import v.builtins.drop.*;
-struct ListNode<T> share {
+class ListNode<T> {
   tail ListNode<T>;
 }
 func main(a ListNode<int>) {}
@@ -3166,11 +3166,11 @@ fn test_vector_of_struct_templata() {
 import v.builtins.arrays.*;
 import v.builtins.drop.*;
 
-struct Vec2 share {
+class Vec2 {
   x float;
   y float;
 }
-struct Pattern share {
+class Pattern {
   patternTiles []Vec2;
 }
 "#;
@@ -3453,7 +3453,7 @@ fn reports_when_extern_function_depends_on_non_exported_return() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code = "struct Firefly share { }\nextern func moo() &Firefly;";
+  let code = "class Firefly { }\nextern func moo() &Firefly;";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
@@ -3488,10 +3488,10 @@ fn reports_when_exported_struct_depends_on_non_exported_member() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r"
-exported struct Firefly share {
+exported class Firefly {
   raza Raza;
 }
-struct Raza share { }";
+class Raza { }";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
@@ -3510,7 +3510,7 @@ struct Raza share { }";
   assert_humanized_eq(
     &humanize_compile_error(&mut compile, err),
     r#"At test:0.vale:2:1:
-exported struct Firefly share {
+exported class Firefly {
 Exported kind Firefly depends on kind Raza that wasn't exported from package test
 "#,
   );
@@ -5445,7 +5445,7 @@ fn tests_destructuring_shared_doesnt_compile_to_destroy() {
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   // TSUGAR: line below was: "  return y;\n"
   let code = r#"
-struct Vec3i share {
+class Vec3i {
   x int;
   y int;
   z int;
@@ -5478,7 +5478,7 @@ exported func main() int {
 #[test]
 fn generates_free_function_for_imm_struct() {
   let code = r#"
-        struct Vec3i share {
+        class Vec3i {
           x int;
           y int;
           z int;
@@ -5513,7 +5513,7 @@ fn reports_when_exported_ssa_depends_on_non_exported_element() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code = "export StaticArray<5, Raza> as RazaArray;\nstruct Raza share { }";
+  let code = "export StaticArray<5, Raza> as RazaArray;\nclass Raza { }";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
@@ -5547,7 +5547,7 @@ fn reports_when_exported_rsa_depends_on_non_exported_element() {
   let scout_arena = ScoutArena::new(&scout_bump);
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
-  let code = "export []Raza as RazaArray;\nstruct Raza share { }";
+  let code = "export []Raza as RazaArray;\nclass Raza { }";
   let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
   let typing_interner = TypingInterner::new(&typing_bump);
   let mut compile = compiler_test_compilation(
@@ -6745,7 +6745,7 @@ fn borrow_share_as_arg_to_generic_func_that_takes_borrowed_things() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r#"
-struct Ship share { }
+class Ship { }
 func drop<T>(x &T) {}
 exported func main() {
   s = Ship();

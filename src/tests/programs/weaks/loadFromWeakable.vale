@@ -1,5 +1,5 @@
 
-struct Muta share { hp int; }
+class Muta { hp int; }
 exported func main() int {
   return Muta(7).hp;
 }

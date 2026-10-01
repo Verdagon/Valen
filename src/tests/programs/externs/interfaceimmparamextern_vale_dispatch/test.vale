@@ -1,9 +1,9 @@
-sealed exported interface IShip share { }
+sealed exported classinterface IShip { }
 
-exported struct Spaceship share { fuel int; }
+exported class Spaceship { fuel int; }
 impl IShip for Spaceship;
 
-exported struct Seaship share { leftFuel int; rightFuel int; }
+exported class Seaship { leftFuel int; rightFuel int; }
 impl IShip for Seaship;
 
 abstract func getFuel(virtual s IShip) int;

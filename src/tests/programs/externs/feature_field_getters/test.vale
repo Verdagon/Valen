@@ -1,5 +1,5 @@
-exported struct Inner share { x int; }
-exported struct Outer share { name int; inner Inner; }
+exported class Inner { x int; }
+exported class Outer { name int; inner Inner; }
 
 extern func testGetters(o Outer) int;
 

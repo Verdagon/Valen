@@ -1,6 +1,6 @@
-sealed exported interface OnlyOne share { }
+sealed exported classinterface OnlyOne { }
 
-exported struct TheOne share { val int; }
+exported class TheOne { val int; }
 impl OnlyOne for TheOne;
 
 extern func handleIt(o OnlyOne) int;
