@@ -229,8 +229,9 @@ exported func main() int {
 "#, |_| ());
 
   assert!(
-    outcome.expect_failure().is("CouldntFindOverrideT"),
-    "an impl missing its trait-method override was accepted"
+    outcome.expect_failure().detail.contains("Couldn't find an override"),
+    "expected a missing-override compile error; got:\n{}",
+    outcome.expect_failure().detail
   );
 }
 
@@ -1308,7 +1309,11 @@ exported func main() int {
   return tie(&s, &t);
 }
 "#, |_| ());
-  assert!(outcome.expect_failure().is("CouldNotPostparseFunction"));
+  assert!(
+    outcome.expect_failure().detail.contains("share one lifetime"),
+    "expected a shared-lifetime decline; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// Milestone M (free-function case): rustc's mono collector drives *our monomorphizer* end to end.
@@ -2007,7 +2012,11 @@ exported func main() int {
 }
 "#, |_| ());
 
-  assert!(outcome.expect_failure().is("CouldntFindFunctionToCallT"));
+  assert!(
+    outcome.expect_failure().detail.contains("Couldn't find a suitable function"),
+    "expected no resolvable function; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// A Vale function and a Rust function sharing a name do **not** collide — candidate collection is
@@ -2024,7 +2033,11 @@ func add_two_numbers(a int, b int) int {
 }
 "#, |_| ());
 
-  assert!(outcome.expect_failure().is("CouldntNarrowDownCandidates"));
+  assert!(
+    outcome.expect_failure().detail.contains("Multiple candidates for call"),
+    "expected ambiguous candidates; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// A generic Rust function is read **structurally** — parameters intact, not collapsed to one
@@ -2929,7 +2942,11 @@ exported func main() int {
   return 0;
 }
 "#, |_| ());
-  assert!(outcome.expect_failure().is("CouldNotPostparseFunction"));
+  assert!(
+    outcome.expect_failure().detail.contains("unsigned integer"),
+    "expected an unsigned-signature decline; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// A float would decline if forced — `FloatT` has no width, so `f32` and `f64` would intern
@@ -3066,7 +3083,11 @@ exported func main() int {
   return add_two_numbers(2, 8);
 }
 "#, |_| ());
-  assert!(outcome.expect_failure().is("UnresolvableRustImport"));
+  assert!(
+    outcome.expect_failure().detail.contains("Couldn't resolve the Rust import"),
+    "expected an unresolvable import; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// A crate's module children include its own `extern crate std`. Without the `DefKind` filter, a
@@ -3082,7 +3103,11 @@ exported func main() int {
   return add_two_numbers(4, 8);
 }
 "#, |_| ());
-  assert!(outcome.expect_failure().is("UnresolvableRustImport"));
+  assert!(
+    outcome.expect_failure().detail.contains("Couldn't resolve the Rust import"),
+    "expected an unresolvable import; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// A Rust callee competes on `params_match` like any other candidate.
@@ -3095,7 +3120,11 @@ exported func main() int {
 }
 "#, |_| ());
 
-  assert!(outcome.expect_failure().is("CouldntFindFunctionToCallT"));
+  assert!(
+    outcome.expect_failure().detail.contains("Couldn't find a suitable function"),
+    "expected no resolvable function; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// Two crates' items reach Vale in one compilation, and stay two types.
@@ -3195,7 +3224,11 @@ exported func main() int {
 }
 "#, |_| ());
 
-  assert!(outcome.expect_failure().is("CouldntFindFunctionToCallT"));
+  assert!(
+    outcome.expect_failure().detail.contains("Couldn't find a suitable function"),
+    "expected no resolvable function; got:\n{}",
+    outcome.expect_failure().detail
+  );
 }
 
 /// **@ATAFLBZ fence: nothing in horizon may take a Rust item's identity from its human name.**
@@ -3284,8 +3317,9 @@ exported func main() int {
 "#, |_| ());
 
   assert!(
-    outcome.expect_failure().is("BorrowCheckError"),
-    "a use-after-churn across the Rust interop boundary was accepted"
+    outcome.expect_failure().detail.contains("Used a borrow after invalidated"),
+    "expected a use-after-churn borrow error; got:\n{}",
+    outcome.expect_failure().detail
   );
 }
 
