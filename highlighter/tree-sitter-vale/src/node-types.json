@@ -3441,16 +3441,6 @@
           }
         ]
       },
-      "sharedness": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "sharedness",
-            "named": true
-          }
-        ]
-      },
       "where_clause": {
         "multiple": false,
         "required": false,
@@ -5463,11 +5453,6 @@
     }
   },
   {
-    "type": "sharedness",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "source_file",
     "named": true,
     "root": true,
@@ -5695,16 +5680,6 @@
         "types": [
           {
             "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "sharedness": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "sharedness",
             "named": true
           }
         ]
@@ -7009,6 +6984,14 @@
     "named": true
   },
   {
+    "type": "class",
+    "named": false
+  },
+  {
+    "type": "classinterface",
+    "named": false
+  },
+  {
     "type": "destruct",
     "named": false
   },
@@ -7142,11 +7125,11 @@
   },
   {
     "type": "region",
-    "named": true
+    "named": false
   },
   {
     "type": "region",
-    "named": false
+    "named": true
   },
   {
     "type": "return",

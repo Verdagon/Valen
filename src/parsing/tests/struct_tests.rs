@@ -27,7 +27,7 @@ fn simple_struct() {
 }
 
 #[test]
-fn share_struct_aliases_imm() {
+fn class_struct_is_shared() {
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -35,14 +35,14 @@ fn share_struct_aliases_imm() {
     &parse_arena,
     &keywords,
     "
-      struct MyShared share { }
+      class MyShared { }
     ",
   );
   assert_eq!(struct_.sharedness, SharednessP::Shared);
 }
 
 #[test]
-fn share_interface_aliases_imm() {
+fn classinterface_is_shared() {
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);
   let keywords = Keywords::new_for_parse(&parse_arena);
@@ -50,7 +50,7 @@ fn share_interface_aliases_imm() {
     &parse_arena,
     &keywords,
     "
-      interface MyShared share { }
+      classinterface MyShared { }
     ",
   );
   let interface = cast!(&denizen, IDenizenP::TopLevelInterface);

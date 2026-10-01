@@ -211,13 +211,13 @@ module.exports = grammar({
     // Struct definition
     // -----------------------------------------------------------------------
 
-    // struct Name<generics>? share? (where ...)? (region ...)? ( ; | { members } )
+    // (struct|class) Name<generics>? (where ...)? (region ...)? ( ; | { members } )
+    // `class` is the shared/refcounted citizen; `struct` is the non-refcounted one.
     struct_definition: $ => seq(
       repeat($._attribute),
-      'struct',
+      choice('struct', 'class'),
       field('name', $.identifier),
       optional(field('generic_params', $.generic_params)),
-      optional(field('sharedness', $.sharedness)),
       optional(field('where_clause', $.where_clause)),
       optional(field('default_region', $.default_region)),
       choice(
@@ -244,13 +244,13 @@ module.exports = grammar({
     // Interface definition
     // -----------------------------------------------------------------------
 
-    // interface Name<generics>? share? (where ...)? (region ...)? ( ; | { methods } )
+    // (interface|classinterface) Name<generics>? (where ...)? (region ...)? ( ; | { methods } )
+    // `classinterface` is the shared/refcounted interface; `interface` is the non-refcounted one.
     interface_definition: $ => seq(
       repeat($._attribute),
-      'interface',
+      choice('interface', 'classinterface'),
       field('name', $.identifier),
       optional(field('generic_params', $.generic_params)),
-      optional(field('sharedness', $.sharedness)),
       optional(field('where_clause', $.where_clause)),
       optional(field('default_region', $.default_region)),
       choice(
@@ -447,8 +447,6 @@ module.exports = grammar({
 
     ownership: $ => choice('own', 'borrow', 'weak', 'share'),
     mutability: $ => choice('mut', 'imm'),
-    // Citizen-level sharedness marker: `struct Foo share { ... }`.
-    sharedness: $ => 'share',
     // Optional default-region declaration on a citizen: `region 'r`.
     default_region: $ => seq('region', $._type_expression),
 

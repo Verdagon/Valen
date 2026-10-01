@@ -359,7 +359,7 @@ fn cant_make_non_shared_extend_a_shared() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r"
-interface IUnit share {}
+classinterface IUnit {}
 struct Muta { hp int; }
 impl IUnit for Muta;
 func main(muta Muta) int  { return 7; }
@@ -406,7 +406,7 @@ fn cant_make_shared_extend_a_non_shared() {
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r"
 interface IUnit {}
-struct Muta share { hp int; }
+class Muta { hp int; }
 impl IUnit for Muta;
 func main(muta Muta) int  { return 7; }
 ";

@@ -99,7 +99,7 @@ fn driver_valen_parses_clean() {
 
 const COMPILER_KEYWORDS: &[&str] = &[
     // declarations / structure
-    "func", "import", "export", "impl", "struct", "interface", "for", "where",
+    "func", "import", "export", "impl", "struct", "class", "interface", "classinterface", "for", "where",
     // attributes / modifiers
     "abstract", "sealed", "exported", "extern", "unsafe", "virtual",
     // control flow
@@ -162,10 +162,10 @@ fn every_compiler_keyword_is_highlighted() {
 
 
 const CONSTRUCTS: &[(&str, &str)] = &[
-    // struct / interface headers: `share` sharedness, empty `;`/`{}` bodies,
-    // `where` clauses before the body, numeric-named fields.
-    ("struct share body", "struct Muta share { hp int; }\n"),
-    ("interface share empty", "sealed exported interface IShip share { }\n"),
+    // struct / interface headers: `class`/`classinterface` shared citizens, empty
+    // `;`/`{}` bodies, `where` clauses before the body, numeric-named fields.
+    ("class body", "class Muta { hp int; }\n"),
+    ("classinterface empty", "sealed exported classinterface IShip { }\n"),
     ("struct where func bound", "struct MySome<T> where func drop(T)void { x T; }\n"),
     ("interface where operator bound", "interface Eq<T> where func ==(&T, &T)bool { }\n"),
     ("struct where implements", "struct S<T> where implements(T, U) { }\n"),

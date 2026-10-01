@@ -1,4 +1,4 @@
-exported struct Named share { id int; label str; }
+exported class Named { id int; label str; }
 
 exported func makeNamed(id int, s str) Named { Named(id, s) }
 exported func fixedLabel() str { "hello" }

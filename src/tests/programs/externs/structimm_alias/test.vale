@@ -1,4 +1,4 @@
-exported struct Widget share { n int; }
+exported class Widget { n int; }
 
 extern func testAlias(a Widget, b Widget) int;
 

@@ -7,7 +7,7 @@
 (extern_attribute "extern" @keyword.modifier)
 (macro_attribute) @attribute
 
-["func" "struct" "interface" "impl" "import" "export" "for" "where"] @keyword
+["func" "struct" "class" "interface" "classinterface" "impl" "import" "export" "for" "where"] @keyword
 
 ["if" "else" "while" "foreach" "in" "break" "return"
  "set" "destruct" "unlet" "as"] @keyword.control

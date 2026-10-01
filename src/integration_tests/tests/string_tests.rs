@@ -321,7 +321,7 @@ fn slice_a_slice() {
 import panicutils.*;
 import printutils.*;
 
-struct StrSlice share {
+class StrSlice {
   string str;
   begin int;
   end int;

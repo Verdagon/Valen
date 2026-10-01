@@ -598,7 +598,7 @@ fn array_map_with_lambda() {
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         r"
-struct Lam share {}
+class Lam {}
 func __call(lam &Lam, i int) int { return __copy_prim(&i); }
 
 exported func main() int
@@ -679,7 +679,7 @@ fn make_array_map_with_struct() {
         r"
 import array.make.*;
 
-struct Lam share {}
+class Lam {}
 func __call(lam &Lam, i int) int { return __copy_prim(&i); }
 
 exported func main() int {

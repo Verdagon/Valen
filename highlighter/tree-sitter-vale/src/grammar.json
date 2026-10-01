@@ -626,8 +626,17 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "struct"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "struct"
+            },
+            {
+              "type": "STRING",
+              "value": "class"
+            }
+          ]
         },
         {
           "type": "FIELD",
@@ -646,22 +655,6 @@
               "content": {
                 "type": "SYMBOL",
                 "name": "generic_params"
-              }
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "sharedness",
-              "content": {
-                "type": "SYMBOL",
-                "name": "sharedness"
               }
             },
             {
@@ -802,8 +795,17 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "interface"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "interface"
+            },
+            {
+              "type": "STRING",
+              "value": "classinterface"
+            }
+          ]
         },
         {
           "type": "FIELD",
@@ -822,22 +824,6 @@
               "content": {
                 "type": "SYMBOL",
                 "name": "generic_params"
-              }
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "sharedness",
-              "content": {
-                "type": "SYMBOL",
-                "name": "sharedness"
               }
             },
             {
@@ -1972,10 +1958,6 @@
           "value": "imm"
         }
       ]
-    },
-    "sharedness": {
-      "type": "STRING",
-      "value": "share"
     },
     "default_region": {
       "type": "SEQ",
