@@ -1,0 +1,9 @@
+[package]
+name = "valen-bundler"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "valen-bundler"
+path = "src/main.rs"
