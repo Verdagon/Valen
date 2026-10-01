@@ -31,10 +31,19 @@ fn main() {
   let project_dir =
     manifest_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
   let build_dir = valen_build_dir_of(&project_dir);
-  let valenc_rs = env::current_exe()
-    .ok()
-    .and_then(|exe| exe.parent().map(|dir| dir.join("valenc-rs")))
-    .unwrap_or_else(|| PathBuf::from("valenc-rs"));
+  let current_exe =
+      env::current_exe().unwrap_or_else(|e| {
+        eprintln!("valen: could not determine the path of the valen executable: {e}");
+        exit(1);
+      });
+  let valenc_rs =
+      match current_exe.parent() {
+        Some(dir) => dir.join("valenc-rs"),
+        None => {
+          eprintln!("valen: the valen executable {} has no parent directory", current_exe.display());
+          exit(1);
+        }
+      };
 
   match run_build(&BuildInputs {
     manifest_path,

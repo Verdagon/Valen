@@ -2,6 +2,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -91,9 +92,11 @@ pub fn stage_workspace(inputs: &BuildInputs) -> Result<(), String> {
   let cargo_toml_path = inputs.build_dir.join("Cargo.toml");
   fs::write(&cargo_toml_path, generate_cargo_toml(&manifest))
     .map_err(|e| format!("could not write {}: {e}", cargo_toml_path.display()))?;
-  let toolchain_toml_path = inputs.build_dir.join("rust-toolchain.toml");
-  fs::write(&toolchain_toml_path, generate_toolchain_toml())
-    .map_err(|e| format!("could not write {}: {e}", toolchain_toml_path.display()))?;
+  if bundle_bin_dir(&inputs.valenc_rs)?.is_none() {
+    let toolchain_toml_path = inputs.build_dir.join("rust-toolchain.toml");
+    fs::write(&toolchain_toml_path, generate_toolchain_toml())
+      .map_err(|e| format!("could not write {}: {e}", toolchain_toml_path.display()))?;
+  }
 
   let project_dir = inputs
     .manifest_path
@@ -114,17 +117,38 @@ pub fn run_build(inputs: &BuildInputs) -> Result<i32, String> {
       })?;
     }
   }
-  let fork_rustc = fork_rustc_path()?;
-  let status = Command::new("cargo")
+  let (fork_rustc, cargo_cmd, bundle) =
+      match bundle_bin_dir(&inputs.valenc_rs)? {
+        Some(bin_dir) => {
+          let rustc = bin_dir.join("rustc");
+          let cargo = bin_dir.join("cargo");
+          if !rustc.is_file() {
+            return Err(format!("valen bundle at {} is missing its rustc", bin_dir.display()));
+          }
+          if !cargo.is_file() {
+            return Err(format!("valen bundle at {} is missing its cargo", bin_dir.display()));
+          }
+          (rustc, cargo, true)
+        }
+        None => (fork_rustc_path()?, PathBuf::from("cargo"), false),
+      };
+  let mut command = Command::new(&cargo_cmd);
+  command
     .current_dir(&inputs.build_dir)
     .arg("build")
     .env("RUSTC_WORKSPACE_WRAPPER", &inputs.valenc_rs)
     .env("COMPANION_RUSTC", &fork_rustc)
-    .env("VALEN_BORROW_CHECK", if inputs.borrow_check { "on" } else { "off" })
-    .env_remove("RUSTC")
-    .status()
-    .map_err(|e| format!("could not spawn cargo: {e}"))?;
-  Ok(status.code().unwrap_or(1))
+    .env("VALEN_BORROW_CHECK", if inputs.borrow_check { "on" } else { "off" });
+  if bundle {
+    command.env("RUSTC", &fork_rustc);
+  } else {
+    command.env_remove("RUSTC");
+  }
+  let status = command.status().map_err(|e| format!("could not spawn cargo: {e}"))?;
+  match status.code() {
+    Some(code) => Ok(code),
+    None => Err(format!("cargo was terminated by signal {:?}", status.signal())),
+  }
 }
 
 fn fork_rustc_path() -> Result<PathBuf, String> {
@@ -141,4 +165,15 @@ fn fork_rustc_path() -> Result<PathBuf, String> {
   let path = String::from_utf8(output.stdout)
     .map_err(|e| format!("rustup printed a non-utf8 rustc path: {e}"))?;
   Ok(PathBuf::from(path.trim()))
+}
+
+fn bundle_bin_dir(valenc_rs: &Path) -> Result<Option<PathBuf>, String> {
+  let bin_dir = valenc_rs
+    .parent()
+    .ok_or_else(|| format!("could not determine the directory containing {}", valenc_rs.display()))?;
+  if bin_dir.join("valen-bundle.marker").is_file() {
+    Ok(Some(bin_dir.to_path_buf()))
+  } else {
+    Ok(None)
+  }
 }
