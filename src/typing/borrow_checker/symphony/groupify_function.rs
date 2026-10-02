@@ -312,23 +312,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         Ok(ExpressionGE::ConstantFloat(bump_g.alloc(ConstantFloatGE { range: *range, value: *value, result: result_gt, })))
       }
       ExpressionTE::ConstantStr(ConstantStrTE { range, loct, value, .. }) => {
-        let result_gt =
-            bump_g.alloc(ShareRefGT {
-              inner: KindGT::Str(StrGT {}),
-              group: GroupTemplataG {
-                group: bump_g.alloc_slice_copy(&[
-                  GroupPathG {
-                    root: GroupRootG::AmbientMulti(),
-                    steps: bump_g.alloc_slice_copy(&[
-                      GroupChildStepG::Variant { variant_name: self.scout_arena.intern_str("str") }
-                    ]),
-                    ellipsis: false,
-                  }
-                ]),
-                kind: KindGT::Str(StrGT {}),
-                born_at: *loct,
-              }
-            });
+        let result_gt = KindGT::Str(StrGT {});
         Ok(
           ExpressionGE::ConstantStr(
             bump_g.alloc(
@@ -552,8 +536,6 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                   let result_inner_gt =
                     match (source_inner_gt, desired_inner_tt) {
                       (KindGT::Str(StrGT { }), KindT::Str(StrT { })) => KindGT::Str(StrGT { }),
-                      // Temporary, until we can fix the typing pass's output
-                      (KindGT::ShareRef(ShareRefGT { inner: KindGT::Str(StrGT), group: inner_share_group}), KindT::Str(StrT {})) => KindGT::Str(StrGT { }),
                       other => panic!("Unimplemented: {:?} to {:?}", source_inner_gt, desired_inner_tt),
                     };
                   KindGT::BorrowRef(

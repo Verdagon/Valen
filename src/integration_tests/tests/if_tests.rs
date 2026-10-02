@@ -259,8 +259,8 @@ exported func main() str {
         );
         for iff in &ifs {
             match iff.result {
-                KindT::ShareRef(ShareRefT { inner: KindT::Str(StrT) }) => {}
-                other => panic!("expected a shared str, got {:?}", other),
+                KindT::Str(StrT) => {}
+                other => panic!("expected a str, got {:?}", other),
             }
         }
     }

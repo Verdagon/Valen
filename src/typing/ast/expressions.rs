@@ -98,7 +98,7 @@ where
       ExpressionTE::VoidLiteral(e) => e.result,
       ExpressionTE::ConstantInt(e) => e.result,
       ExpressionTE::ConstantBool(e) => e.result,
-      ExpressionTE::ConstantStr(e) => KindT::ShareRef(e.result),
+      ExpressionTE::ConstantStr(e) => e.result,
       ExpressionTE::ConstantFloat(e) => e.result,
       ExpressionTE::ArgLookup(e) => e.result,
       ExpressionTE::ArrayLength(e) => e.result,
@@ -680,7 +680,7 @@ pub struct ConstantStrTE<'s, 't> {
   pub loct: LocT<'t>,
   pub value: StrI<'s>,
   pub region: RegionT,
-  pub result: &'t ShareRefT<'s, 't>,
+  pub result: KindT<'s, 't>,
   _sealed: (),
 }
 
@@ -689,14 +689,12 @@ where
   's: 't,
 {
   pub fn new(
-    interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
     loct: LocT<'t>,
     value: StrI<'s>,
     region: RegionT,
   ) -> ConstantStrTE<'s, 't> {
-    let result = interner.alloc(ShareRefT { inner: KindT::Str(StrT) });
-    ConstantStrTE { range, loct, value, region, result, _sealed: () }
+    ConstantStrTE { range, loct, value, region, result: KindT::Str(StrT), _sealed: () }
   }
 }
 #[derive(Debug)]

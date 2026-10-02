@@ -869,23 +869,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         })))
       }
       ExpressionTE::ConstantStr(c) => {
-        // Str is share-flavored, so a string literal is a share reference, which carries no group.
-        let result = bump_g.alloc(ShareRefGT {
-          inner: self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, c.result.inner, None),
-          group: GroupTemplataG {
-            group: bump_g.alloc_slice_copy(&[
-              GroupPathG {
-                root: GroupRootG::AmbientMulti(),
-                steps: bump_g.alloc_slice_copy(&[
-                  GroupChildStepG::Variant { variant_name: self.scout_arena.intern_str("str") }
-                ]),
-                ellipsis: false,
-              }
-            ]),
-            kind: KindGT::Str(StrGT {}),
-            born_at: c.loct,
-          },
-        });
+        let result = KindGT::Str(StrGT {});
         Ok(ExpressionGE::ConstantStr(bump_g.alloc(ConstantStrGE { range: c.range, loct: c.loct, value: c.value, result })))
       }
       // A virtual, bound, or extern call: no callee signature to read groups or effects off, so the
