@@ -22,7 +22,7 @@ use crate::typing::ast::expressions::*;
 use crate::typing::borrow_checker::access_event::AccessEventG;
 use crate::typing::borrow_checker::ast_g::*;
 use crate::typing::borrow_checker::experimental::grouped_ast::{
-  collect_subtree_churns, diverges, flatten, group_expr_from_group_s, sole_path,
+  collect_subtree_churns, diverges, flatten, sole_path,
 };
 use crate::typing::borrow_checker::group_expr::{GroupChildStepG, GroupExprG, GroupPathG, GroupRootG};
 use crate::typing::borrow_checker::kind_g::*;
@@ -57,7 +57,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_s: &'s FunctionS<'s>,
     function_t: &'t FunctionDefinitionT<'s, 't>,
     bump_g: &'g Bump,
-  ) -> Result<(ExpressionGE<'s, 't, 'g>, Vec<AccessEventG<'s, 't>>), ICompileErrorT<'s, 't>> {
+  ) -> Result<(ExpressionGE<'s, 't, 'g>, Vec<AccessEventG<'s, 't>>, Vec<Vec<GroupStep<'s, 't>>>), ICompileErrorT<'s, 't>> {
     let mut access_log = Vec::new();
     let local_rune_to_templata = self.build_rune_map(coutputs, function_s, function_t, bump_g);
 
@@ -69,7 +69,36 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     // For now, just use the typed expressions.
     let expr_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, &mut access_log, function_t.body, &local_rune_to_templata, &mut local_to_type_g)?;
 
-    Ok((expr_ge, access_log))
+    let mut param_type_map = IndexMap::new();
+    for (param_st, param_tt) in function_s.params.iter().zip(function_t.header.params.iter()) {
+      if let ITypeST::BorrowRef(st) = param_st.tyype {
+        if !matches!(st.region, RegionS::Held) {
+          let written_context = WrittenContext { type_s: param_st.tyype, name: Some(param_tt.name) };
+          let param_gt = self.groupify_type(
+            coutputs, bump_g, &local_rune_to_templata, &param_type_map, param_tt.tyype, Some(&written_context));
+          if matches!(param_gt, KindGT::BorrowRef(_)) {
+            param_type_map.insert(param_tt.name, param_gt);
+          }
+        }
+      }
+    }
+
+    let declared_mut: Vec<Vec<GroupStep<'s, 't>>> = function_s
+      .effects
+      .iter()
+      .filter_map(|e| match e {
+        EffectS::Mut(gs) => Some(gs),
+        _ => None,
+      })
+      .flat_map(|gs| {
+        self.groupify_group_expr(coutputs, bump_g, &local_rune_to_templata, &param_type_map, gs)
+          .into_iter()
+          .map(|(path, _kind)| flatten(&path))
+          .collect::<Vec<_>>()
+      })
+      .collect();
+
+    Ok((expr_ge, access_log, declared_mut))
   }
 
   /// Each parameter's flattened group path — a borrow parameter's `in g` (or anonymous) group, exactly
@@ -83,12 +112,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     bump_g: &'g Bump,
   ) -> Vec<Option<Vec<GroupStep<'s, 't>>>> {
     let local_rune_to_templata = self.build_rune_map(coutputs, function_s, function_t, bump_g);
-    let local_to_type_g = IndexMap::new();
-    function_s
-      .params
-      .iter()
-      .zip(function_t.header.params.iter())
-      .map(|(param_st, param_tt)| match param_st.tyype {
+    let mut local_to_type_g = IndexMap::new();
+    let mut result = Vec::new();
+    for (param_st, param_tt) in function_s.params.iter().zip(function_t.header.params.iter()) {
+      let path = match param_st.tyype {
         ITypeST::BorrowRef(st) if !matches!(st.region, RegionS::Held) => {
           let written_context = WrittenContext { type_s: param_st.tyype, name: Some(param_tt.name) };
           let param_gt = self.groupify_type(
@@ -100,13 +127,18 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             Some(&written_context),
           );
           match param_gt {
-            KindGT::BorrowRef(b) => Some(flatten(sole_path(b.group.group))),
+            KindGT::BorrowRef(b) => {
+              local_to_type_g.insert(param_tt.name, param_gt);
+              Some(flatten(sole_path(b.group.group)))
+            }
             _ => None,
           }
         }
         _ => None,
-      })
-      .collect()
+      };
+      result.push(path);
+    }
+    result
   }
 
   /// Resolve a call's callee to its scout `FunctionS` via the template id. `None` for a callee whose
@@ -1653,7 +1685,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           .iter()
           .find(|(v, _)| v.imprecise_name() == Some(*imprecise_name))
           .expect("Local not found");
-        vec![(GroupPathG { root: GroupRootG::Local(*var_name_t), steps: &[], ellipsis: false }, *var_kind_gt)]
+        match *var_kind_gt {
+          KindGT::BorrowRef(b) => b.group.group.iter().map(|path| (*path, b.inner)).collect(),
+          other => vec![(GroupPathG { root: GroupRootG::Local(*var_name_t), steps: &[], ellipsis: false }, other)],
+        }
       }
       GroupS::Member { base, member_name } => self
         .groupify_group_expr(coutputs, bump_g, rune_to_templata, local_to_type_g, base)

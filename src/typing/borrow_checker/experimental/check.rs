@@ -31,8 +31,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     's: 'g,
   {
     self.check_return_group(function_s)?;
-    let (body_g, access_log) = self.groupify_function(coutputs, function_s, function_t, check_arena)?;
-    if let Err(mut errors) = self.check_usages(coutputs, function_s, body_g, check_arena) {
+    let (body_g, access_log, declared_mut) = self.groupify_function(coutputs, function_s, function_t, check_arena)?;
+    if let Err(mut errors) = self.check_usages(coutputs, body_g, declared_mut) {
       // One violation reports bare; several report together, in source order.
       return Err(if errors.len() == 1 {
         errors.pop().expect("one error")

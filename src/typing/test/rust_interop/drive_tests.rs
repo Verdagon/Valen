@@ -304,6 +304,59 @@ fn chest_gem_use_after_churn_detected() {
 }
 
 #[test]
+fn chest_gem_mut_and_aliasing_peek_accepted() {
+  let (rustc_location, sysroot_location) = get_env_rustc_and_sysroot_locations();
+  let temp_dir = TempDir::new().expect("could not create scratch dir");
+  add_dependency_rust_lib(temp_dir.path(), "boxed_mut_dep_rust_lib");
+  let valen_project_dir = temp_dir.path().join("testvalenproj");
+  setup_test_temp_dir(&valen_project_dir);
+
+  mimic_compile_dependency_rust_lib(
+    temp_dir.path(),
+    &valen_project_dir,
+    &rustc_location,
+    "boxed_mut_dep_rust_lib");
+  let code = r#"
+  import boxed_mut_dep_rust_lib.Chest;
+  import boxed_mut_dep_rust_lib.Gem;
+  exported func main() i64 {
+    chest = Chest.new();
+    chest.replace(42i64);
+    ref_a = &chest;
+    ref_b = &chest;
+    g = ref_a.gem_mut();
+    x = ref_b.peek();
+    return g.get() + x;
+  }
+  "#;
+  let valen_source_path = src_dir_of(&valen_project_dir).join("main.valen");
+  create_dir_all(src_dir_of(&valen_project_dir)).expect("could not create the src dir");
+  write(&valen_source_path, code).expect("could not write the valen source");
+
+  let mut rustc_args =
+      assemble_rustc_args(
+        &sysroot_location, &valen_project_dir, &["boxed_mut_dep_rust_lib"], "bin");
+  rustc_args[1] = valen_source_path.display().to_string();
+
+  let (drove_valen, rustc_exit) =
+      match drive(
+        &ValenInputs { rustc_args, borrow_check: true, stop_after_typing: false },
+        true,
+        |_, _, _| {},
+        |_| {})
+      {
+        Err(err) => panic!("didn't compile!\n{err:?}"),
+        Ok((drove_valen, rustc_exit)) => (drove_valen, rustc_exit),
+      };
+
+  assert!(drove_valen);
+  assert_eq!(rustc_exit, 0);
+  let exe = deps_dir_of(&valen_project_dir).join("stub");
+  let output = Command::new(&exe).output().unwrap();
+  assert_eq!(output.status.code(), Some(84));
+}
+
+#[test]
 fn drive_links_int_operators_to_exit_seven() {
   let scratch = Scratch::new();
   let exit = drive_and_run_binary(

@@ -35,7 +35,7 @@ exported func main() int {
     r#"At test:0.vale:14:3:
   grow(v);
   ^^^^
-this call churns a group reached through a parameter, but the enclosing function does not declare a mut effect for it.
+this call changes an outside group, but function does not declare a mut effect for it.
 "#,
   );
 }

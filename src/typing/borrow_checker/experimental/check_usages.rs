@@ -13,10 +13,8 @@
 //! from nothing. Errors are collected, never returned early, and all of them are reported in source
 //! order. See `src/typing/docs/architecture/borrowing-design.md`.
 
-use bumpalo::Bump;
 use indexmap::IndexMap;
 
-use crate::postparsing::ast::FunctionS;
 use crate::postparsing::names::IRuneS;
 use crate::postparsing::rules::types::EffectS;
 use crate::typing::ast::ast::PrototypeT;
@@ -24,7 +22,7 @@ use crate::typing::borrow_checker::ast_g::{ExpressionGE, GroupStep};
 use crate::typing::borrow_checker::borrow_error::BorrowErrorKind;
 use crate::typing::borrow_checker::check_usages_types::RefKey;
 use crate::typing::borrow_checker::experimental::grouped_ast::{
-  effect_root_rune, expr_range, flatten, group_expr_from_group_s, moved_local, node_range, param_group_rune,
+  effect_root_rune, expr_range, flatten, moved_local, node_range, param_group_rune,
   paths_alias, place_root_local, rune_name, sole_path, JointFact,
 };
 use crate::typing::borrow_checker::group_expr::GroupPathG;
@@ -62,19 +60,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   pub fn check_usages<'g>(
     &self,
     coutputs: &CompilerOutputs<'s, 't>,
-    function_s: &'s FunctionS<'s>,
     body: ExpressionGE<'s, 't, 'g>,
-    arena: &'g Bump,
+    declared_mut: Vec<Vec<GroupStep<'s, 't>>>,
   ) -> Result<(), Vec<ICompileErrorT<'s, 't>>> {
-    let declared_mut: Vec<Vec<GroupStep<'s, 't>>> = function_s
-      .effects
-      .iter()
-      .filter_map(|e| match e {
-        EffectS::Mut(gs) => Some(gs),
-        _ => None,
-      })
-      .flat_map(|gs| group_expr_from_group_s(gs, arena).iter().map(flatten))
-      .collect();
     let mut walk = Walk {
       declared_mut,
       pending: IndexMap::default(),

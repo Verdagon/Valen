@@ -6,7 +6,9 @@ use crate::StrI;
 use crate::typing::ast::ast::FunctionDefinitionT;
 use crate::typing::ast::borrowing_ast::FunctionAliasingInfoT;
 use crate::typing::borrow_checker::ast_g::ExpressionGE;
+use crate::typing::borrow_checker::group_expr::GroupPathG;
 use crate::typing::borrow_checker::kind_g::KindGT;
+use crate::typing::borrow_checker::symphony::groupify_function::GroupifyResults;
 use crate::typing::borrow_checker::templata_g::ITemplataG;
 use crate::typing::compiler::Compiler;
 use crate::typing::compiler_error_reporter::ICompileErrorT;
@@ -29,16 +31,25 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   ) -> Result<&'g FunctionAliasingInfoT<'s, 'g>, ICompileErrorT<'s, 't>>
   where
     's: 'g,
+    't: 'g,
   {
     let opted_out =
         function_s.attributes.iter().any(|attr| matches!(attr,
           IFunctionAttributeS::MacroCall(MacroCallS { include: IMacroInclusionP::DontCallMacro, macro_name, .. })
             if *macro_name == self.keywords.borrow_check));
-    if !opted_out {
-      let (body_g, _access_log) =
+    if opted_out {
+      let param_index_to_noalias =
+          bump_g.alloc_slice_fill_copy(function_t.header.params.len(), false);
+      Ok(bump_g.alloc(FunctionAliasingInfoT {
+        param_index_to_noalias,
+        group_paths: &[],
+        instruction_loc_to_accessed_groups: &[],
+      }))
+    } else {
+      let GroupifyResults { params_gt, body_g, access_log, func_declared_mut_effects } =
           self.groupify_function(coutputs, function_s, function_t, bump_g)?;
-      self.check_usages(coutputs, function_s, bump_g, body_g)?;
+      self.check_usages(coutputs, function_s, bump_g, body_g, func_declared_mut_effects)?;
+      Ok(self.calculate_aliasing_info(function_s, function_t, &params_gt, bump_g))
     }
-    Ok(self.calculate_aliasing_info(function_s, function_t, bump_g))
   }
 }
