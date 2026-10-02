@@ -1561,6 +1561,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     range: c.range,
                     value: expect_integer_templata(self.translate_templata(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &c.value)).value,
                     bits: c.bits,
+                    is_usize: c.is_usize,
                 }))
             }
             ExpressionTE::ConstantBool(c) => {

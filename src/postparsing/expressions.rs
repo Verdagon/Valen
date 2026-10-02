@@ -231,6 +231,7 @@ pub struct ConstantIntSE<'s> {
   pub range: RangeS<'s>,
   pub value: i64,
   pub bits: i32,
+  pub is_usize: bool,
 }
 #[derive(Debug, PartialEq)]
 pub struct ConstantBoolSE<'s> {

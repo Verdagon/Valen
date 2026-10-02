@@ -1191,6 +1191,134 @@ exported func main() int {
   outcome.expect_compiled();
 }
 
+/// Real `Vec` `&mut self` indexed removal: `v.remove(i)`. The index is a real `usize` produced by
+/// `len()` (usize has no literals), and `remove` is an inherent `Vec` method, so this rides the same
+/// inherent-method import path as push/pop/len. Borrow check is off because the test's only job is to
+/// prove the method imports and resolves.
+#[test]
+fn calls_remove_on_a_real_vec() {
+  let outcome = typecheck_without_borrow_check("horizon/main", r#"
+import std.vec.Vec;
+import std.alloc.Global;
+exported func main() int {
+  v = Vec.new<int>();
+  v.push(7);
+  return v.remove(v.len());
+}
+"#, |hinputs| {
+    let main = hinputs.lookup_function_by_str("main");
+    collect_only_tnode!(
+        NodeRefT::FunctionDefinition(main),
+        NodeRefT::FunctionCall(FunctionCallTE {
+            callable: PrototypeT {
+                id: IdT {
+                    package_coord: PackageCoordinate { module: StrI("alloc"), .. },
+                    local_name: INameT::Function(FunctionNameT {
+                        template: FunctionTemplateNameT { human_name: StrI("remove"), .. }, ..
+                    }), ..
+                }, ..
+            }, ..
+        }) => Some(())
+    );
+  });
+  outcome.expect_compiled();
+}
+
+/// Real `Vec` `&mut self` insertion: `v.insert(i, 9)`, index a real `usize` from `len()`. Inherent
+/// method returning unit.
+#[test]
+fn calls_insert_on_a_real_vec() {
+  let outcome = typecheck_without_borrow_check("horizon/main", r#"
+import std.vec.Vec;
+import std.alloc.Global;
+exported func main() int {
+  v = Vec.new<int>();
+  v.push(7);
+  v.insert(v.len(), 9);
+  return 0;
+}
+"#, |hinputs| {
+    let main = hinputs.lookup_function_by_str("main");
+    collect_only_tnode!(
+        NodeRefT::FunctionDefinition(main),
+        NodeRefT::FunctionCall(FunctionCallTE {
+            callable: PrototypeT {
+                id: IdT {
+                    package_coord: PackageCoordinate { module: StrI("alloc"), .. },
+                    local_name: INameT::Function(FunctionNameT {
+                        template: FunctionTemplateNameT { human_name: StrI("insert"), .. }, ..
+                    }), ..
+                }, ..
+            }, ..
+        }) => Some(())
+    );
+  });
+  outcome.expect_compiled();
+}
+
+/// Real `Vec` `&mut self` `swap_remove(i)` — inherent method returning the removed element; index a
+/// real `usize` from `len()`.
+#[test]
+fn calls_swap_remove_on_a_real_vec() {
+  let outcome = typecheck_without_borrow_check("horizon/main", r#"
+import std.vec.Vec;
+import std.alloc.Global;
+exported func main() int {
+  v = Vec.new<int>();
+  v.push(7);
+  return v.swap_remove(v.len());
+}
+"#, |hinputs| {
+    let main = hinputs.lookup_function_by_str("main");
+    collect_only_tnode!(
+        NodeRefT::FunctionDefinition(main),
+        NodeRefT::FunctionCall(FunctionCallTE {
+            callable: PrototypeT {
+                id: IdT {
+                    package_coord: PackageCoordinate { module: StrI("alloc"), .. },
+                    local_name: INameT::Function(FunctionNameT {
+                        template: FunctionTemplateNameT { human_name: StrI("swap_remove"), .. }, ..
+                    }), ..
+                }, ..
+            }, ..
+        }) => Some(())
+    );
+  });
+  outcome.expect_compiled();
+}
+
+/// Real `Vec` `&mut self` `clear()` — inherent method, no index, so it typechecks with the borrow
+/// checker on like push/pop/len.
+#[test]
+fn calls_clear_on_a_real_vec() {
+  let outcome = typecheck("horizon/main", r#"
+import std.vec.Vec;
+import std.alloc.Global;
+exported func main() int {
+  v = Vec.new<int>();
+  v.push(7);
+  v.clear();
+  return 0;
+}
+"#, |hinputs| {
+    let main = hinputs.lookup_function_by_str("main");
+    collect_only_tnode!(
+        NodeRefT::FunctionDefinition(main),
+        NodeRefT::FunctionCall(FunctionCallTE {
+            callable: PrototypeT {
+                id: IdT {
+                    package_coord: PackageCoordinate { module: StrI("alloc"), .. },
+                    local_name: INameT::Function(FunctionNameT {
+                        template: FunctionTemplateNameT { human_name: StrI("clear"), .. }, ..
+                    }), ..
+                }, ..
+            }, ..
+        }) => Some(())
+    );
+  });
+  outcome.expect_compiled();
+}
+
 /// A struct wrapping a `HashMap`, used through methods: build a `Domino`, add a `Glyph` via a `&mut self`
 /// method, read one back via a `&self` method returning a **borrow** (`&Glyph`) bound to a local, then
 /// read the glyph's field through an accessor. The borrow-return bound to a local (`d_ref`) is the new
@@ -3323,18 +3451,10 @@ exported func main() int {
   );
 }
 
-/// RED (until the importer follows `Deref<Target=[T]>`): a real `std::vec::Vec` element accessor
-/// should be importable, so `v.get(0)` should resolve and the program should compile. It does not
-/// today — `get` is a slice method reached through `Deref<[T]>`, and the importer discovers only a
-/// type's inherent methods (`new`/`push`/`pop`/`len`), so the call fails with
-/// `CouldntFindFunctionToCallT`. This is the first of three blockers to a real-`Vec` element
-/// use-after-churn; the use-after-churn R test itself uses the Domino wrapper (inherent
-/// `get_glyph -> &Glyph`).
-// Ignored until the Deref method-discovery work lands (the next rust-interop task). `get` is unreachable
-// until the importer follows `Deref<Target=[T]>` and lowers the slice
-// `[T]` / `usize`, so the program cannot compile yet.
+/// A real `std::vec::Vec` element accessor: `v.get(0u)` resolves. `get` is a slice method reached
+/// through `Deref<Target=[T]>`, not an inherent `Vec` method, so this exercises the importer's
+/// generic-`Deref` method discovery — the companion to the inherent-method path (new/push/pop/len).
 #[test]
-#[ignore]
 fn a_real_vec_element_accessor_is_importable() {
   let outcome = typecheck_without_borrow_check("horizon/main", r#"
 import std.vec.Vec;
@@ -3343,7 +3463,7 @@ import std.option.Option;
 exported func main() int {
   v = Vec.new<int>();
   v.push(7);
-  e = (v.get(0)).unwrap();
+  e = (v.get(0u)).unwrap();
   return 0;
 }
 "#, |_| ());
@@ -3394,20 +3514,71 @@ exported func main() int {
   );
 }
 
-/// Tier-2: a Vale struct lives by value inside a real Rust `Vec` and is read back through `at<T>`'s
-/// borrow → 42. Rides Slice 1's `layout_of` override for the element stride; nothing else is new here
-/// unless the generic borrow-return import (`&Vec<T>` in, `&T` out) turns out to be a gap of its own.
+/// Slice 2 (B2 fat pointer + B1 `Some`): an in-range `v.get(0u)` on a real `Vec<int>` runs end to
+/// end and yields the element → 42. Exercises the `&[int]` fat-pointer receiver crossing and the
+/// `Option<&int>` niche return; `get` is the real slice method reached by autoderef, not a shim.
+#[test]
+fn rustc_driven_bin_vec_get_returns_the_element() {
+  let run = drive_and_run_without_borrow_check("horizon/main", r#"
+import std.vec.Vec;
+import std.alloc.Global;
+import std.option.Option;
+exported func main() int {
+  v = Vec.new<int>();
+  v.push(42);
+  return (v.get(0u)).unwrap();
+}
+"#);
+  assert_eq!(
+    run.process_exit,
+    Some(42),
+    "the driven vec-get bin did not exit 42 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
+/// Slice 3 (B1 `None` path): an out-of-range `v.get(i)` yields `None`, observably distinct from
+/// `Some`. `Option` is opaque to Vale (no variant matching), so we distinguish via the imported
+/// `Option::is_none()`. Index 1 is out of range for a 1-element vec, so `get` returns `None` →
+/// `is_none()` is true → exit 5. Exercises the niche's null case crossing back as the opaque struct.
+#[test]
+fn rustc_driven_bin_vec_get_out_of_range_is_none() {
+  let run = drive_and_run_without_borrow_check("horizon/main", r#"
+import std.vec.Vec;
+import std.alloc.Global;
+import std.option.Option;
+exported func main() int {
+  v = Vec.new<int>();
+  v.push(42);
+  result = v.get(1u);
+  if (result.is_none()) {
+    return 5;
+  }
+  return 0;
+}
+"#);
+  assert_eq!(
+    run.process_exit,
+    Some(5),
+    "the driven out-of-range vec-get bin did not exit 5 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
+/// Tier-2: a Vale struct lives by value inside a real Rust `Vec` and is read back through real
+/// `Vec::get` → 42. Rides the `layout_of` override for the `__ValeOpaque<Ship>` element stride and
+/// the fat-pointer / `Option<&Ship>` crossing; the element borrow is `get(i).unwrap()`, no `at` shim.
 #[test]
 fn rustc_driven_bin_vec_of_vale_structs_read_through_borrow_returns_42() {
   let run = drive_and_run_without_borrow_check("horizon/main", r#"
-import mycrate.at;
 import std.vec.Vec;
 import std.alloc.Global;
+import std.option.Option;
 struct Ship { fuel int; }
 exported func main() int {
   v = Vec.new<Ship>();
   v.push(Ship(42));
-  return at(&v, 0i64).fuel;
+  return (v.get(0u)).unwrap().fuel;
 }
 "#);
   assert_eq!(
@@ -3418,24 +3589,23 @@ exported func main() int {
   );
 }
 
-/// Tier-2 guard for the benchmark shape: a field write through one alias of a `Vec<Ship>` element is
-/// read back through the other alias → 42. Vale keeps both borrows live and emits the store/load at
-/// its own field offset behind Vec's buffer; Rust's `at<T>` only hands the pointers out.
+/// Tier-2 guard for the benchmark shape: a field write through one `Vec::get` borrow of an element is
+/// read back through another `get` borrow of the same element → 42. Vale keeps both borrows live and
+/// emits the store/load at its own field offset behind Vec's buffer; real `Vec::get` hands the
+/// pointers out, no `at` shim.
 #[test]
 fn rustc_driven_bin_aliased_vec_element_write_returns_42() {
   let run = drive_and_run_without_borrow_check("horizon/main", r#"
-import mycrate.at;
 import mycrate.do_nothing;
 import std.vec.Vec;
 import std.alloc.Global;
+import std.option.Option;
 struct Ship { fuel int; }
 exported func main() int {
   v = Vec.new<Ship>();
   v.push(Ship(1));
-  ref_a = &v;
-  ref_b = &v;
-  a = at(ref_a, 0i64);
-  b = at(ref_b, 0i64);
+  a = (v.get(0u)).unwrap();
+  b = (v.get(0u)).unwrap();
   set a.fuel = 42;
   do_nothing();
   return b.fuel;

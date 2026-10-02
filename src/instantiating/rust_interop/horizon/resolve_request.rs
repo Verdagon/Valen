@@ -5,7 +5,7 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::DefId;
 
 use crate::instantiating::ast::ast::PrototypeI;
-use crate::instantiating::ast::names::INameI;
+use crate::instantiating::ast::names::{INameI, IStructTemplateNameI};
 use crate::instantiating::ast::templata::ITemplataI;
 use crate::instantiating::ast::types::KindIT;
 use crate::interner::StrI;
@@ -53,6 +53,15 @@ pub(super) fn resolve_request<'tcx>(
   if let Some((def_id, args)) = resolve_method_request(tcx, rust_crates, proto, &own_arg_tys) {
     return ResolvedRequest {
       log: format!("{path} => {} (method)", tcx.def_path_str(def_id)),
+      dep: (def_id, args),
+    };
+  }
+
+  // A slice method (`<[T]>::get`) whose receiver is the synthesized `__slice<T>` citizen. That
+  // citizen has no `DefId`, so `resolve_method_request` (which keys on the receiver's ADT) misses it.
+  if let Some((def_id, args)) = resolve_slice_method_request(tcx, rust_crates, proto) {
+    return ResolvedRequest {
+      log: format!("{path} => {} (slice method)", tcx.def_path_str(def_id)),
       dep: (def_id, args),
     };
   }
@@ -186,6 +195,57 @@ fn resolve_assoc_fn_request<'tcx>(
   )?;
   let fn_def_id = resolve_inherent_method(tcx, owner_def_id, fn_name.as_str())?;
   Some((fn_def_id, build_generic_args(tcx, fn_def_id, own_arg_tys)))
+}
+
+/// Resolve a slice method (`<[T]>::get`) whose receiver is the synthesized `__slice<T>` citizen. The
+/// citizen has no `DefId` (a slice is structural), so the element type comes from its one type
+/// argument, and the method is found among the slice's incoherent inherent impls (`impl<T> [T]`). Its
+/// args are parent-inclusive `[element, usize]` — the impl's `T` and the `SliceIndex` parameter
+/// concretized to `usize`, mirroring the oracle's slice-method signature.
+fn resolve_slice_method_request<'tcx>(
+  tcx: TyCtxt<'tcx>,
+  rust_crates: &[StrI],
+  proto: &PrototypeI,
+) -> Option<(DefId, ty::GenericArgsRef<'tcx>)> {
+  let (method_name, _, parameters) = request_name_parts(proto);
+  let elem_ty = slice_receiver_element(tcx, rust_crates, parameters.first()?)?;
+  let method_def_id = resolve_incoherent_slice_method(tcx, method_name.as_str())?;
+  let args = build_generic_args(tcx, method_def_id, &[elem_ty, tcx.types.usize]);
+  Some((method_def_id, args))
+}
+
+/// The element type of a `&__slice<T>` receiver, or `None` when the receiver isn't the slice citizen.
+fn slice_receiver_element<'tcx>(
+  tcx: TyCtxt<'tcx>,
+  rust_crates: &[StrI],
+  kind: &KindIT,
+) -> Option<Ty<'tcx>> {
+  let KindIT::StructIT(s) = kind.peel_all_references() else {
+    return None;
+  };
+  let INameI::StructName(sn) = s.id.local_name else {
+    return None;
+  };
+  let IStructTemplateNameI::StructTemplate(t) = sn.template else {
+    return None;
+  };
+  if t.human_name.as_str() != "__slice" { // ataflbz-allow: `__slice` is a synthesized-citizen sentinel name, not a real Rust item's identity
+    return None;
+  }
+  templata_to_rustc_ty(tcx, rust_crates, sn.template_args.first()?)
+}
+
+/// Find a slice inherent method (`impl<T> [T]`) by name, via the incoherent inherent impls keyed by
+/// the slice `SimplifiedType` — a slice has no ADT `DefId` for `inherent_impls`.
+fn resolve_incoherent_slice_method(tcx: TyCtxt<'_>, method_name: &str) -> Option<DefId> {
+  for impl_def_id in tcx.incoherent_impls(ty::fast_reject::SimplifiedType::Slice).iter() {
+    for assoc in tcx.associated_items(*impl_def_id).in_definition_order() {
+      if assoc.as_tag() == ty::AssocTag::Fn && assoc.name().as_str() == method_name {
+        return Some(assoc.def_id);
+      }
+    }
+  }
+  None
 }
 
 /// The owning type of a method receiver: its `DefId` and its own type arguments. Peels any reference

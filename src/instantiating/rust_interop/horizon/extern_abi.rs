@@ -24,6 +24,16 @@ pub(super) fn compute_extern_abi<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tc
       None => panic!("requires_caller_location is true but fn_abi has no args"),
     }
   }
+  // The drop shim `__vale_drop<T>(x: *mut T)` is the one extern that takes a pointer TO an owned
+  // Vale value rather than the value itself. Its `*mut T` classifies as a pointer scalar
+  // (`DirectPtr`), but the backend must spill the owned value and pass its address — the `Indirect`
+  // behavior — not reinterpret the value's own bytes as a pointer (what `DirectPtr` means for a
+  // value that crosses *as* a pointer, e.g. `Option<&T>`'s niche).
+  if tcx.item_name(instance.def_id()).as_str() == "__vale_drop" { // ataflbz-allow: `__vale_drop` is a synthesized-shim sentinel name, not a real Rust item's identity
+    for a in args.iter_mut() {
+      *a = PassModeR::Indirect;
+    }
+  }
   ExternAbi { ret, args }
 }
 
@@ -58,17 +68,25 @@ fn translate_pass_mode<'tcx>(tcx: TyCtxt<'tcx>, arg: &ArgAbi<'tcx, Ty<'tcx>>) ->
       }
       PassModeR::Cast(cast.rest.unit.size.bits() as u32)
     }
-    // A small struct rustc passes as two register scalars (`ScalarPair`), e.g. `{i32, i32}`. Each
-    // component crosses as its own integer; the struct is reassembled from the two on the far side.
-    // Only integer components are handled — a pointer component (a fat pointer / slice) is not yet.
+    // A value rustc passes as two register scalars (`ScalarPair`). Two shapes are handled:
+    //  - `{data_ptr, len}` (first component a pointer, second an integer) — a slice `&[T]` / `&str`
+    //    fat pointer, crossing as a `FatPtr`.
+    //  - `{int, int}` (e.g. `{i32, i32}`) — reassembled into the struct from two integer registers.
+    // A `{ptr, ptr}` pair (a `dyn` trait object) has no consumer yet.
     PassMode::Pair(_, _) => match arg.layout.backend_repr {
       BackendRepr::ScalarPair(s0, s1) => {
-        if matches!(s0.primitive(), Primitive::Pointer(_))
-          || matches!(s1.primitive(), Primitive::Pointer(_))
-        {
-          panic!("unsupported Pair with a pointer component for interop extern (fat pointer not handled)");
+        let p0 = matches!(s0.primitive(), Primitive::Pointer(_));
+        let p1 = matches!(s1.primitive(), Primitive::Pointer(_));
+        match (p0, p1) {
+          (true, false) => PassModeR::FatPtr(s1.size(&tcx).bits() as u32),
+          (false, false) => {
+            PassModeR::Pair(s0.size(&tcx).bits() as u32, s1.size(&tcx).bits() as u32)
+          }
+          _ => panic!(
+            "unsupported ScalarPair with a pointer second component ({s0:?}, {s1:?}) — a dyn fat \
+             pointer `{{ptr, ptr}}` is not handled yet"
+          ),
         }
-        PassModeR::Pair(s0.size(&tcx).bits() as u32, s1.size(&tcx).bits() as u32)
       }
       other => panic!("PassMode::Pair without a ScalarPair backend_repr: {other:?}"),
     },

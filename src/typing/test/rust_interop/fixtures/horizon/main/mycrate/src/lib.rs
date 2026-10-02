@@ -370,7 +370,3 @@ impl Deref for Sheath {
 pub fn make_sheath() -> Sheath {
     Sheath { inner: Core { val: 7 } }
 }
-
-pub fn at<T>(v: &Vec<T>, i: i64) -> &T {
-    &v[i as usize]
-}

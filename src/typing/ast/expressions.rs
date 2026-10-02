@@ -642,6 +642,7 @@ pub struct ConstantIntTE<'s, 't> {
   pub range: RangeS<'s>,
   pub value: ITemplataT<'s, 't>,
   pub bits: i32,
+  pub is_usize: bool,
   pub region: RegionT,
   pub result: KindT<'s, 't>,
   _sealed: (),
@@ -651,8 +652,9 @@ impl<'s, 't> ConstantIntTE<'s, 't>
 where
   's: 't,
 {
-  pub fn new(range: RangeS<'s>, value: ITemplataT<'s, 't>, bits: i32, region: RegionT) -> ConstantIntTE<'s, 't> {
-    ConstantIntTE { range, value, bits, region, result: KindT::Int(IntT { bits }), _sealed: () }
+  pub fn new(range: RangeS<'s>, value: ITemplataT<'s, 't>, bits: i32, is_usize: bool, region: RegionT) -> ConstantIntTE<'s, 't> {
+    let result = if is_usize { KindT::USize(USizeT) } else { KindT::Int(IntT { bits }) };
+    ConstantIntTE { range, value, bits, is_usize, region, result, _sealed: () }
   }
 }
 #[derive(Debug)]

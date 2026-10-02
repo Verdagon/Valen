@@ -54,6 +54,13 @@ pub(super) fn kind_to_rustc_ty<'tcx>(
     },
     KindIT::BoolIT(_) => Some(tcx.types.bool),
     KindIT::USizeIT(_) => Some(tcx.types.usize),
+    // A Vale borrow crosses as a shared rustc reference — e.g. the `&T` element of a slice `get`'s
+    // `Option<&T>` return, which `Option::unwrap` is then monomorphized over. Lifetimes are erased
+    // (borrowck ran on the Rust side).
+    KindIT::BorrowRefIT(b) => {
+      let inner = kind_to_rustc_ty(tcx, rust_crates, &b.inner)?;
+      Some(Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, inner))
+    }
     KindIT::StructIT(s) => citizen_or_opaque_to_rustc_ty(tcx, rust_crates, &s.id),
     KindIT::InterfaceIT(i) => citizen_or_opaque_to_rustc_ty(tcx, rust_crates, &i.id),
     _ => None,
@@ -133,9 +140,35 @@ pub(super) fn citizen_to_rustc_ty<'tcx>(
   rust_crates: &[StrI],
   id: &IdI,
 ) -> Option<Ty<'tcx>> {
+  // The synthesized `__slice<T>` citizen is Rust's `&[T]` fat pointer — a two-word value. Lowering
+  // it this way gives it the real slice-ref layout (`layout_of` → 16 bytes), which is what sizes the
+  // `__slice` struct for the fat-pointer Pair marshalling.
+  if let Some(elem) = slice_citizen_element_ty(tcx, rust_crates, id) {
+    let slice = Ty::new_slice(tcx, elem);
+    return Some(Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, slice));
+  }
   let (def_id, arg_tys) = citizen_def_id_and_args(tcx, rust_crates, id)?;
   let args = build_generic_args(tcx, def_id, &arg_tys);
   Some(Ty::new_adt(tcx, tcx.adt_def(def_id), args))
+}
+
+/// If `id` names the synthesized `__slice<T>` citizen, its element type as a rustc `Ty`. The slice
+/// citizen stands in for Rust's `&[T]`; this recovers `T`.
+fn slice_citizen_element_ty<'tcx>(
+  tcx: TyCtxt<'tcx>,
+  rust_crates: &[StrI],
+  id: &IdI,
+) -> Option<Ty<'tcx>> {
+  let INameI::StructName(sn) = id.local_name else {
+    return None;
+  };
+  let IStructTemplateNameI::StructTemplate(t) = sn.template else {
+    return None;
+  };
+  if t.human_name.as_str() != "__slice" { // ataflbz-allow: `__slice` is a synthesized-citizen sentinel name, not a real Rust item's identity
+    return None;
+  }
+  templata_to_rustc_ty(tcx, rust_crates, sn.template_args.first()?)
 }
 
 /// A citizen's rustc `DefId` and its converted type arguments, from its instantiated id.

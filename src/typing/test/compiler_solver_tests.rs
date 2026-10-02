@@ -740,6 +740,39 @@ exported func main() int where N Int = 3 {
 }
 
 #[test]
+fn usize_literal() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+exported func main() int {
+  x = 42u;
+  return 0;
+}
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let coutputs = compile.expect_compiler_outputs();
+  let main = coutputs.lookup_function_by_str("main");
+  let _ci: &ConstantIntTE = collect_only_tnode!(
+      NodeRefT::FunctionDefinition(main),
+      NodeRefT::ConstantInt(ci @ ConstantIntTE { result: KindT::USize(_), .. }) => Some(ci)
+  );
+}
+
+#[test]
 fn equals_transitive() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();

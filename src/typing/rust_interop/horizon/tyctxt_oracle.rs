@@ -178,14 +178,14 @@ fn discover_deref_targets<'s>(
   let source_indices: Vec<usize> = items
     .iter()
     .enumerate()
-    .filter(|(_, i)| matches!(i.kind, ItemKind::Type | ItemKind::Enum) && i.generic_params.is_empty())
+    .filter(|(_, i)| matches!(i.kind, ItemKind::Type | ItemKind::Enum))
     .map(|(idx, _)| idx)
     .collect();
   for source_idx in source_indices {
     let source_def_id = items[source_idx].def_id().expect("an imported type always has a rustc DefId");
     let source_ty = tcx.type_of(source_def_id).instantiate_identity();
     // The shared `Deref` impl for this exact ADT, if any: its `deref` fn DefId and its `Target` ADT.
-    let mut found: Option<(DefId, DefId)> = None;
+    let mut found: Option<(DefId, DerefTarget)> = None;
     tcx.for_each_relevant_impl(deref_did, source_ty, |impl_did| {
       if found.is_some() {
         return;
@@ -198,64 +198,147 @@ fn discover_deref_targets<'s>(
       if self_adt.did() != source_def_id {
         return;
       }
-      let mut target_did: Option<DefId> = None;
+      let mut target: Option<DerefTarget> = None;
       let mut deref_fn: Option<DefId> = None;
       for assoc in tcx.associated_items(impl_did).in_definition_order() {
         match assoc.as_tag() {
-          // A named, non-generic ADT target only. `[T]`/`str`/a generic `Foo<T>` is out of scope.
           rustc_middle::ty::AssocTag::Type => {
             let ty = tcx.type_of(assoc.def_id).instantiate_identity();
-            if let TyKind::Adt(target_adt, target_args) = ty.kind() {
-              if target_args.types().next().is_none() {
-                target_did = Some(target_adt.did());
+            match ty.kind() {
+              // A named, non-generic ADT target (`Sheath: Deref<Target=Core>`).
+              TyKind::Adt(target_adt, target_args) if target_args.types().next().is_none() => {
+                target = Some(DerefTarget::Adt(target_adt.did()));
               }
+              // A slice `[T]` target (`Vec<T>: Deref<Target=[T]>`) — the element accessor path.
+              TyKind::Slice(_) => {
+                target = Some(DerefTarget::Slice);
+              }
+              // A generic ADT target, `str`, or `dyn`: out of scope.
+              _ => {}
             }
           }
           rustc_middle::ty::AssocTag::Fn => deref_fn = Some(assoc.def_id),
           _ => {}
         }
       }
-      if let (Some(t), Some(f)) = (target_did, deref_fn) {
+      if let (Some(t), Some(f)) = (target, deref_fn) {
         found = Some((f, t));
       }
     });
-    let Some((deref_fn_did, target_did)) = found else {
+    let Some((deref_fn_did, target)) = found else {
       continue;
     };
-    let target_kind = match tcx.def_kind(target_did) {
-      DefKind::Struct => ItemKind::Type,
-      DefKind::Enum => ItemKind::Enum,
-      _ => continue,
-    };
-    let target_idx = match items.iter().position(|i| {
-      matches!(i.kind, ItemKind::Type | ItemKind::Enum) && i.origin == RustItemOrigin::Rustc(target_did)
-    }) {
-      Some(idx) => idx,
-      None => {
-        items.push(RustItem {
-          human_name: scout_arena.intern_str(tcx.item_name(target_did).as_str()),
-          origin: RustItemOrigin::Rustc(target_did),
-          package: package_coord_for(tcx, scout_arena, target_did),
-          kind: target_kind,
-          generic_params: own_generic_param_names(tcx, scout_arena, target_did),
-        });
-        let new_idx = items.len() - 1;
-        add_inherent_methods(tcx, scout_arena, items, new_idx);
-        add_synthesized_drop(keywords, items, new_idx);
-        newly_added_targets.push(new_idx);
-        new_idx
+    let target_idx = match target {
+      DerefTarget::Adt(target_did) => {
+        // A Rust enum imports as an opaque extern struct (`Type`), like any other imported enum.
+        let target_kind = match tcx.def_kind(target_did) {
+          DefKind::Struct | DefKind::Enum => ItemKind::Type,
+          _ => continue,
+        };
+        match items.iter().position(|i| {
+          matches!(i.kind, ItemKind::Type | ItemKind::Enum)
+            && i.origin == RustItemOrigin::Rustc(target_did)
+        }) {
+          Some(idx) => idx,
+          None => {
+            items.push(RustItem {
+              human_name: scout_arena.intern_str(tcx.item_name(target_did).as_str()),
+              origin: RustItemOrigin::Rustc(target_did),
+              package: package_coord_for(tcx, scout_arena, target_did),
+              kind: target_kind,
+              generic_params: own_generic_param_names(tcx, scout_arena, target_did),
+            });
+            let new_idx = items.len() - 1;
+            add_inherent_methods(tcx, scout_arena, items, new_idx);
+            add_synthesized_drop(keywords, items, new_idx);
+            newly_added_targets.push(new_idx);
+            new_idx
+          }
+        }
       }
+      // The slice target has no ADT `DefId`: register the one synthesized opaque `__slice<T>`
+      // citizen and attach its slice methods via `incoherent_inherent_impls`.
+      DerefTarget::Slice => match items.iter().position(|i| i.origin == RustItemOrigin::Slice) {
+        Some(idx) => idx,
+        None => {
+          let slice_idx = push_slice_citizen(scout_arena, items);
+          add_slice_inherent_methods(tcx, scout_arena, items, slice_idx);
+          newly_added_targets.push(slice_idx);
+          slice_idx
+        }
+      },
     };
+    // The synthesized `deref` carries the source's own generic parameters, so its receiver is
+    // `&Source<T…>` and (for a slice) its return is `&__slice<element>` in that same generic space.
+    // For a non-generic source this is the empty list, exactly as before.
+    let source_generic_params = items[source_idx].generic_params.clone();
     let source_package = items[source_idx].package;
     items.push(RustItem {
       human_name: scout_arena.intern_str("deref"),
       origin: RustItemOrigin::Rustc(deref_fn_did),
       package: source_package,
       kind: ItemKind::DerefMethod { owner: source_idx, target: target_idx },
-      generic_params: Vec::new(),
+      generic_params: source_generic_params,
     });
   }
   newly_added_targets
+}
+
+#[derive(Copy, Clone)]
+enum DerefTarget {
+  /// A named, non-generic ADT (`Core`).
+  Adt(DefId),
+  /// A slice `[T]` — represented by the one synthesized `__slice<T>` citizen.
+  Slice,
+}
+
+/// Push the one synthesized opaque `__slice<T>` citizen (origin `Slice`, no `DefId`). Its single
+/// generic parameter `T` is the element type; its methods are attached by
+/// `add_slice_inherent_methods`.
+fn push_slice_citizen<'s>(scout_arena: &ScoutArena<'s>, items: &mut Vec<RustItem<'s>>) -> usize {
+  let package = scout_arena.intern_package_coordinate(scout_arena.intern_str("core"), &[]);
+  items.push(RustItem {
+    human_name: scout_arena.intern_str("__slice"),
+    origin: RustItemOrigin::Slice,
+    package,
+    kind: ItemKind::Type,
+    generic_params: vec![scout_arena.intern_str("T")],
+  });
+  items.len() - 1
+}
+
+/// Attach the slice's inherent methods (the `impl<T> [T]` block), reached via
+/// `incoherent_inherent_impls(SimplifiedType::Slice)` because a slice has no ADT `DefId` to key
+/// `inherent_impls` on. Minimum scope: only `get` (the element accessor); other slice methods come
+/// later. Signatures are synthesized in `fn_sig`'s slice-method arm, never lowered raw (the raw
+/// `get` sig is a `SliceIndex` projection the oracle declines).
+fn add_slice_inherent_methods<'s>(
+  tcx: TyCtxt<'_>,
+  scout_arena: &ScoutArena<'s>,
+  items: &mut Vec<RustItem<'s>>,
+  slice_idx: usize,
+) {
+  let package = items[slice_idx].package;
+  let generic_params = items[slice_idx].generic_params.clone();
+  for impl_def_id in
+    tcx.incoherent_impls(rustc_middle::ty::fast_reject::SimplifiedType::Slice).iter()
+  {
+    for assoc in tcx.associated_items(*impl_def_id).in_definition_order() {
+      if assoc.as_tag() != rustc_middle::ty::AssocTag::Fn {
+        continue;
+      }
+      if assoc.name().as_str() != "get" {
+        continue;
+      }
+      items.push(RustItem {
+        human_name: scout_arena.intern_str(assoc.name().as_str()),
+        origin: RustItemOrigin::Rustc(assoc.def_id),
+        package,
+        kind: ItemKind::Method(slice_idx),
+        generic_params: generic_params.clone(),
+      });
+    }
+  }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -303,6 +386,7 @@ impl<'s> RustItem<'s> {
     match self.origin {
       RustItemOrigin::Rustc(def_id) => Some(def_id),
       RustItemOrigin::SynthesizedDrop => None,
+      RustItemOrigin::Slice => None,
     }
   }
 
@@ -431,8 +515,13 @@ impl<'tcx, 's> TyCtxtOracle<'tcx, 's> {
       }
       let kind = match tcx.def_kind(def_id) {
         DefKind::Fn => ItemKind::Function,
-        DefKind::Struct => ItemKind::Type,
-        DefKind::Enum => ItemKind::Enum,
+        // A Rust enum imports as an opaque extern struct (`Type`), NOT a Vale interface. Horizon
+        // imports no variants, so Vale can never match on it — it only holds and passes the value
+        // (and calls inherent methods like `Option::unwrap`). An opaque struct is sized by rustc's
+        // `layout_of` and crosses as an opaque blob (e.g. `Option<&T>`'s niche pointer), whereas a
+        // Vale interface would be a two-word control-block+vtable fat ref it has no use for and
+        // whose size wouldn't match rustc's.
+        DefKind::Struct | DefKind::Enum => ItemKind::Type,
         DefKind::Trait => ItemKind::Trait,
         other => panic!("resolve_crate_qualified_path returned a {other:?}, which it filters out"),
       };
@@ -565,12 +654,139 @@ impl<'tcx, 's> TyCtxtOracle<'tcx, 's> {
       // A reference — a `&self` receiver or a borrowed parameter. Kept structural (a borrow *of
       // a position*) so the inner citizen keeps its package path and an inner generic keeps its
       // slot.
-      TyKind::Ref(_, inner, mutbl) => Ok(TypeR::Borrow {
-        inner: interner.alloc(self.lower_sig_ty(*inner, own_param_names, interner)?),
-        is_mut: mutbl.is_mut(),
-      }),
+      // A reference. A `&[T]` is special: the reference *is* the two-word fat pointer, so it
+      // collapses into the **by-value** `__slice<T>` citizen rather than a one-word borrow of it (a
+      // borrow could not hold two words). Every other reference stays a structural borrow of its
+      // inner position.
+      TyKind::Ref(_, inner, mutbl) => {
+        if let TyKind::Slice(elem) = inner.kind() {
+          self.slice_citizen_type(*elem, own_param_names, interner)
+        } else {
+          Ok(TypeR::Borrow {
+            inner: interner.alloc(self.lower_sig_ty(*inner, own_param_names, interner)?),
+            is_mut: mutbl.is_mut(),
+          })
+        }
+      }
+      // A bare (by-value) slice position reduces to the same `__slice<T>` citizen. A truly unsized
+      // by-value slice never appears in a real signature; this keeps the mapping total.
+      TyKind::Slice(elem) => self.slice_citizen_type(*elem, own_param_names, interner),
       _ => Ok(TypeR::Primitive(lower_primitive(ty)?)),
     }
+  }
+
+  /// The by-value `__slice<elem>` citizen `TypeR` for a Rust slice element. A slice has no ADT
+  /// `DefId`, so it is the one synthesized opaque citizen keyed by `RustItemOrigin::Slice`; the
+  /// element lowers as a signature position of its own, like any citizen type argument.
+  fn slice_citizen_type<'t>(
+    &self,
+    elem: Ty<'tcx>,
+    own_param_names: &[StrI<'s>],
+    interner: &TypingInterner<'s, 't>,
+  ) -> Result<TypeR<'s, 't>, CouldNotPostparseReason>
+  where
+    's: 't,
+  {
+    let idx = self
+      .items
+      .iter()
+      .position(|i| i.origin == RustItemOrigin::Slice)
+      .ok_or(CouldNotPostparseReason::UnimportedType)?;
+    let elem_r = self.lower_sig_ty(elem, own_param_names, interner)?;
+    Ok(TypeR::Citizen {
+      package: self.items[idx].package,
+      name: self.items[idx].human_name,
+      args: interner.alloc_slice_from_vec(vec![elem_r]),
+    })
+  }
+
+  /// The element type of the source's `Deref<Target=[elem]>` impl, lowered into the source's own
+  /// generic space (so `Vec<T,A>: Deref<Target=[T]>` yields `Generic(0)`). Used to build the slice
+  /// `deref`'s `&__slice<element>` return type. Re-walks the impl rather than threading the element
+  /// through `ItemKind`, keeping the discovered item model unchanged.
+  fn slice_deref_element<'t>(
+    &self,
+    owner_idx: usize,
+    interner: &TypingInterner<'s, 't>,
+  ) -> Result<TypeR<'s, 't>, CouldNotPostparseReason>
+  where
+    's: 't,
+  {
+    let owner = &self.items[owner_idx];
+    let owner_def_id = owner.def_id().expect("a deref source always has a DefId");
+    let owner_ty = self.tcx.type_of(owner_def_id).instantiate_identity();
+    let deref_did = self.tcx.lang_items().deref_trait().expect("the Deref lang item exists");
+    let mut result: Option<Result<TypeR<'s, 't>, CouldNotPostparseReason>> = None;
+    self.tcx.for_each_relevant_impl(deref_did, owner_ty, |impl_did| {
+      if result.is_some() {
+        return;
+      }
+      let self_ty = self.tcx.impl_trait_ref(impl_did).instantiate_identity().self_ty();
+      let TyKind::Adt(self_adt, _) = self_ty.kind() else {
+        return;
+      };
+      if self_adt.did() != owner_def_id {
+        return;
+      }
+      for assoc in self.tcx.associated_items(impl_did).in_definition_order() {
+        if assoc.as_tag() == rustc_middle::ty::AssocTag::Type {
+          let ty = self.tcx.type_of(assoc.def_id).instantiate_identity();
+          if let TyKind::Slice(elem) = ty.kind() {
+            result = Some(self.lower_sig_ty(*elem, &owner.generic_params, interner));
+          }
+        }
+      }
+    });
+    result.unwrap_or(Err(CouldNotPostparseReason::UnimportedType))
+  }
+
+  /// Signature for a synthesized slice method (minimum: `get`). The method's one Vale generic is
+  /// the slice element (the impl's `T`); its own `SliceIndex` parameter is concretized to `usize`
+  /// and normalized away, so `<usize as SliceIndex<[T]>>::Output` resolves to `T`. The resulting
+  /// concrete signature (`&[T] × usize -> Option<&T>`) then lowers through `lower_sig_ty`, whose
+  /// slice arm renders the `&[T]` receiver as `&__slice<T>`.
+  fn slice_method_sig<'t>(
+    &self,
+    rust_item: &RustItem<'s>,
+    owner_idx: usize,
+    interner: &TypingInterner<'s, 't>,
+  ) -> Result<FuncSignatureR<'s, 't>, CouldNotPostparseReason>
+  where
+    's: 't,
+  {
+    let def_id = rust_item.def_id().expect("a slice method has a DefId");
+    let elem_name = self.items[owner_idx].generic_params[0];
+    let own_param_names = [elem_name];
+    let parent_count = self.tcx.generics_of(def_id).parent_count;
+    let usize_ty = self.tcx.types.usize;
+    // Keep the impl's element parameter (`T`) as itself; concretize the method's own type
+    // parameter (the `SliceIndex` `I`) to `usize`.
+    let args = rustc_middle::ty::GenericArgs::for_item(self.tcx, def_id, |param, _| {
+      match param.kind {
+        rustc_middle::ty::GenericParamDefKind::Type { .. }
+          if (param.index as usize) >= parent_count =>
+        {
+          usize_ty.into()
+        }
+        _ => self.tcx.mk_param_from_def(param),
+      }
+    });
+    let sig = self.tcx.fn_sig(def_id).instantiate(self.tcx, args).skip_binder();
+    let sig = self
+      .tcx
+      .normalize_erasing_regions(rustc_middle::ty::TypingEnv::post_analysis(self.tcx, def_id), sig);
+    let params: Vec<TypeR<'s, 't>> = sig
+      .inputs()
+      .iter()
+      .map(|ty| self.lower_sig_ty(*ty, &own_param_names, interner))
+      .collect::<Result<Vec<_>, _>>()?;
+    let ret = self.lower_sig_ty(sig.output(), &own_param_names, interner)?;
+    Ok(FuncSignatureR {
+      generic_param_names: interner.alloc_slice_copy(&own_param_names),
+      generic_param_bounds: &[],
+      params: interner.alloc_slice_from_vec(params),
+      ret,
+    })
   }
 }
 
@@ -657,24 +873,53 @@ where
       });
     }
 
-    // A synthesized `deref`: build `&Source -> &Target` directly from the discovered (source, target)
-    // rather than lowering `deref`'s raw signature — whose `Self` is a `ty::Param` and whose return
-    // is the `<Self as Deref>::Target` projection this oracle declines. Single-step scope: both are
-    // non-generic, so no args and no bounds. The elided `&Target` return ties to `&self`'s region in
-    // the declaration, exactly the borrow-return shape a `&self` accessor already uses.
+    // A synthesized `deref`: build `&Source<T…> -> &Target<…>` directly from the discovered
+    // (source, target), rather than lowering `deref`'s raw signature — whose `Self` is a `ty::Param`
+    // and whose return is the `<Self as Deref>::Target` projection this oracle declines. The method
+    // carries the source's own generics, so the receiver is `&Source<T…>`. A named non-generic
+    // target returns `&Target` (no args); the `__slice<T>` target returns `&__slice<element>`, the
+    // element read from the source's `Deref` impl in the source's generic space. The elided
+    // `&Target` return ties to `&self`'s region, exactly a `&self` accessor's borrow-return shape.
     if let ItemKind::DerefMethod { owner, target } = rust_item.kind {
       let src = &self.items[owner];
       let tgt = &self.items[target];
-      let src_citizen =
-        interner.alloc(TypeR::Citizen { package: src.package, name: src.human_name, args: &[] });
-      let tgt_citizen =
-        interner.alloc(TypeR::Citizen { package: tgt.package, name: tgt.human_name, args: &[] });
+      let src_args: Vec<TypeR<'s, 't>> =
+        (0..src.generic_params.len()).map(|i| TypeR::Generic(i as u32)).collect();
+      let src_citizen = interner.alloc(TypeR::Citizen {
+        package: src.package,
+        name: src.human_name,
+        args: interner.alloc_slice_from_vec(src_args),
+      });
+      // The return. A `&[T]` deref target is the by-value fat pointer `__slice<element>` (not a
+      // borrow of it); a named ADT target (single-step scope: non-generic) is reached by borrow.
+      let ret = if tgt.origin == RustItemOrigin::Slice {
+        let element = self.slice_deref_element(owner, interner)?;
+        TypeR::Citizen {
+          package: tgt.package,
+          name: tgt.human_name,
+          args: interner.alloc_slice_from_vec(vec![element]),
+        }
+      } else {
+        let tgt_citizen =
+          interner.alloc(TypeR::Citizen { package: tgt.package, name: tgt.human_name, args: &[] });
+        TypeR::Borrow { inner: tgt_citizen, is_mut: false }
+      };
       return Ok(FuncSignatureR {
-        generic_param_names: &[],
+        generic_param_names: interner.alloc_slice_copy(&src.generic_params),
         generic_param_bounds: &[],
         params: interner.alloc_slice_from_vec(vec![TypeR::Borrow { inner: src_citizen, is_mut: false }]),
-        ret: TypeR::Borrow { inner: tgt_citizen, is_mut: false },
+        ret,
       });
+    }
+
+    // A synthesized slice method (`<[T]>::get`), hanging off the `__slice<T>` citizen. Its raw rustc
+    // signature is generic over a `SliceIndex` with an `<I as SliceIndex<[T]>>::Output` projection
+    // this oracle won't normalize, so `slice_method_sig` concretizes the index parameter to `usize`
+    // and normalizes — yielding `get(&__slice<T>, usize) -> Option<&T>`.
+    if let ItemKind::Method(owner_idx) = rust_item.kind {
+      if self.items[owner_idx].origin == RustItemOrigin::Slice {
+        return self.slice_method_sig(rust_item, owner_idx, interner);
+      }
     }
     let def_id = rust_item.def_id().expect("only a synthesized drop lacks a DefId, handled above");
 

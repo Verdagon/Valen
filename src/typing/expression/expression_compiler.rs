@@ -183,7 +183,7 @@ where
         match nenv.lookup_nearest_with_imprecise_name(name_imprecise, &lookup_filter, self.typing_interner) {
                     Some(ITemplataT::Integer(num)) => {
                         Ok(Some(ExpressionTE::ConstantInt(self.typing_interner.alloc(
-                            ConstantIntTE::new(ranges[0], ITemplataT::Integer(num), 32, region)))))
+                            ConstantIntTE::new(ranges[0], ITemplataT::Integer(num), 32, false, region)))))
                     }
                     Some(ITemplataT::Boolean(b)) => {
                         Ok(Some(ExpressionTE::ConstantBool(self.typing_interner.alloc(
@@ -326,6 +326,7 @@ where
           c.range,
           ITemplataT::Integer(c.value),
           c.bits,
+          c.is_usize,
           region,
         ))),
         HashSet::default(),
@@ -1019,6 +1020,7 @@ where
                   dot.range,
                   ITemplataT::Integer(index),
                   32,
+                  false,
                   region,
                 )));
               ExpressionTE::StaticSizedArrayLookup(self.typing_interner.alloc(
@@ -1045,6 +1047,7 @@ where
                   dot.range,
                   ITemplataT::Integer(index),
                   32,
+                  false,
                   region,
                 )));
               let range_with_parent: Vec<RangeS<'s>> =
@@ -2139,6 +2142,7 @@ where
               r.range,
               ITemplataT::Integer(value),
               32,
+              false,
               region,
             )));
             Ok((result, HashSet::default(), PendingTempDrops::none()))
@@ -2150,6 +2154,7 @@ where
               r.range,
               ITemplataT::Placeholder(p),
               32,
+              false,
               region,
             )));
             Ok((result, HashSet::default(), PendingTempDrops::none()))

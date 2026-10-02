@@ -430,7 +430,8 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           expr: &*self.scout_arena.alloc(IExpressionSE::ConstantInt(ConstantIntSE {
             range: PostParser::eval_range(&file_coordinate, constant_int.range),
             value: constant_int.value,
-            bits: constant_int.bits.unwrap_or(32) as i32,
+            bits: if constant_int.is_usize { 64 } else { constant_int.bits.unwrap_or(32) as i32 },
+            is_usize: constant_int.is_usize,
           })),
         }),
         VariableUses::<'s>::empty(),
