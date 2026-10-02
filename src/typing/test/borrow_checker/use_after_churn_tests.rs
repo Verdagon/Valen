@@ -1,5 +1,64 @@
 
 use super::util::assert_borrow_check_gives_error;
+use super::util::assert_borrow_check_passes;
+use super::util::param_noalias_of;
+
+#[test]
+fn test_param_element_group_shares_root_rune_with_container() {
+  let noalias = param_noalias_of(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+struct Entity { hp int; }
+struct World { entities []Entity; }
+func step(world &World, entity &Entity in world.entities[]) { }
+"#,
+    "step",
+  );
+  assert_eq!(noalias, vec![false, false]);
+}
+
+#[test]
+fn test_member_element_ref_survives_nonmutating_whole_read() {
+  assert_borrow_check_passes(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+struct Collision { x int; }
+struct Entity { hp int; }
+struct World { entities []Entity; }
+func advance<e'>(entity &Entity in e) mut(e) { }
+func get_collision_for_entity(world &World, entity &Entity in world.entities[]) Collision { return Collision(0); }
+func resolve<e'>(entity &Entity in e, collision &Collision) mut(e) { }
+func step(world &World, entity &Entity in world.entities[] mut) {
+  entity.advance();
+  let collision = world.get_collision_for_entity(entity);
+  entity.resolve(collision);
+}
+"#,
+  );
+}
+
+#[test]
+fn test_mutating_shared_borrow_param_without_mut_permission_rejected() {
+  assert_borrow_check_gives_error(
+    &[],
+    r#"
+struct Entity { hp int; }
+func churn<e'>(entity &Entity in e) mut(e) { }
+func step(entity &Entity) {
+  entity.churn();
+}
+"#,
+    r#"At test:0.vale:5:9:
+  entity.churn();
+        ^^^^^^^^
+this call changes an outside group, but function does not declare a mut effect for it.
+"#,
+  );
+}
 
 #[test]
 fn test_use_element_after_churn_rejected() {
