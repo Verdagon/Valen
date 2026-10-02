@@ -90,7 +90,6 @@ fn float_equals() {
     }
 }
 
-#[ignore]
 #[test]
 fn concat_string_and_float() {
     let compilation_bump = bumpalo::Bump::new();

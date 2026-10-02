@@ -338,8 +338,7 @@ pub struct ConstantStrGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
   pub value: StrI<'s>,
-  // Str is share-flavored, so a string literal is a share reference.
-  pub result: &'g ShareRefGT<'s, 't, 'g>,
+  pub result: KindGT<'s, 't, 'g>,
 }
 
 #[derive(Debug)]
@@ -681,7 +680,7 @@ where
       ExpressionGE::VoidLiteral(e) => e.result,
       ExpressionGE::ConstantInt(e) => e.result,
       ExpressionGE::ConstantBool(e) => e.result,
-      ExpressionGE::ConstantStr(e) => KindGT::ShareRef(e.result),
+      ExpressionGE::ConstantStr(e) => e.result,
       ExpressionGE::ConstantFloat(e) => e.result,
       ExpressionGE::ArgLookup(e) => e.result,
       ExpressionGE::ArrayLength(e) => e.result,

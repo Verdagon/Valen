@@ -1537,8 +1537,6 @@ where
       if sb.inner == target_type {
         match sb.inner {
           p if p.is_primitive() => return true,
-          // VCOORD: replace this with an "is implicitly cloneable" check
-          KindT::Str(_) => return true,
           _ if self.kind_is_implicitly_cloneable(coutputs, sb.inner) => return true,
           _ => return false,
         }

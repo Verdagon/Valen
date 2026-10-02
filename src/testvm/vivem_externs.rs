@@ -83,7 +83,7 @@ pub fn add_str_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>, 
     let b_slice = &b_str.0[b_begin as usize .. (b_begin as i32 + b_length as i32) as usize];
     let concat = format!("{}{}", a_slice, b_slice);
     let interned = memory.scout_arena.intern_str(&concat);
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
 }
 
 
@@ -188,7 +188,7 @@ pub fn cast_float_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's
         _ => panic!("cast_float_str: non-FloatV arg"),
     };
     let interned = memory.scout_arena.intern_str(&value.to_string());
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
 }
 
 
@@ -360,7 +360,7 @@ pub fn cast_i32_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>,
         _ => panic!("cast_i32_str: non-IntV(_, 32) arg"),
     };
     let interned = memory.scout_arena.intern_str(&value.to_string());
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
 }
 
 
@@ -452,7 +452,7 @@ pub fn cast_i64_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>,
         _ => panic!("cast_i64_str: non-IntV(_, 64) arg"),
     };
     let interned = memory.scout_arena.intern_str(&value.to_string());
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
 }
 
 pub fn cast_float_i64<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>, args: &'v [ReferenceV<'v, 'i, 's>]) -> Result<ReferenceV<'v, 'i, 's>, VmRuntimeErrorV<'s>> where 's: 'i, 'i: 'v, { panic!("Unimplemented: cast_float_i64"); }

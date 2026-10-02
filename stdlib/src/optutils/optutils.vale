@@ -3,14 +3,14 @@ func nonEmpty<T>(self &Opt<T>) bool { not self.isEmpty() }
 
 
 abstract func get<T>(virtual opt Opt<T>, msg str) T;
-func get<T>(opt None<T>, msg str) T { panic(msg); }
+func get<T>(opt None<T>, msg str) T { panic(^msg); }
 func get<T>(opt Some<T>, msg str) T {
   [value] = opt;
   return value;
 }
 
 abstract func get<T>(virtual opt &Opt<T>, msg str) &T;
-func get<T>(opt &None<T>, msg str) &T { panic(msg); }
+func get<T>(opt &None<T>, msg str) &T { panic(^msg); }
 func get<T>(opt &Some<T>, msg str) &T { return &opt.value; }
 
 func ==<T>(a &Opt<T>, b &Opt<T>) bool

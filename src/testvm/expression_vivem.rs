@@ -333,7 +333,7 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
         }
         ExpressionIE::ConstantStr(c) => {
             let interned = scout_arena.intern_str(c.value);
-            let r#ref = make_primitive(heap, interner, call_id, OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData }));
+            let r#ref = make_primitive(heap, interner, call_id, OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData }));
             INodeExecuteResultV::Continue(NodeContinueV { result_ref: r#ref })
         }
         ExpressionIE::Discard(d) => {

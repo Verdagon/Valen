@@ -4,7 +4,6 @@ fn p(rel: &str) -> std::path::PathBuf {
     programs_dir().join(rel)
 }
 
-
 #[test]
 #[ignore]
 fn stradd()   { assert_compile_and_run(&p("programs/strings/stradd.vale"), 42); }
