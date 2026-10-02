@@ -2,7 +2,7 @@ struct Thing {
   v Vec3i;
 }
 
-struct Vec3i share {
+class Vec3i {
   x int;
   y int;
   z int;

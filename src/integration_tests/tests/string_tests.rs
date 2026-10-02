@@ -166,7 +166,6 @@ fn string_with_hex_escape() {
     assert_eq!(result, "sprog\u{001b}woggle");
 }
 
-#[ignore]
 #[test]
 fn int_to_string() {
     let compilation_bump = bumpalo::Bump::new();
@@ -192,7 +191,6 @@ fn int_to_string() {
     }
 }
 
-#[ignore]
 #[test]
 fn i64_to_string() {
     let compilation_bump = bumpalo::Bump::new();
@@ -218,7 +216,6 @@ fn i64_to_string() {
     }
 }
 
-#[ignore]
 #[test]
 fn string_length() {
     let compilation_bump = bumpalo::Bump::new();
@@ -244,7 +241,6 @@ fn string_length() {
     }
 }
 
-#[ignore]
 #[test]
 fn strings_equal() {
     let compilation_bump = bumpalo::Bump::new();
@@ -321,7 +317,7 @@ fn slice_a_slice() {
 import panicutils.*;
 import printutils.*;
 
-struct StrSlice share {
+class StrSlice {
   string str;
   begin int;
   end int;

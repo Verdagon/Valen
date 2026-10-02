@@ -276,6 +276,8 @@ impl OnStructDefinedMacro {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OnInterfaceDefinedMacro {
+  #[cfg(feature = "anonymous_substruct")]
+  AnonymousSubstruct,
   InterfaceDrop,
 }
 
@@ -290,6 +292,10 @@ impl OnInterfaceDefinedMacro {
     's: 't,
   {
     match self {
+      #[cfg(feature = "anonymous_substruct")]
+      OnInterfaceDefinedMacro::AnonymousSubstruct => {
+        compiler.get_interface_sibling_entries_anonymous_substruct(interface_name, interface_a)
+      }
       OnInterfaceDefinedMacro::InterfaceDrop => {
         compiler.get_interface_sibling_entries_interface_drop(interface_name, interface_a)
       }

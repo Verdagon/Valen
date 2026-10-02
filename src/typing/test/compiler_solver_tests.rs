@@ -324,7 +324,7 @@ fn test_single_parameter_function() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r"
-struct Functor1<F Prot = func(P1)R> share { }
+class Functor1<F Prot = func(P1)R> { }
 
 func __call<F Prot = func(P1)R>(self &Functor1<F>, param1 P1) R {
   F(param1)
@@ -736,6 +736,39 @@ exported func main() int where N Int = 3 {
   let _ci: &ConstantIntTE = collect_only_tnode!(
       NodeRefT::FunctionDefinition(main),
       NodeRefT::ConstantInt(ci @ ConstantIntTE { value: ITemplataT::Integer(3), bits: 32, .. }) => Some(ci)
+  );
+}
+
+#[test]
+fn usize_literal() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let typing_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let parser_keywords = Keywords::new_for_parse(&parse_arena);
+  let code = r"
+exported func main() int {
+  x = 42u;
+  return 0;
+}
+";
+  let code_source = CodeSource::new(vec![new_test_code_map(&parse_arena, code)]);
+  let typing_interner = TypingInterner::new(&typing_bump);
+  let mut compile = compiler_test_compilation(
+    &typing_interner,
+    &scout_arena,
+    &keywords,
+    &parser_keywords,
+    &parse_arena,
+    &code_source,
+  );
+  let coutputs = compile.expect_compiler_outputs();
+  let main = coutputs.lookup_function_by_str("main");
+  let _ci: &ConstantIntTE = collect_only_tnode!(
+      NodeRefT::FunctionDefinition(main),
+      NodeRefT::ConstantInt(ci @ ConstantIntTE { result: KindT::USize(_), .. }) => Some(ci)
   );
 }
 
@@ -1164,7 +1197,7 @@ fn pointer_becomes_share_if_kind_is_immutable() {
   let keywords = Keywords::new_for_scout(&scout_arena);
   let parser_keywords = Keywords::new_for_parse(&parse_arena);
   let code = r"
-struct SomeStruct share { i int; }
+class SomeStruct { i int; }
 
 func bork(x &SomeStruct) int {
   return __copy_prim(&x.i);

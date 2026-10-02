@@ -1,7 +1,7 @@
-exported sealed interface IShip share { }
+exported sealed classinterface IShip { }
 abstract func getFuel(virtual ship &IShip) int;
 
-exported struct Firefly share { fuel int; }
+exported class Firefly { fuel int; }
 impl IShip for Firefly;
 func getFuel(ship Firefly) int { ship.fuel }
 

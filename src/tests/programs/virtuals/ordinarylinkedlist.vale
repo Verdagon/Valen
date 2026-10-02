@@ -2,18 +2,18 @@
 
 import printutils.*;
 
-sealed interface MyOption share { }
+sealed classinterface MyOption { }
 
-struct MySome share {
+class MySome {
   value MyList;
 }
 impl MyOption for MySome;
 
-struct MyNone share { }
+class MyNone { }
 impl MyOption for MyNone;
 
 
-struct MyList share {
+class MyList {
   value int;
   next MyOption;
 }

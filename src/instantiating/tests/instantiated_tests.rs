@@ -326,7 +326,7 @@ exported func main() {
 }
 
 #[test]
-fn string_constant_is_share_wrapped() {
+fn string_constant_is_bare_owned() {
     let parse_bump = Bump::new();
     let scout_bump = Bump::new();
     let typing_bump = Bump::new();
@@ -348,7 +348,7 @@ exported func main() str {
     collect_only_inode!(
         NodeRefI::FunctionDefinition(main),
         NodeRefI::Expression(ExpressionIE::ConstantStr(ConstantStrIE {
-            result: KindIT::ShareRefIT(&ShareRefIT { inner: KindIT::StrIT(_) }),
+            result: KindIT::StrIT(_),
             ..
         })) => Some(())
     );

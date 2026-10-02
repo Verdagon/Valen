@@ -1,4 +1,6 @@
 mod after_regions_integration_tests;
+#[cfg(feature = "anonymous_substruct")]
+mod anonymous_substruct_tests;
 mod arithmetic_tests_a;
 mod array_list_test;
 mod array_tests;

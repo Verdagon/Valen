@@ -1,0 +1,10 @@
+[package]
+name = "nobiliav"
+version = "0.1.0"
+edition = "2021"
+
+# A dependency-free stand-in for NobiliaV's real `nobiliav` crate, presenting only the public API
+# driver_check.valen imports (NobiliaWindow / FrameInput / MainLoopCallback and the arrow-key
+# functions), with deterministic bodies and none of the real render/geometry/app/winit/wgpu dependency
+# graph. See ../README.md.
+[dependencies]

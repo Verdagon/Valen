@@ -56,7 +56,9 @@ static LLVMValueRef coerceExternReturn(
     case CoercionKind::DirectInt:
     case CoercionKind::Cast:
     case CoercionKind::Pair:
+    case CoercionKind::FatPtr:
       if (dynamic_cast<Int*>(returnKind) ||
+          dynamic_cast<USize*>(returnKind) ||
           dynamic_cast<Float*>(returnKind) ||
           dynamic_cast<Bool*>(returnKind)) {
         return hostReturnLE;
@@ -127,7 +129,10 @@ Ref buildCallOrSideCall(
       if (c.kind == CoercionKind::DirectPtr) {
         auto sentLE = sendValeObjectIntoHost(globalState, functionState, builder, valeArgRefMT, valeArg);
         if (LLVMGetTypeKind(LLVMTypeOf(sentLE)) != LLVMPointerTypeKind) {
-          sentLE = makeBackendLocal(functionState, builder, LLVMTypeOf(sentLE), "ptrCoerceSlot", sentLE);
+          // It might be an e.g. `Option<&T>` value that should cross as a pointer. Bitcast the struct
+          // contents to a pointer.
+          auto ptrLT = LLVMPointerType(LLVMInt8TypeInContext(globalState->context), 0);
+          sentLE = bitcastViaBackendLocal(functionState, builder, ptrLT, "ptrBitcast", sentLE);
         }
         hostArgsLE.push_back(sentLE);
         continue;
@@ -138,7 +143,9 @@ Ref buildCallOrSideCall(
         hostArgsLE.push_back(slot);
         continue;
       }
-      if (c.kind == CoercionKind::Pair && dynamic_cast<StructKind*>(argValueKind)) {
+      // A struct that should be passed as a Pair (int,int) or a FatPtr (ptr,int) argument
+      if ((c.kind == CoercionKind::Pair || c.kind == CoercionKind::FatPtr)
+          && dynamic_cast<StructKind*>(argValueKind)) {
         auto valeArgLE =
             globalState->getRegion(argValueKind)
                 ->checkValidReference(FL(), functionState, builder, true, valeArgRefMT, valeArg);
@@ -669,6 +676,10 @@ Ref buildExternCall(
     assert(args.size() == 1);
     auto result = LLVMBuildSExt(builder, intLE, LLVMInt64TypeInContext(globalState->context), "");
     return toRef(globalState->getRegion(prototype->returnType), prototype->returnType, result);
+  } else if (prototype->name->name == "__vbi_I64ToUSize") {
+    auto intLE = checkValidInternalReference(FL(), globalState, functionState, builder, true, prototype->params[0], args[0]);
+    assert(args.size() == 1);
+    return toRef(globalState->getRegion(prototype->returnType), prototype->returnType, intLE);
   } else {
     auto valeReturnRef = buildCallOrSideCall(globalState, functionState, builder, prototype, args);
     return buildResultOrEarlyReturnOfNever(globalState, functionState, builder, prototype, valeReturnRef);

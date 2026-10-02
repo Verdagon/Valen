@@ -52,7 +52,7 @@ where
       ))));
     let return_te =
       ExpressionTE::Return(self.typing_interner.alloc(ReturnTE::new(synth_range, ExpressionTE::ConstantInt(
-        self.typing_interner.alloc(ConstantIntTE::new(synth_range, len, 32, RegionT::Default)),
+        self.typing_interner.alloc(ConstantIntTE::new(synth_range, len, 32, false, RegionT::Default)),
       ))));
     let body = ExpressionTE::Block(self.typing_interner.alloc(BlockTE::new(
       synth_range,

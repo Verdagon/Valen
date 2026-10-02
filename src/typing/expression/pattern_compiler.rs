@@ -972,6 +972,7 @@ where
       range,
       ITemplataT::Integer(index as i64),
       32,
+      false,
       RegionT::Default,
     )));
     let lookup =

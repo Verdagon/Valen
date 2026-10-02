@@ -18,6 +18,7 @@ public:
   bool isPrimitive(ValueKind* typeM) {
     return dynamic_cast<Void *>(typeM) != nullptr ||
         dynamic_cast<Int *>(typeM) != nullptr ||
+        dynamic_cast<USize *>(typeM) != nullptr ||
         dynamic_cast<Bool *>(typeM) != nullptr ||
         dynamic_cast<Float *>(typeM) != nullptr;
   }
@@ -25,6 +26,8 @@ public:
   LLVMTypeRef translatePrimitive(GlobalState* globalState, ValueKind* referenceM) {
     if (auto innt = dynamic_cast<Int*>(referenceM)) {
       return LLVMIntTypeInContext(globalState->context, innt->bits);
+    } else if (dynamic_cast<USize*>(referenceM) != nullptr) {
+      return LLVMInt64TypeInContext(globalState->context);
     } else if (auto vooid = dynamic_cast<Void*>(referenceM)) {
       return LLVMIntTypeInContext(globalState->context, VOID_INT_BITS);
     } else if (dynamic_cast<Bool*>(referenceM) != nullptr) {

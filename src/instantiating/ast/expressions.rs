@@ -3,7 +3,7 @@ use crate::utils::range::RangeS;
 use crate::instantiating::ast::types::{
 	KindIT, BorrowRefIT,
 	InterfaceIT, RuntimeSizedArrayIT, StaticSizedArrayIT, StructIT,
-	BoolIT, IntIT, VoidIT, NeverIT, StrIT, FloatIT,
+	BoolIT, IntIT, USizeIT, VoidIT, NeverIT, StrIT, FloatIT,
 };
 use crate::instantiating::ast::names::{IdI, IVarNameI};
 use crate::instantiating::ast::ast::{
@@ -403,13 +403,18 @@ pub struct ConstantIntIE<'s> {
 	pub range: RangeS<'s>,
 	pub value: i64,
 	pub bits: i32,
+	pub is_usize: bool,
 }
 
 
 
 impl<'s> ConstantIntIE<'s> {
 	pub fn result<'i>(&self) -> KindIT<'s, 'i> {
-		KindIT::IntIT(IntIT { bits: self.bits })
+		if self.is_usize {
+			KindIT::USizeIT(USizeIT {})
+		} else {
+			KindIT::IntIT(IntIT { bits: self.bits })
+		}
 	}
 }
 

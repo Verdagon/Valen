@@ -299,8 +299,8 @@ extern "C" VIS FunctionHandle* metal_function_new(
 extern "C" VIS ExpressionHandle* metal_expr_constant_void(SourceLocationHandle* source_loc) {
   return reinterpret_cast<ExpressionHandle*>(new ConstantVoid(srcloc(source_loc)));
 }
-extern "C" VIS ExpressionHandle* metal_expr_constant_int(int64_t value, int32_t bits, SourceLocationHandle* source_loc) {
-  return reinterpret_cast<ExpressionHandle*>(new ConstantInt(srcloc(source_loc), value, bits));
+extern "C" VIS ExpressionHandle* metal_expr_constant_int(int64_t value, int32_t bits, int32_t is_usize, SourceLocationHandle* source_loc) {
+  return reinterpret_cast<ExpressionHandle*>(new ConstantInt(srcloc(source_loc), value, bits, is_usize != 0));
 }
 extern "C" VIS ExpressionHandle* metal_expr_constant_bool(int32_t value, SourceLocationHandle* source_loc) {
   return reinterpret_cast<ExpressionHandle*>(new ConstantBool(srcloc(source_loc), value != 0));

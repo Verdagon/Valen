@@ -40,7 +40,7 @@ fn tests_floats() {
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         r"
-struct Moo share {
+class Moo {
   x float;
 }
 exported func main() int {

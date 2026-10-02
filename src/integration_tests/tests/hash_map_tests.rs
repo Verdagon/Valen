@@ -263,7 +263,7 @@ fn hash_map_with_struct_as_key() {
         r"
 import hashmap.*;
 
-struct Location share {
+class Location {
   groupX int;
   groupY int;
   indexInGroup int;

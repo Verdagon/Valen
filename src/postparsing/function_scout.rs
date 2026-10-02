@@ -129,7 +129,7 @@ struct ExplicitParamExtras<'s> {
   range: RangeS<'s>,
   abi_name: IVarDeclarationNameS<'s>,
   destructure: Option<(AtomSP<'s>, &'s [IRulexSR<'s>])>,
-  mut_group: Option<RuneUsage<'s>>,
+  mut_group: Option<&'s GroupS<'s>>,
 }
 
 impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
@@ -609,8 +609,8 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
                 match (pattern.mut_effect, tyype) {
                   (Some(_), ITypeST::BorrowRef(borrow_ref)) => {
                     match borrow_ref.region {
-                      RegionS::Group(GroupS::Rune(rune_usage)) => Some(**rune_usage),
-                      _ => None,
+                      RegionS::Group(group_s) => Some(group_s),
+                      RegionS::Held => None,
                     }
                   }
                   _ => None,
@@ -649,10 +649,8 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       if let Some(rune) = maybe_rune {
         explicit_params_synthesized_runes.push(rune);
       }
-      if let Some(mut_group_rune) = extras.mut_group {
-        effects_s.push(EffectS::Mut(
-          self.scout_arena.alloc(GroupS::Rune(self.scout_arena.alloc(mut_group_rune))),
-        ));
+      if let Some(mut_group) = extras.mut_group {
+        effects_s.push(EffectS::Mut(mut_group));
       }
       explicit_param_extras.push(extras);
     }

@@ -32,7 +32,7 @@ fn make_empty_imm_struct() {
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         r"
-struct Marine share {}
+class Marine {}
 exported func main() {
   Marine();
 }
@@ -59,7 +59,7 @@ fn make_imm_struct_with_one_member() {
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         r"
-struct Marine share { hp int; }
+class Marine { hp int; }
 exported func main() {
   Marine(7);
 }
@@ -86,8 +86,8 @@ fn make_nested_imm_struct() {
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
         &instantiating_bump,
         r"
-struct Weapon share { ammo int; }
-struct Marine share { hp int; weapon Weapon; }
+class Weapon { ammo int; }
+class Marine { hp int; weapon Weapon; }
 exported func main() {
   Marine(5, Weapon(7));
 }
