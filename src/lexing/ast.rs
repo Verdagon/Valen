@@ -270,6 +270,7 @@ pub struct ParsedIntegerLE {
   pub range: RangeL,
   pub value: i64,
   pub bits: Option<i64>,
+  pub is_usize: bool,
 }
 
 impl INodeLE for ParsedIntegerLE {

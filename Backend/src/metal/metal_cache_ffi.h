@@ -140,7 +140,7 @@ FunctionHandle* metal_function_new(
 
 
 ExpressionHandle* metal_expr_constant_void(SourceLocationHandle* loc);
-ExpressionHandle* metal_expr_constant_int(int64_t value, int32_t bits, SourceLocationHandle* loc);
+ExpressionHandle* metal_expr_constant_int(int64_t value, int32_t bits, int32_t is_usize, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_constant_bool(int32_t value , SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_constant_f64(double value, SourceLocationHandle* loc);
 ExpressionHandle* metal_expr_constant_str(const char* value_ptr, size_t value_len, KindHandle* result, SourceLocationHandle* loc);

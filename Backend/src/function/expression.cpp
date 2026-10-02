@@ -71,8 +71,12 @@ Ref translateExpressionInner(
   if (auto constantInt = dynamic_cast<ConstantInt*>(expr)) {
     // See ULTMCIE for why we load and store here.
     auto resultLE = makeConstIntExpr(functionState, builder, LLVMIntTypeInContext(globalState->context, constantInt->bits), constantInt->value);
-    auto intType =
-        globalState->metalCache->getInt(globalState->metalCache->mutRegionId, constantInt->bits);
+    Kind* intType;
+    if (constantInt->isUsize) {
+      intType = globalState->metalCache->getUSize(globalState->metalCache->mutRegionId);
+    } else {
+      intType = globalState->metalCache->getInt(globalState->metalCache->mutRegionId, constantInt->bits);
+    }
     return toRef(globalState->getRegion(intType), intType, resultLE);
   } else if (auto constantVoid = dynamic_cast<ConstantVoid*>(expr)) {
     // See ULTMCIE for why we load and store here.

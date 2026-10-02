@@ -44,6 +44,7 @@ pub enum PassModeR {
     Cast(u32),
     Pair(u32, u32),
     LocationPtr,
+    FatPtr(u32),
 }
 
 impl PassModeR {
@@ -56,6 +57,7 @@ impl PassModeR {
             PassModeR::Cast(bits) => CoercionFFI { kind: 4, bits: *bits, bits2: 0 },
             PassModeR::Pair(bits0, bits1) => CoercionFFI { kind: 5, bits: *bits0, bits2: *bits1 },
             PassModeR::LocationPtr => CoercionFFI { kind: 6, bits: 0, bits2: 0 },
+            PassModeR::FatPtr(len_bits) => CoercionFFI { kind: 7, bits: *len_bits, bits2: 0 },
         }
     }
 }
@@ -377,7 +379,7 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
         let c = self.cache;
         let loc = self.loc_of(&expr.range());
         match expr {
-            ExpressionIE::ConstantInt(x) => c.expr_constant_int(x.value, x.bits, loc),
+            ExpressionIE::ConstantInt(x) => c.expr_constant_int(x.value, x.bits, x.is_usize, loc),
             ExpressionIE::ConstantBool(x) => c.expr_constant_bool(x.value, loc),
             ExpressionIE::ConstantFloat(x) => c.expr_constant_f64(x.value, loc),
             ExpressionIE::ConstantStr(x) => c.expr_constant_str(x.value, self.lower_kind(x.result), loc),

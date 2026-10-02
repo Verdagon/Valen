@@ -1103,9 +1103,9 @@ where
     }
 
     match iter.peek_cloned() {
-      Some(INodeLEEnum::ParsedInteger(ParsedIntegerLE { range, value, bits })) => {
+      Some(INodeLEEnum::ParsedInteger(ParsedIntegerLE { range, value, bits, is_usize })) => {
         iter.advance();
-        return Ok(IExpressionPE::ConstantInt(ConstantIntPE { range, value, bits }));
+        return Ok(IExpressionPE::ConstantInt(ConstantIntPE { range, value, bits, is_usize }));
       }
       Some(INodeLEEnum::ParsedDouble(ParsedDoubleLE { range, value, .. })) => {
         iter.advance();
@@ -1609,6 +1609,7 @@ where
         range: RangeL::new(begin, iter.get_prev_end_pos()),
         value: 0,
         bits: None,
+        is_usize: false,
       })));
     }
 

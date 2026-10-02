@@ -528,10 +528,11 @@ enum class CoercionKind {
   Pair,       // crosses as two integers (`directIntBits`, `directIntBits2`), reassembled into the struct.
   LocationPtr,// the hidden `&Location` arg of a `#[track_caller]` Rust func. Has no corresponding Vale
               // argument. We pass a null ptr for it, because Valen uses panic=abort anyway (see @TCHAPZ).
+  FatPtr,     // as a two-register fat pointer (data_ptr,len).
 };
 struct Coercion {
   CoercionKind kind;
-  uint32_t directIntBits;   // width when kind == DirectInt / Cast, or a Pair's first component, else ignored.
+  uint32_t directIntBits;   // width when kind == DirectInt / Cast, a Pair's first component, or a FatPtr's len component, else ignored.
   uint32_t directIntBits2;  // a Pair's second component width, else ignored.
 };
 struct ExternAbi {

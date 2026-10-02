@@ -52,14 +52,17 @@ class ConstantInt : public Expression {
 public:
   int64_t value;
   int bits;
+  bool isUsize;
 
   ConstantInt(
       SourceLocation* sourceLocation_,
       int64_t value_,
-      int bits_)
+      int bits_,
+      bool isUsize_)
       : Expression(sourceLocation_),
         value(value_),
-        bits(bits_) {}
+        bits(bits_),
+        isUsize(isUsize_) {}
 };
 
 class ConstantBool : public Expression {

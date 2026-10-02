@@ -49,7 +49,14 @@ pub struct RustItemId(pub u32);
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub(crate) enum RustItemOrigin {
   Rustc(DefId),
+  // drop doesn't exist as a Rust function, there's no drop DefID.
+  // We can think of there being a conceptual/synthesized drop<T> function, that's what
+  // this refers to.
   SynthesizedDrop,
+  // Slice doesn't exist as a Rust struct, there's no slice DefId.
+  // We can think of there being a conceptual/synthesized `struct __slice<T>`, that's
+  // what this refers to.
+  Slice,
 }
 
 pub(crate) struct RustItem<'s> {

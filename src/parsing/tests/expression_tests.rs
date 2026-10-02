@@ -38,6 +38,18 @@ fn i64() {
 }
 
 #[test]
+fn usize_literal() {
+  let parse_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let keywords = Keywords::new_for_parse(&parse_arena);
+  let expr = compile_expression_expect(&parse_arena, &keywords, "42u");
+  assert!(matches!(
+    expr,
+    IExpressionPE::ConstantInt(ConstantIntPE { value: 42, is_usize: true, .. })
+  ));
+}
+
+#[test]
 fn binary_operator() {
   let parse_bump = Bump::new();
   let parse_arena = ParseArena::new(&parse_bump);

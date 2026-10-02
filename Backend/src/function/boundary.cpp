@@ -108,6 +108,11 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
           paramTypesL.push_back(LLVMIntTypeInContext(globalState->context, c.directIntBits));
           paramTypesL.push_back(LLVMIntTypeInContext(globalState->context, c.directIntBits2));
           break;
+        // A fat ptr `&[T]` crosses as a pointer register plus an int register.
+        case CoercionKind::FatPtr:
+          paramTypesL.push_back(ptrLT);
+          paramTypesL.push_back(LLVMIntTypeInContext(globalState->context, c.directIntBits));
+          break;
       }
     }
     bool hasLocationArg = !abi->args.empty() && abi->args.back().kind == CoercionKind::LocationPtr;
@@ -126,6 +131,15 @@ BoundarySignature buildBoundarySignature(GlobalState* globalState, Prototype* pr
         LLVMTypeRef elems[2] = {
             LLVMIntTypeInContext(globalState->context, abi->ret.directIntBits),
             LLVMIntTypeInContext(globalState->context, abi->ret.directIntBits2),
+        };
+        returnLT = LLVMStructTypeInContext(globalState->context, elems, 2, /*packed=*/0);
+        break;
+      }
+      // A fat ptr `&[T]` returns as a {ptr, iN}
+      case CoercionKind::FatPtr: {
+        LLVMTypeRef elems[2] = {
+            ptrLT,
+            LLVMIntTypeInContext(globalState->context, abi->ret.directIntBits),
         };
         returnLT = LLVMStructTypeInContext(globalState->context, elems, 2, /*packed=*/0);
         break;
