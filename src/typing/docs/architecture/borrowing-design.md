@@ -288,7 +288,7 @@ For every expression, it figures out the result type of it. Examples:
  * It figures out the result of a `items[0]` indexing expression, by getting the element type of the `items` array type.
  * It figures out the return value of a FunctionCallGE node, by looking at the callee and doing the substitutions.
 
-### check_usages
+### check_usages V1
 
 ```rs
 fn check_usages<'s, 'ctx, 't, 'g>(
@@ -418,6 +418,53 @@ func main() {
 #### Overrides
 
 For now, when an override implements an abstract method, its declared `mut(...)` must match exactly.
+
+### check_usages V2
+
+1  e = &arr[0];
+2  while (cond) {
+3    observe(e);
+4    churn(&arr);
+5    set e = &arr[0];
+6  }
+
+
+basically, as we're going backward, we collect the `set`s for the current loop, so we can replay them again at the end.
+
+5: so as we pass the `set e`, we squirrel that away into a side "live-at-end" list.
+   this list represents things we know are live at the end of the loop.
+5: also, as normal, we remove `e` from the pending list, since it was satisfied.
+
+4: we do a churn. nothing bad happens, because there's nothing in the pending list.
+
+3: observe(e). this is a new use, so we add a new `e` entry to the pending list.
+
+2: we get to the start of the loop. we care about two things:
+ * is there an `e` live at the end of the loop?
+   for this, we check the live-at-end list now, ensure its in there.
+ * is there an `e` live before the loop?
+   we can't answer that now, but we'll continue the algorithm as normal to check that.
+   note that we don't remove `e` from the pending list, for this reason.
+
+1: as normal, we find the declaration of e, and remove it from the pending list
+
+
+refinement for the question: what if it's churned after?
+
+1  e = &arr[0];
+2  while (cond) {
+3    observe(e);
+4    churn(&arr);
+5    set e = &arr[0];
+6    churn(&arr);
+7  }
+
+when we hit the churn, we should mark that arr was churned... probably collect that in a list. all the things that were churned since (backwards) seeing the loop's end.
+
+so, we need another list. a churned-since-end list, of all the churns that have happened between here and the loops end.
+
+when we get to a `set`, we first check the churned-since-end list. if nothing in there overlaps, then we can add it to the live-at-end list.
+
 
 ### calculate_aliasing_info
 
@@ -708,6 +755,18 @@ once the child is done borrow checking, we will then know its effects, and we ca
 
 ## Design Proposals
 
+**S23. (Far future.) Valen marks a reference to a group member dereferenceable for as long as the member survives**, so LLVM hoists loads through it past a bounds check, e.g. an emitter's buffer pointers in an indexed `e.pos[i] += e.vel[i] * dt` loop.
+
+**S22. (Far future.) A custom LLVM alias-analysis pass answers, for each call, which parts of what the callee is handed it writes and which it only reads**, from the callee's effect clause, e.g. `equip(e) mut(.rings)` leaves `e.hp` in a register across the call.
+
+**S21. (Far future.) A callee can declare that it does not read a group it can reach**, the path-level counterpart of `opaque`/`dangle`, so the caller keeps that group's values in registers across the call with no store before it, e.g. `e.hp` across `advance_clock(level)`. With S18 alone the store before the call stays, because the callee may read.
+
+**S20. (Far future.) Different fields of a group's members get separate load and store scopes**, so two references that may be the same object, writing different fields, force no reloads, e.g. `set a.stamina = ...; set d.hp = ...;` with `a` and `d` in one group. A group's members have one type and are equal or disjoint, so two different fields never overlap.
+
+**S19. (Far future.) A `Vec`'s header loads and its element accesses get separate scopes, even when the access goes through a Rust accessor such as `at`**, so a store to an element does not force reloading the header's pointer and length, and the bounds check hoists out of a loop, e.g. `at(&d.components, j)` in a loop that writes `sword.value`.
+
+**S18. (Far future.) Valen tells LLVM when a call reaches a group without writing it**, so the caller does not reload that group's values after the call, e.g. after `collide(level)` with no `mut` clause, or after `tick(level) mut(level.clock)` for `level.entities[]`. The caller still stores before the call, since the callee may read.
+
 **Experimental's `check_usages` is a backward liveness walk.** It walks the grouped body in reverse evaluation order
 carrying the reference values that still have a use later in the program, keyed by `RefKey`, each with
 its use's range and every group path its type mentions (outer borrow, nested borrows, citizen group
@@ -965,6 +1024,27 @@ and its inner `LocalLookup` share one.
 Externs also get `nounwind` (Vale aborts on panic), which is what lets the scope metadata work across a
 call the optimizer cannot see into.
 
+### Call stamps and accessor loads (from S18–S23)
+
+From S18, why a `!noalias` stamp cannot carry it. A stamp on a call says the call neither reads nor writes the scope: LLVM's scoped analysis answers only "no access" or "may read and write" for a call against a location (`ScopedNoAliasAA.cpp:75-107` in `~/rust/src/llvm-project`). `tick(level) mut(level.clock)` may read `level.entities[]`; if it were stamped, the caller could delay its store of `e.hp` past the call and `tick` would read a stale value. So a call's stamp comes from what its arguments reach (calculate_aliasing_info), and the `mut` clause adds nothing to the stamp.
+
+From S18, what can carry it. LLVM's alias-analysis interface does split reads from writes: `getModRefInfo` answers no access, read, write, or both for a call against a location. Two carriers use it:
+
+ * The `memory(...)` call attribute, for a callee that writes nothing (`memory(read)`) or only what its arguments point at directly (`memory(read, argmem: readwrite)`). The caller's root must also be `noalias`. In hand-written IR through `opt`, these gave "store, call" for `hp_held_across_sibling_tick` and "call only" for `deep_values_across_readonly_call`. The attribute is true only if the callee's whole write set is known, including the heap, statics and I/O.
+ * The pass of S22, for a callee that writes one part of what it is handed.
+
+Blocked on S18 in `src/typing/test/rust_interop/horizon/speed/valen/`: `hp_held_across_sibling_tick`, `deep_values_across_readonly_call`, `two_tiles_may_coincide`, `two_tiles_with_observer`.
+
+From S19, why an element store forces a header reload today. When LLVM inlines `at(&x.components, j)`, it copies the call's `!noalias` onto the inlined loads of the `Vec`'s pointer and length (`InlineFunction.cpp:938-976`). That call reaches the same scope the element stores carry, so those loads are unprotected from them. Only a `noalias`, uncaptured parameter keeps the header in a register, which is the mechanism Rust has too.
+
+From S20, what it is and is not. C compilers get this by default through type-based alias analysis: for the C equivalents of the blocked tests, clang 17 at `-O2` keeps the fields in registers, or removes the loop, and with `-fno-strict-aliasing` the loads return. Rust has no such rule, because unsafe Rust may view the same memory as two types. So S20 has Valen recover what C has and Rust gave up; it follows from Valen having no type punning, not from group borrowing. Without it, two shapes run slower in Valen than in Rust today: with both objects indexed from one buffer, LLVM proves from the offsets that the fields never overlap, and for `a.stamina -= cost; d.hp -= damage` it replaces the loop with two multiplications, while Valen's two same-group references keep the loop. Blocked on it: `stamina_vs_components`, `aliased_pair_two_fields`; it would also remove the last load in the loop of `pair_held_across_other_collection_call`.
+
+From S21, why S18 is not enough on the game-tick shape. In `hp_held_across_sibling_tick`, a GhostCell program with the entities and the clock in separate brands holds a `&mut Entity` view across the call, because the callee takes only the clock's token. A held `&mut` forbids the callee from even reading the entity, so a rustc that marked local references could drop both the reload and the store. Valen with S18 drops the reload and keeps the store. S21 is what lets Valen drop the store too.
+
+From S22, what the pass must answer and where it must run. For `equip(e) mut(.rings)` it answers "writes" for `e.rings` and its elements and "reads" for `e.hp`; no `memory(...)` attribute can say that about one argument. Keeping `e.hp` apart from `e.rings` also needs the field-level scopes of S20. The pass has to run wherever Valen bodies are optimized, which is rustc's LLVM once Rust accessors inline into Valen callers.
+
+From S23, why scopes alone leave the loads in the loop. With the emitter structs, `pos[]` and `vel[]` in three separate scopes, `opt -O3` hoists both lengths and drops one bounds check, but still loads both buffer pointers on every iteration: they sit behind the remaining bounds check, and LLVM hoists a load past a branch only when it knows the pointer is dereferenceable. A mutation never destroys a group member, so a member reference stays dereferenceable until its owner dies.
+
 ## Test cases
 
 ### Array-element churn (rung 2)
@@ -1038,6 +1118,8 @@ using a *named* local would not exercise this — the register must be an unname
 
  * Should an unannotated borrow nested in a parameter's type (`&Opt<&Ship>`) take the parameter's anonymous group, as `groupify_type` does today, or be the deferred error the Design calls for?
  * Which deferred cases should become `UnderivableBorrowGroup` errors rather than panics (the sites are listed under "where it cuts corners" in the handoff)?
+ * Can a custom alias-analysis pass (S22) be registered in the rustc fork's LLVM pipeline, so that it sees Valen bodies after Rust accessors inline into them?
+ * Can Valen know a callee's whole write set, including the heap, statics and I/O, well enough to put `memory(read)` on a call into imported Rust (S18)?
  * `groupify_type` substitutes a bound placeholder by rune name; should the rune map key on the placeholder's `IdT` (owning template plus rune) so a caller's `T` never resolves through a callee's `T`?
 
 ## Required Reading

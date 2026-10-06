@@ -11,8 +11,9 @@
 use std::marker::PhantomData;
 use bumpalo::Bump;
 use indexmap::IndexMap;
-use crate::postparsing::ast::{FunctionS, ICitizenDenizenS, IStructMemberS, StructS};
-use crate::postparsing::names::{CodeNameS, IFunctionDeclarationNameS, IRuneS};
+use crate::postparsing::ast::{FunctionS, ICitizenDenizenS, IGenericParameterTypeS, IStructMemberS, ParameterS, StructS};
+use crate::postparsing::names::{CodeNameS, IFunctionDeclarationNameS, IImpreciseNameS, IRuneS};
+use crate::scout_arena::ScoutArena;
 use crate::postparsing::rules::RuneUsage;
 use crate::postparsing::rules::types::*;
 use crate::StrI;
@@ -48,6 +49,51 @@ fn borrowref_group<'s, 't, 'g>(k: KindGT<'s, 't, 'g>) -> Option<Vec<GroupStep<'s
 struct WrittenContext<'s, 't> {
   type_s: ITypeST<'s>,
   name: Option<IVarNameT<'s, 't>>,
+}
+
+trait LocalGroups<'s, 't, 'g> {
+  fn local_groups(&self, name: IImpreciseNameS<'s>) -> Vec<(GroupPathG<'s, 't, 'g>, KindGT<'s, 't, 'g>)>;
+}
+
+impl<'s, 't, 'g> LocalGroups<'s, 't, 'g> for IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>> {
+  fn local_groups(&self, name: IImpreciseNameS<'s>) -> Vec<(GroupPathG<'s, 't, 'g>, KindGT<'s, 't, 'g>)> {
+    let (var_name_t, var_kind_gt) = self
+      .iter()
+      .find(|(v, _)| v.imprecise_name() == Some(name))
+      .expect("Local not found");
+    match *var_kind_gt {
+      KindGT::BorrowRef(b) => b.group.group.iter().map(|path| (*path, b.inner)).collect(),
+      other => vec![(GroupPathG { root: GroupRootG::Local(*var_name_t), steps: &[], ellipsis: false }, other)],
+    }
+  }
+}
+
+struct CalleeParamGroups<'a, 's, 't, 'g> {
+  params: &'s [ParameterS<'s>],
+  args: &'a [ExpressionGE<'s, 't, 'g>],
+  scout_arena: &'a ScoutArena<'s>,
+}
+
+impl<'a, 's, 't, 'g> LocalGroups<'s, 't, 'g> for CalleeParamGroups<'a, 's, 't, 'g> {
+  fn local_groups(&self, name: IImpreciseNameS<'s>) -> Vec<(GroupPathG<'s, 't, 'g>, KindGT<'s, 't, 'g>)> {
+    let index = self
+      .params
+      .iter()
+      .position(|p| p.name.imprecise_name(self.scout_arena) == name)
+      .unwrap_or_else(|| panic!("vfail: callee names a parameter {:?} it does not have", name));
+    match self.args[index].result() {
+      KindGT::BorrowRef(b) => b.group.group.iter().map(|path| (*path, b.inner)).collect(),
+      _ => vec![],
+    }
+  }
+}
+
+struct NoLocals;
+
+impl<'s, 't, 'g> LocalGroups<'s, 't, 'g> for NoLocals {
+  fn local_groups(&self, name: IImpreciseNameS<'s>) -> Vec<(GroupPathG<'s, 't, 'g>, KindGT<'s, 't, 'g>)> {
+    panic!("vfail: a written group names local {:?} where no local is in scope", name)
+  }
 }
 
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
@@ -208,7 +254,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         other => {
           local_rune_to_templata.insert(
             generic_param_s.rune.rune,
-            self.groupify_templata(coutputs, bump_g, &local_rune_to_templata, &IndexMap::new(), *other));
+            self.groupify_templata(coutputs, bump_g, &local_rune_to_templata, &NoLocals, *other));
         }
       };
     }
@@ -350,7 +396,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     s: &'t StructTT<'s, 't>,
   ) -> &'g StructGT<'s, 't, 'g> {
     match self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, KindT::Struct(s), None) {
@@ -365,7 +411,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     i: &'t InterfaceTT<'s, 't>,
   ) -> &'g InterfaceGT<'s, 't, 'g> {
     match self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, KindT::Interface(i), None) {
@@ -380,7 +426,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     a: &'t StaticSizedArrayTT<'s, 't>,
   ) -> &'g StaticSizedArrayGT<'s, 't, 'g> {
     match self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, KindT::StaticSizedArray(a), None) {
@@ -395,7 +441,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     a: &'t RuntimeSizedArrayTT<'s, 't>,
   ) -> &'g RuntimeSizedArrayGT<'s, 't, 'g> {
     match self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, KindT::RuntimeSizedArray(a), None) {
@@ -410,12 +456,49 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     super_kind: ISuperKindTT<'s, 't>,
   ) -> ISuperKindGT<'s, 't, 'g> {
     match super_kind {
       ISuperKindTT::Interface(i) => ISuperKindGT::Interface(self.interface_gt(coutputs, bump_g, rune_to_templata, local_to_type_g, i)),
       ISuperKindTT::KindPlaceholder(p) => ISuperKindGT::KindPlaceholder(p),
+    }
+  }
+
+  fn upcast_target_interface_gt<'g>(
+    &self,
+    coutputs: &CompilerOutputs<'s, 't>,
+    bump_g: &'g Bump,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
+    impl_name: IdT<'s, 't>,
+    source_gt: KindGT<'s, 't, 'g>,
+    target_interface_tt: &'t InterfaceTT<'s, 't>,
+  ) -> &'g InterfaceGT<'s, 't, 'g> {
+    let impl_template_id = Compiler::get_template(self.typing_interner, impl_name);
+    let impl_s = coutputs.get_postparsed_impl(impl_template_id);
+    let source_citizen_gt = match source_gt {
+      KindGT::BorrowRef(b) => b.inner,
+      other => other,
+    };
+    let mut impl_rune_to_templata: IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>> = IndexMap::new();
+    self.match_types(
+      coutputs,
+      bump_g,
+      impl_s.sub_citizen_type,
+      ITemplataG::Kind(KindTemplataG { kind: source_citizen_gt }),
+      &mut impl_rune_to_templata,
+    );
+    let written = WrittenContext { type_s: impl_s.super_interface_type, name: None };
+    match self.groupify_type(
+      coutputs,
+      bump_g,
+      &impl_rune_to_templata,
+      local_to_type_g,
+      KindT::Interface(target_interface_tt),
+      Some(&written),
+    ) {
+      KindGT::Interface(interface_gt) => interface_gt,
+      other => panic!("vfail: {:?}", other),
     }
   }
 
@@ -425,7 +508,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     cast_kind: KindT<'s, 't>,
     operand: KindGT<'s, 't, 'g>,
   ) -> KindGT<'s, 't, 'g> {
@@ -450,7 +533,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     template_args_t: &'t [ITemplataT<'s, 't>],
     maybe_written: Option<&WrittenContext<'s, 't>>,
   ) -> &'g [ITemplataG<'s, 't, 'g>] {
@@ -468,11 +551,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             kind: self.groupify_type(coutputs, bump_g, rune_to_templata, local_to_type_g, k.kind, Some(&written_arg)),
           })
         }
-        // A group argument written as a rune, e.g. the `g` in `Vec<T, g>`. No citizen declares a group
-        // parameter yet, and the group's referent type is not knowable from the argument alone.
-        (ITemplataT::Group(_), Some(args)) if matches!(args[i], ITypeST::Rune(_)) => {
-          unimplemented!("vfail: citizen group parameter")
-        }
+        (ITemplataT::Group(_), Some(args)) => match args[i] {
+          ITypeST::Rune(RuneUsageST { rune: RuneUsage { rune, .. } }) => match rune_to_templata.get(rune) {
+            Some(ITemplataG::Group(group_g)) => ITemplataG::Group(*group_g),
+            Some(other) => panic!("vfail: group rune {:?} bound to a non-group: {:?}", rune, other),
+            None => panic!("vfail: citizen group rune {:?} not bound here", rune),
+          },
+          other => panic!("vfail: citizen group argument written as a non-rune: {:?}", other),
+        },
         (other, _) => self.groupify_templata(coutputs, bump_g, rune_to_templata, local_to_type_g, *other),
       })
       .collect();
@@ -659,22 +745,27 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             Some(callee_func_s) => {
               let callee_rune_to_caller_templata: IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>> =
                   self.calculate_callee_rune_to_caller_templata(coutputs, bump_g, callee_func_s, &arg_exprs_ge);
+              let callee_param_groups = CalleeParamGroups {
+                params: callee_func_s.params,
+                args: arg_exprs_ge_slice,
+                scout_arena: self.scout_arena,
+              };
               // Every non-lambda callee has a written return type; only a lambda's is inferred, so only
               // a lambda falls back to the typed return, groupless.
               let result_gt =
                 match (callee_func_s.maybe_return_type, callee_func_s.name) {
                   (Some(return_st), _) => {
                     let written_context = WrittenContext { type_s: return_st, name: None };
-                    self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, local_to_type_g, *result, Some(&written_context))
+                    self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, &callee_param_groups, *result, Some(&written_context))
                   }
                   (None, IFunctionDeclarationNameS::LambdaDeclarationName(_)) => {
-                    self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, local_to_type_g, *result, None)
+                    self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, &callee_param_groups, *result, None)
                   }
                   (None, name) => panic!("vfail: non-lambda callee has no written return type: {:?}", name),
                 };
               let mut mut_effects: Vec<&'g MutEffectPath> = Vec::new();
               for callee_effect_s in callee_func_s.effects {
-                for steps in self.groupify_effect(coutputs, bump_g, callee_effect_s, &callee_rune_to_caller_templata) {
+                for steps in self.groupify_effect(coutputs, bump_g, callee_effect_s, &callee_rune_to_caller_templata, &callee_param_groups) {
                   mut_effects.push(bump_g.alloc(MutEffectPath { effecting_node_loc: *loct, range: range[0], steps }));
                 }
               }
@@ -1018,12 +1109,34 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       }
       ExpressionTE::UpcastInterface(e) => {
         let inner_expr = self.groupify_expression(coutputs, function_s, function_t, bump_g, access_log, e.inner_expr, local_rune_to_templata, local_to_type_g)?;
+        let (target_super_kind, result_gt) = match e.target_super_kind {
+          ISuperKindTT::Interface(target_tt) => {
+            let target_gt =
+              self.upcast_target_interface_gt(coutputs, bump_g, local_to_type_g, e.impl_name, inner_expr.result(), target_tt);
+            let result_gt = match (e.result, inner_expr.result()) {
+              (KindT::BorrowRef(_), KindGT::BorrowRef(ob)) => {
+                let inner = KindGT::Interface(target_gt);
+                KindGT::BorrowRef(bump_g.alloc(BorrowRefGT {
+                  inner,
+                  group: GroupTemplataG { group: ob.group.group, kind: inner, born_at: ob.group.born_at },
+                }))
+              }
+              (KindT::Interface(_), _) => KindGT::Interface(target_gt),
+              (other, _) => panic!("vfail: unexpected upcast result kind: {:?}", other),
+            };
+            (ISuperKindGT::Interface(target_gt), result_gt)
+          }
+          ISuperKindTT::KindPlaceholder(p) => (
+            ISuperKindGT::KindPlaceholder(p),
+            self.cast_result(coutputs, bump_g, local_rune_to_templata, local_to_type_g, e.result, inner_expr.result()),
+          ),
+        };
         Ok(ExpressionGE::UpcastInterface(bump_g.alloc(UpcastInterfaceGE {
           range: e.range,
           inner_expr,
-          target_super_kind: self.super_kind_gt(coutputs, bump_g, local_rune_to_templata, local_to_type_g, e.target_super_kind),
+          target_super_kind,
           impl_name: e.impl_name,
-          result: self.cast_result(coutputs, bump_g, local_rune_to_templata, local_to_type_g, e.result, inner_expr.result()),
+          result: result_gt,
         })))
       }
       ExpressionTE::UpcastGeneric(e) => {
@@ -1210,7 +1323,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             name: None,
           };
       let type_g =
-          self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, &IndexMap::new(), member_t.tyype, Some(&written_context));
+          self.groupify_type(coutputs, bump_g, &callee_rune_to_caller_templata, &NoLocals, member_t.tyype, Some(&written_context));
       locally_phrased_member_types_gt.push((member_s.name, type_g));
     }
     IndexMap::from_iter(locally_phrased_member_types_gt)
@@ -1222,7 +1335,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     bump_g: &'g Bump,
     // NOTE: This might be keyed on caller or callee runes.
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     type_t: KindT<'s, 't>,
     maybe_written: Option<&WrittenContext<'s, 't>>,
   ) -> KindGT<'s, 't, 'g> {
@@ -1391,7 +1504,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     bump_g: &'g Bump,
     // NOTE: This might be keyed on caller or callee runes.
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     templata_t: ITemplataT<'s, 't>,
   ) -> ITemplataG<'s, 't, 'g> {
     match templata_t {
@@ -1457,6 +1570,44 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   }
 
   // "Struct callee" = the struct whose template we're calling
+  fn struct_group_param_referent<'g>(
+    &self,
+    coutputs: &CompilerOutputs<'s, 't>,
+    bump_g: &'g Bump,
+    rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    struct_id: &'t IdT<'s, 't>,
+    group_param_index: usize,
+    template_args_t: &'t [ITemplataT<'s, 't>],
+  ) -> KindGT<'s, 't, 'g> {
+    let struct_template_id = Compiler::get_template(self.typing_interner, *struct_id);
+    let struct_def_s = match coutputs.peek_postparsed_type(struct_template_id).expect("Struct not present") {
+      ICitizenDenizenS::TopLevelStruct(s) => s,
+      ICitizenDenizenS::TopLevelInterface(_) => panic!("Expected struct, got interface"),
+    };
+    let struct_def_t = coutputs.lookup_struct_template(*struct_template_id);
+    let struct_group_rune = struct_def_s.generic_params[group_param_index].rune.rune;
+    let mut struct_rune_to_templata: IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>> = IndexMap::new();
+    for (generic_param_s, templata_t) in struct_def_s.generic_params.iter().zip(template_args_t.iter()) {
+      if let ITemplataT::Kind(_) = templata_t {
+        struct_rune_to_templata.insert(
+          generic_param_s.rune.rune,
+          self.groupify_templata(coutputs, bump_g, rune_to_templata, &NoLocals, *templata_t));
+      }
+    }
+    for (i_member_s, member_t) in struct_def_s.members.iter().zip(struct_def_t.members) {
+      let IStructMemberS::NormalStructMember(member_s) = i_member_s else { continue };
+      let ITypeST::BorrowRef(bst) = member_s.tyype else { continue };
+      let RegionS::Group(GroupS::Rune(RuneUsage { rune: member_rune, .. })) = bst.region else { continue };
+      if *member_rune != struct_group_rune {
+        continue;
+      }
+      let KindT::BorrowRef(BorrowRefT { inner: inner_tt }) = member_t.tyype else { continue };
+      let inner_written = WrittenContext { type_s: *bst.inner, name: None };
+      return self.groupify_type(coutputs, bump_g, &struct_rune_to_templata, &NoLocals, *inner_tt, Some(&inner_written));
+    }
+    KindGT::Struct(bump_g.alloc(StructGT { id: struct_id, template_args: &[] }))
+  }
+
   fn calculate_struct_callee_rune_to_caller_templata<'g>(
       &self,
       coutputs: &CompilerOutputs<'s, 't>,
@@ -1484,6 +1635,15 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     assert!(args_ge.len() == function_s.params.len());
     for i in 0..args_ge.len() {
       self.match_types(coutputs, bump_g, function_s.params[i].tyype, ITemplataG::Kind(KindTemplataG { kind: args_ge[i].result() }), &mut map);
+    }
+    for generic_param in function_s.generic_params.iter() {
+      let is_group = matches!(generic_param.tyype, IGenericParameterTypeS::RegionGenericParameterType(_));
+      if is_group && !map.contains_key(&generic_param.rune.rune) {
+        map.insert(
+          generic_param.rune.rune,
+          ITemplataG::Group(GroupTemplataG { group: &[], kind: KindGT::Void(VoidGT {}), born_at: LocT { path: &[] } }),
+        );
+      }
     }
     map
   }
@@ -1625,10 +1785,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     effect_s: &'s EffectS<'s>,
     // NOTE: This might be keyed on caller or callee runes.
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
   ) -> Vec<&'g [GroupStep<'s, 't>]> {
     match effect_s {
       EffectS::Mut(group_s) => self
-        .groupify_group_expr(coutputs, bump_g, rune_to_templata, &IndexMap::new(), group_s)
+        .groupify_group_expr(coutputs, bump_g, rune_to_templata, local_to_type_g, group_s)
         .into_iter()
         .map(|(path, _)| {
           let steps: &'g [GroupStep<'s, 't>] = bump_g.alloc_slice_copy(flatten(&path).as_slice());
@@ -1648,7 +1809,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     bump_g: &'g Bump,
     // NOTE: This might be keyed on caller or callee runes.
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
-    local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
+    local_to_type_g: &dyn LocalGroups<'s, 't, 'g>,
     group_s: &'s GroupS<'s>,
   ) -> Vec<(GroupPathG<'s, 't, 'g>, KindGT<'s, 't, 'g>)> {
     match group_s {
@@ -1663,17 +1824,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           other => panic!("vfail: group rune bound to a non-group: {other:?}"),
         }
       }
-      GroupS::Local(imprecise_name) => {
-        // TODO: perhaps key local_to_type_g on imprecise name instead, this is slow
-        let (var_name_t, var_kind_gt) = local_to_type_g
-          .iter()
-          .find(|(v, _)| v.imprecise_name() == Some(*imprecise_name))
-          .expect("Local not found");
-        match *var_kind_gt {
-          KindGT::BorrowRef(b) => b.group.group.iter().map(|path| (*path, b.inner)).collect(),
-          other => vec![(GroupPathG { root: GroupRootG::Local(*var_name_t), steps: &[], ellipsis: false }, other)],
-        }
-      }
+      GroupS::Local(imprecise_name) => local_to_type_g.local_groups(*imprecise_name),
       GroupS::Member { base, member_name } => self
         .groupify_group_expr(coutputs, bump_g, rune_to_templata, local_to_type_g, base)
         .into_iter()
@@ -1736,7 +1887,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             None => {
               let inner_written = WrittenContext { type_s: *bst.inner, name: param_name };
               let inner_gt =
-                self.groupify_type(coutputs, bump_g, &*rune_map, &IndexMap::new(), *inner_tt, Some(&inner_written));
+                self.groupify_type(coutputs, bump_g, &*rune_map, &NoLocals, *inner_tt, Some(&inner_written));
               rune_map.insert(
                 *rune,
                 ITemplataG::Group(GroupTemplataG { group: Self::new_rune_group_expr(bump_g, *rune), kind: inner_gt, born_at: LocT { path: &[] } }),
@@ -1757,9 +1908,33 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let template_args_t: &'t [ITemplataT<'s, 't>] =
           ICitizenNameT::try_from(id.local_name).expect("Citizen without ICitizenNameT").template_args();
         if c.args.len() == template_args_t.len() {
-          for (written_arg, templata_t) in c.args.iter().zip(template_args_t.iter()) {
-            if let ITemplataT::Kind(KindTemplataT { kind }) = templata_t {
-              self.register_group_runes(coutputs, bump_g, rune_map, param_name, **written_arg, *kind);
+          for (i, (written_arg, templata_t)) in c.args.iter().zip(template_args_t.iter()).enumerate() {
+            match (written_arg, templata_t) {
+              (_, ITemplataT::Kind(KindTemplataT { kind })) => {
+                self.register_group_runes(coutputs, bump_g, rune_map, param_name, **written_arg, *kind);
+              }
+              (ITypeST::Rune(RuneUsageST { rune: RuneUsage { rune, .. } }), ITemplataT::Group(_)) => {
+                match rune_map.get(rune) {
+                  Some(ITemplataG::Group(_)) => {}
+                  Some(_) => panic!("Group rune {:?} was bound to a non-group templata", rune),
+                  None => {
+                    let referent_gt = match kind_t {
+                      KindT::Struct(StructTT { id: struct_id, .. }) => {
+                        self.struct_group_param_referent(coutputs, bump_g, &*rune_map, struct_id, i, template_args_t)
+                      }
+                      KindT::Interface(InterfaceTT { id: interface_id, .. }) => {
+                        KindGT::Interface(bump_g.alloc(InterfaceGT { id: interface_id, template_args: &[] }))
+                      }
+                      other => panic!("vfail: group parameter on a non-citizen: {:?}", other),
+                    };
+                    rune_map.insert(
+                      *rune,
+                      ITemplataG::Group(GroupTemplataG { group: Self::new_rune_group_expr(bump_g, *rune), kind: referent_gt, born_at: LocT { path: &[] } }),
+                    );
+                  }
+                }
+              }
+              _ => {}
             }
           }
         }

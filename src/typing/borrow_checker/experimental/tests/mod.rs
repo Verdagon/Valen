@@ -1,4 +1,6 @@
 mod attack_tests;
+mod caller_member_ref_tests;
+mod desire_tests;
 mod ellipsis_tests;
 mod held_register_tests;
 mod joint_argument_move_tests;
@@ -8,7 +10,9 @@ mod noalias_facts_tests;
 mod noalias_tests;
 mod producer_gate_tests;
 mod group_facts_tests;
+mod harvest_caller_tests;
 mod robustness_tests;
+mod rollbacker_tests;
 mod same_group_aliasing_tests;
 mod synthesized_callee_tests;
 mod use_after_churn_tests;

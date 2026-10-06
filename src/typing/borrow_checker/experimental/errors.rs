@@ -64,9 +64,7 @@ pub fn humanize_borrow_error<'s, 't>(
         .to_string()
     }
     BorrowErrorKind::UndeclaredChurn => {
-      "this call churns a group reached through a parameter, but the enclosing function does not \
-       declare a mut effect for it."
-        .to_string()
+      "this call changes an outside group, but function does not declare a mut effect for it.".to_string()
     }
   }
 }

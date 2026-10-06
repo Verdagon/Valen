@@ -45,12 +45,24 @@ struct Pending<'s, 't, 'g> {
 /// The values still awaiting a later use, by the local holding them or the temporary they are.
 type PendingMap<'s, 't, 'g> = IndexMap<RefKey<'s, 't>, Pending<'s, 't, 'g>>;
 
+/// What a backward walk of one loop body has learned about the back edge: the churns seen so far
+/// (toward the loop's end), and the locals the body re-derives and hands fresh to the next
+/// iteration's top (`live_at_end`). A `set e = &g` is live-at-end only when nothing in
+/// `churned_since_end` reaches `g` — i.e. `e` is not churned again before the back edge.
+#[derive(Default)]
+struct LoopCtx<'s, 't> {
+  churned_since_end: Vec<Vec<GroupStep<'s, 't>>>,
+  live_at_end: Vec<RefKey<'s, 't>>,
+}
+
 /// The walk's state: the pending uses, the post-loop set each enclosing loop resumes from at a
-/// `break`, the errors found so far, and the counter that names held temporaries.
+/// `break`, the per-loop back-edge facts for each enclosing loop, the errors found so far, and the
+/// counter that names held temporaries.
 struct Walk<'s, 't, 'g> {
   declared_mut: Vec<Vec<GroupStep<'s, 't>>>,
   pending: PendingMap<'s, 't, 'g>,
   break_targets: Vec<PendingMap<'s, 't, 'g>>,
+  loop_ctxs: Vec<LoopCtx<'s, 't>>,
   errors: Vec<ICompileErrorT<'s, 't>>,
   next_held: u32,
 }
@@ -67,6 +79,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       declared_mut,
       pending: IndexMap::default(),
       break_targets: vec![],
+      loop_ctxs: vec![],
       errors: vec![],
       next_held: 0,
     };
@@ -162,7 +175,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           if is_param_rooted(&steps) && !walk.declared_mut.iter().any(|declared| path_covers(declared, &steps)) {
             walk.errors.push(self.borrow_error(BorrowErrorKind::UndeclaredChurn, call.range[0]));
           }
-          self.churn(walk, &steps, path.range);
+          self.churn(walk, &steps, path.range, &[]);
         }
         if let Some(fact) = self.joint_facts(coutputs, call.callable, call.args).first() {
           walk.errors.push(self.joint_error(fact));
@@ -206,7 +219,23 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::Mutate(m) => {
         walk.retire(key);
         let source_key = match m.destination_expr {
-          ExpressionGE::LocalLookup(l) => walk.pending_key(RefKey::Named(l.local_variable.name)),
+          ExpressionGE::LocalLookup(l) => {
+            let name = l.local_variable.name;
+            // Inside a loop, `set e = ...` re-derives `e`, so the back edge hands it fresh to the
+            // next iteration's top: record it as live-at-end so the loop's blanket churn spares it —
+            // but only if `e`'s new group is not churned again before the back edge.
+            let mentions = mentions_of(m.source_expr.result());
+            if let Some(ctx) = walk.loop_ctxs.last_mut() {
+              let churned_after = ctx
+                .churned_since_end
+                .iter()
+                .any(|churned| mentions.iter().any(|mention| reaches(churned, mention)));
+              if !churned_after {
+                ctx.live_at_end.push(RefKey::Named(name));
+              }
+            }
+            walk.pending_key(RefKey::Named(name))
+          }
           _ => walk.register(m.source_expr),
         };
         self.check_ge(coutputs, walk, m.source_expr, source_key);
@@ -243,10 +272,15 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::While(w) => {
         walk.retire(key);
         walk.break_targets.push(walk.pending.clone());
+        walk.loop_ctxs.push(LoopCtx::default());
         self.check_ge(coutputs, walk, w.block.inner, None);
+        let ctx = walk.loop_ctxs.pop().expect("vfail: loop ctx stack underflow");
         walk.break_targets.pop();
+        // A borrow the body re-derives (`set e = ...`) is handed fresh across the back edge, so the
+        // loop's churns do not spoil it — but it stays pending so code before the loop still checks
+        // it (iteration 1 reads the pre-loop value).
         for path in w.mut_effects.iter() {
-          self.churn(walk, path.steps, path.range);
+          self.churn(walk, path.steps, path.range, &ctx.live_at_end);
         }
       }
       ExpressionGE::Block(b) => self.check_ge(coutputs, walk, b.inner, key),
@@ -308,11 +342,26 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   /// Apply a churn of `steps`, by the call at `churned_at`, to everything pending: each reached value
   /// is a use-after-churn, reported at its use naming the churn, and dropped (one report per use
   /// suffices).
-  fn churn<'g>(&self, walk: &mut Walk<'s, 't, 'g>, steps: &[GroupStep<'s, 't>], churned_at: RangeS<'s>) {
+  fn churn<'g>(
+    &self,
+    walk: &mut Walk<'s, 't, 'g>,
+    steps: &[GroupStep<'s, 't>],
+    churned_at: RangeS<'s>,
+    exempt: &[RefKey<'s, 't>],
+  ) {
+    // Remember this churn for every enclosing loop: a later `set` (earlier in program order) only
+    // survives the back edge if nothing between it and the loop's end churns it.
+    for ctx in walk.loop_ctxs.iter_mut() {
+      ctx.churned_since_end.push(steps.to_vec());
+    }
+    // `exempt` names borrows a loop's back edge re-supplies fresh (`set e = ...`): the loop's own
+    // churns do not spoil them, though they stay pending so code before the loop still checks them.
     let reached: Vec<RefKey<'s, 't>> = walk
       .pending
       .iter()
-      .filter(|(_, entry)| entry.mentions.iter().any(|mention| reaches(steps, mention)))
+      .filter(|(key, entry)| {
+        !exempt.contains(key) && entry.mentions.iter().any(|mention| reaches(steps, mention))
+      })
       .map(|(reached_key, _)| *reached_key)
       .collect();
     for reached_key in reached {
