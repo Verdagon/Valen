@@ -47,6 +47,8 @@ use crate::testvm::vivem_externs::panic;
 use crate::testvm::vivem_externs::print;
 use crate::testvm::vivem_externs::sqrt;
 use crate::testvm::vivem_externs::str_length;
+use crate::testvm::vivem_externs::strcmp;
+use crate::testvm::vivem_externs::substring;
 use crate::testvm::vivem_externs::subtract_float_float;
 use crate::testvm::vivem_externs::subtract_i32;
 use crate::testvm::vivem_externs::subtract_i64;
@@ -128,6 +130,7 @@ where 's: 'i, 'i: 'v,
         "__vbi_divideFloatFloat" => Box::new(divide_float_float),
         "__vbi_subtractI32" => Box::new(subtract_i32),
         "__vbi_addStr" => Box::new(add_str_str),
+        "__vbi_substring" => Box::new(substring),
         "__getch" => Box::new(getch),
         "__vbi_eqFloatFloat" => Box::new(eq_float_float),
         "sqrt" => Box::new(sqrt),
@@ -148,6 +151,7 @@ where 's: 'i, 'i: 'v,
         "__vbi_strLength" => Box::new(str_length),
         "__vbi_castFloatStr" => Box::new(cast_float_str),
         "__vbi_streq" => Box::new(eq_str_str),
+        "__vbi_strcmp" => Box::new(strcmp),
         "__vbi_negateFloat" => Box::new(negate_float),
         "__vbi_multiplyI64" => Box::new(multiply_i64),
         "__vbi_divideI64" => Box::new(divide_i64),
