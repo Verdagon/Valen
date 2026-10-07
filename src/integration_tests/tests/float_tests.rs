@@ -11,7 +11,6 @@ use crate::testvm::von::VonInt;
 
 pub struct FloatTests;
 
-#[ignore]
 #[test]
 fn print_float() {
     let compilation_bump = bumpalo::Bump::new();
