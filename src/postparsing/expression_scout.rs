@@ -456,6 +456,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           expr: &*self.scout_arena.alloc(IExpressionSE::ConstantStr(ConstantStrSE {
             range: PostParser::eval_range(&file_coordinate, constant_str.range),
             value: self.scout_arena.intern_str(constant_str.value.as_str()),
+            is_rust: constant_str.is_rust,
           })),
         }),
         VariableUses::<'s>::empty(),
@@ -1484,6 +1485,7 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
           self.scout_arena.alloc(IExpressionSE::ConstantStr(ConstantStrSE {
             range: RangeS::new(range_s.begin, range_s.begin),
             value: self.scout_arena.intern_str(""),
+            is_rust: false,
           }));
         let added_expr = parts_se.iter().fold(starting_expr, |prev_expr, part_se| {
           let add_call_range = RangeS::new(prev_expr.range().end, part_se.range().begin);

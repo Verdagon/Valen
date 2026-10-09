@@ -163,6 +163,7 @@ where
     let def_id = match rust_item.origin {
       RustItemOrigin::Rustc(def_id) => def_id,
       RustItemOrigin::Slice => unimplemented!(),
+      RustItemOrigin::Str => unimplemented!(),
       RustItemOrigin::SynthesizedDrop => {
         let owner_id = match rust_item.container_id { Some(v) => v, None => unimplemented!() };
         let owner = &self.items[owner_id.0 as usize];
@@ -333,6 +334,7 @@ fn add_inherent_methods<'s>(
     RustItemOrigin::Rustc(def_id) => def_id,
     RustItemOrigin::SynthesizedDrop => unimplemented!(),
     RustItemOrigin::Slice => unimplemented!(),
+    RustItemOrigin::Str => unimplemented!(),
   };
   let package_coord = items[owner_index].name.package_coord;
   for impl_def_id in tcx.inherent_impls(owner_def_id).iter() {

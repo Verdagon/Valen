@@ -317,6 +317,9 @@ Ref translateExpressionInner(
     buildFlare(FL(), globalState, functionState, builder, typeid(*expr).name());
     auto resultLE = translateConstantStr(FL(), globalState, functionState, builder, constantStr);
     return resultLE;
+  } else if (auto constantRustStr = dynamic_cast<ConstantRustStr*>(expr)) {
+    auto resultLE = translateConstantRustStr(FL(), globalState, functionState, builder, constantRustStr);
+    return resultLE;
   } else if (auto newStruct = dynamic_cast<NewStruct*>(expr)) {
     buildFlare(FL(), globalState, functionState, builder, typeid(*expr).name());
     auto memberExprs =

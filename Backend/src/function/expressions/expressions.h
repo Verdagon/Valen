@@ -119,4 +119,11 @@ Ref translateConstantStr(
     LLVMBuilderRef builder,
     ConstantStr* constantStr);
 
+Ref translateConstantRustStr(
+    AreaAndFileAndLine from,
+    GlobalState* globalState,
+    FunctionState* functionState,
+    LLVMBuilderRef builder,
+    ConstantRustStr* constantRustStr);
+
 #endif

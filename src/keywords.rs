@@ -148,6 +148,7 @@ pub struct Keywords<'a> {
   pub functor1: StrI<'a>,
   pub my_module: StrI<'a>,
   pub implicit_clone: StrI<'a>,
+  pub dunder_str: StrI<'a>,
 }
 
 impl<'a> Keywords<'a> {
@@ -310,6 +311,7 @@ impl<'a> Keywords<'a> {
       functor1: parse_arena.intern_str("Functor1"),
       my_module: parse_arena.intern_str("my_module"),
       implicit_clone: parse_arena.intern_str("implicit_clone"),
+      dunder_str: parse_arena.intern_str("__str"),
     }
   }
 
@@ -472,6 +474,7 @@ impl<'a> Keywords<'a> {
       functor1: scout_arena.intern_str("Functor1"),
       my_module: scout_arena.intern_str("my_module"),
       implicit_clone: scout_arena.intern_str("implicit_clone"),
+      dunder_str: scout_arena.intern_str("__str"),
     }
   }
 }

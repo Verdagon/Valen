@@ -57,6 +57,9 @@ pub(crate) enum RustItemOrigin {
   // We can think of there being a conceptual/synthesized `struct __slice<T>`, that's
   // what this refers to.
   Slice,
+  // Same with str, there's no DefID for it. Valen compiler should think about it like
+  // a struct that lives in rustc, though.
+  Str,
 }
 
 pub(crate) struct RustItem<'s> {

@@ -324,6 +324,7 @@ where F: Fn(NodeRefI<'s, 'i>) -> Option<T>, 's: 'i {
         ExpressionIE::ConstantInt(_) => {}
         ExpressionIE::ConstantBool(_) => {}
         ExpressionIE::ConstantStr(_) => {}
+        ExpressionIE::ConstantRustStr(_) => {}
         ExpressionIE::ConstantFloat(_) => {}
         ExpressionIE::ArgLookup(_) => {}
         ExpressionIE::ArrayLength(x) => visit_expression_ie(pred, out, x.array_expr),

@@ -78,6 +78,7 @@ pub enum ExpressionGE<'s, 't, 'g> {
   ConstantInt(&'g ConstantIntGE<'s, 't, 'g>),
   ConstantBool(&'g ConstantBoolGE<'s, 't, 'g>),
   ConstantStr(&'g ConstantStrGE<'s, 't, 'g>),
+  ConstantRustStr(&'g ConstantRustStrGE<'s, 't, 'g>),
   ConstantFloat(&'g ConstantFloatGE<'s, 't, 'g>),
   ArgLookup(&'g ArgLookupGE<'s, 't, 'g>),
   ArrayLength(&'g ArrayLengthGE<'s, 't, 'g>),
@@ -335,6 +336,14 @@ pub struct ConstantBoolGE<'s, 't, 'g> {
 
 #[derive(Debug)]
 pub struct ConstantStrGE<'s, 't, 'g> {
+  pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
+  pub value: StrI<'s>,
+  pub result: KindGT<'s, 't, 'g>,
+}
+
+#[derive(Debug)]
+pub struct ConstantRustStrGE<'s, 't, 'g> {
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
   pub value: StrI<'s>,
@@ -681,6 +690,7 @@ where
       ExpressionGE::ConstantInt(e) => e.result,
       ExpressionGE::ConstantBool(e) => e.result,
       ExpressionGE::ConstantStr(e) => e.result,
+      ExpressionGE::ConstantRustStr(e) => e.result,
       ExpressionGE::ConstantFloat(e) => e.result,
       ExpressionGE::ArgLookup(e) => e.result,
       ExpressionGE::ArrayLength(e) => e.result,
@@ -735,6 +745,7 @@ where
       ExpressionGE::ConstantInt(e) => e.range,
       ExpressionGE::ConstantBool(e) => e.range,
       ExpressionGE::ConstantStr(e) => e.range,
+      ExpressionGE::ConstantRustStr(e) => e.range,
       ExpressionGE::ConstantFloat(e) => e.range,
       ExpressionGE::ArgLookup(e) => e.range,
       ExpressionGE::ArrayLength(e) => e.range,

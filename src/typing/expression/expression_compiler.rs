@@ -1947,14 +1947,24 @@ where
         }
         Ok((block_2, returns_from_exprs, PendingTempDrops::none()))
       }
-      IExpressionSE::ConstantStr(c) => {
-        let result = ExpressionTE::ConstantStr(self.typing_interner.alloc(ConstantStrTE::new(
-          c.range,
-          loct,
-          c.value,
-          region,
-        )));
-        Ok((result, HashSet::default(), PendingTempDrops::none()))
+      IExpressionSE::ConstantStr(ConstantStrSE { range: range_s, value: str_value, is_rust }) => {
+        if !is_rust {
+          let result = ExpressionTE::ConstantStr(self.typing_interner.alloc(ConstantStrTE::new(
+            *range_s,
+            loct,
+            *str_value,
+            region,
+          )));
+          Ok((result, HashSet::default(), PendingTempDrops::none()))
+        } else {
+          let env = IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner));
+          let result_kind =
+              self.resolve_rust_str_struct(coutputs, env, parent_ranges, outer_call_location, range_s)?;
+          let result = ExpressionTE::ConstantRustStr(self.typing_interner.alloc(
+            ConstantRustStrTE::new(*range_s, loct, *str_value, region, result_kind),
+          ));
+          Ok((result, HashSet::default(), PendingTempDrops::none()))
+        }
       }
       IExpressionSE::ConstantFloat(c) => {
         let result = ExpressionTE::ConstantFloat(
