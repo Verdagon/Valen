@@ -24,6 +24,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_s: &'s FunctionS<'s>,
     arena: &'g Bump,
     function_g_body: ExpressionGE<'s, 't, 'g>,
+    func_declared_mut_effects: Vec<GroupPathG<'s, 't, 'g>>
   ) -> Result<(), ICompileErrorT<'s, 't>> {
     let mut group_tree =
         GroupSubtree {
@@ -31,7 +32,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           name_to_child: IndexMap::new(),
         };
     let mut next_held_num = 0;
-    self.check_expr(coutputs, function_s, arena, &mut group_tree, function_g_body, &mut next_held_num)?;
+    self.check_expr(
+      coutputs,
+      function_s,
+      arena,
+      &func_declared_mut_effects,
+      &mut group_tree,
+      function_g_body,
+      &mut next_held_num)?;
     Ok(())
   }
 
@@ -40,20 +48,21 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     coutputs: &CompilerOutputs<'s, 't>,
     function_s: &'s FunctionS<'s>,
     arena: &'g Bump,
+    func_declared_mut_effects: &Vec<GroupPathG<'s, 't, 'g>>,
     group_tree: &mut GroupSubtree<'s, 't>,
     expr: ExpressionGE<'s, 't, 'g>,
     next_held_num: &mut u32,
   ) -> Result<(), ICompileErrorT<'s, 't>> {
     match expr {
       ExpressionGE::Block(BlockGE { range, inner, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner, next_held_num)?;
       }
       ExpressionGE::LetNormal(LetNormalGE { range, variable, expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
         // self.insert_new_variable(group_tree, RefKey::Named(variable.name), variable.tyype);
       }
       ExpressionGE::LetAndLend(LetAndLendGE { range, loct, variable, expr, result }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
       }
       ExpressionGE::LocalLookup(LocalLookupGE { range, local_variable, result, .. }) => {
         // self.check_variable_still_valid(group_tree, *range, RefKey::Named(local_variable.name), local_variable.tyype)?;
@@ -74,14 +83,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         // Nothing needed
       }
       ExpressionGE::Discard(DiscardGE { range, expr: inner, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner, next_held_num)?;
       }
       ExpressionGE::Return(ReturnGE { range, source_expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *source_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_expr, next_held_num)?;
       }
       ExpressionGE::Consecutor(ConsecutorGE { range, exprs, result: result_tt, .. }) => {
         for expr in exprs.iter() {
-          self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
         }
       }
       ExpressionGE::ConstantInt(ConstantIntGE { range, value, bits, .. }) => {
@@ -100,13 +109,13 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         unimplemented!()
       }
       ExpressionGE::Deref(DerefGE { range, loct, inner: source_te, result: result_tt, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *source_te, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_te, next_held_num)?;
       }
       ExpressionGE::FunctionCall(FunctionCallGE { loct, range, callable, args, result, mut_effects, .. }) => {
         for arg in args.iter() {
           // Careful, this may cause some mut effects, that could invalidate other arguments.
           // We check the argument types again below, in case that happened.
-          self.check_expr(coutputs, function_s, arena, group_tree, *arg, next_held_num)?;
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *arg, next_held_num)?;
         }
         // Check each argument again, just in case any of the arguments invalidated any of the
         // other args.
@@ -116,22 +125,42 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
         // Conceptually, the call happens here
 
-        // Process the calls' effects
         let mel = MutEffectLoc { loct: *loct, range: range[0] };
+
         for mut_effect in mut_effects.iter() {
           self.note_mut_effect(group_tree, mel, mut_effect.steps);
+
+          // If the effect affects a parameter, make sure it doesn't violate the function's declared
+          // mut effects
+          match mut_effect.steps[0] {
+            GroupStep::Rune(rune) => {
+              let allowed =
+                  func_declared_mut_effects.iter().any(|d| churn_matches_func_declared_mut_effect(d, mut_effect.steps));
+              if !allowed {
+                return Err(ICompileErrorT::BorrowCheckError { range: range[0], kind: BorrowErrorKind::UndeclaredChurn });
+              }
+            }
+            GroupStep::Local(_) => {} // we don't care about mutations to these
+            GroupStep::AmbientMulti() => unimplemented!(),
+            GroupStep::ParamAnonymousGroup(_) => unimplemented!(),
+            // I think all the below should be impossible
+            GroupStep::Member { .. } => panic!("Impossible effect root"),
+            GroupStep::ChildElements => panic!("Impossible effect root"),
+            GroupStep::InlineElements => panic!("Impossible effect root"),
+            GroupStep::Variant { .. } => panic!("Impossible effect root"),
+          }
         }
       }
       ExpressionGE::LockWeak(_) => unimplemented!(),
       ExpressionGE::BorrowToWeak(_) => unimplemented!(),
       ExpressionGE::If(IfGE { range, loct, condition: condition_ge, then_call: then_ge, else_call: else_ge, result }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *condition_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *condition_ge, next_held_num)?;
 
         let mut group_tree_for_then = group_tree.clone();
-        self.check_expr(coutputs, function_s, arena, &mut group_tree_for_then, *then_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut group_tree_for_then, *then_ge, next_held_num)?;
 
         let mut group_tree_for_else = group_tree.clone();
-        self.check_expr(coutputs, function_s, arena, &mut group_tree_for_else, *else_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut group_tree_for_else, *else_ge, next_held_num)?;
 
         // Can be typed Never if a break or a return exited out of the branch, in which case,
         // don't incorporate its invalidations
@@ -153,7 +182,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
         // Now do the body. "Past iterations"'s mutations were noted above, so we'll correctly
         // detect invalidations inside the loop.
-        self.check_expr(coutputs, function_s, arena, group_tree, block.inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, block.inner, next_held_num)?;
 
         // After the loop, note all the mut effects that happen inside the loop.
         let mel = MutEffectLoc { loct: *post_iteration_loct, range: *range };
@@ -162,8 +191,8 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         }
       }
       ExpressionGE::Mutate(MutateGE { destination_expr, source_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *source_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, group_tree, *destination_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *destination_expr, next_held_num)?;
 
         // TODO: issue mut effects for `set` statements
         // let dest_group_path = ...
@@ -183,65 +212,68 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::ConstantStr(_) => {
         // Do nothing
       }
+      ExpressionGE::ConstantRustStr(_) => {
+        // Do nothing
+      }
       ExpressionGE::InterfaceFunctionCall(_) => unimplemented!(),
       ExpressionGE::ExternFunctionCall(_) => unimplemented!(),
       ExpressionGE::BoundFunctionCall(_) => unimplemented!(),
       ExpressionGE::Reinterpret(ReinterpretGE { range, expr: source_ge, result }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *source_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_ge, next_held_num)?;
       }
       ExpressionGE::Construct(ConstructGE { args, .. }) => {
         for arg in args.iter() {
-          self.check_expr(coutputs, function_s, arena, group_tree, *arg, next_held_num)?;
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *arg, next_held_num)?;
         }
       }
       ExpressionGE::NewRuntimeSizedArray(NewRuntimeSizedArrayGE { capacity_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *capacity_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *capacity_expr, next_held_num)?;
       }
       ExpressionGE::StaticArrayFromCallable(StaticArrayFromCallableGE { generator, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *generator, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *generator, next_held_num)?;
       }
       ExpressionGE::DestroyStaticSizedArrayIntoFunction(DestroyStaticSizedArrayIntoFunctionGE { array_expr, consumer, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, group_tree, *consumer, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *consumer, next_held_num)?;
       }
       ExpressionGE::DestroyStaticSizedArrayIntoLocals(DestroyStaticSizedArrayIntoLocalsGE { expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
       }
       ExpressionGE::DestroyRuntimeSizedArray(DestroyRuntimeSizedArrayGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
       }
       ExpressionGE::RuntimeSizedArrayCapacity(RuntimeSizedArrayCapacityGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
       }
       ExpressionGE::PushRuntimeSizedArray(PushRuntimeSizedArrayGE { array_expr, new_element_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, group_tree, *new_element_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *new_element_expr, next_held_num)?;
       }
       ExpressionGE::PopRuntimeSizedArray(PopRuntimeSizedArrayGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
       }
       ExpressionGE::InterfaceToInterfaceUpcast(InterfaceToInterfaceUpcastGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner_expr, next_held_num)?;
       }
       ExpressionGE::UpcastInterface(UpcastInterfaceGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner_expr, next_held_num)?;
       }
       ExpressionGE::UpcastGeneric(UpcastGenericGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner_expr, next_held_num)?;
       }
       ExpressionGE::Destroy(DestroyGE { range, expr, struct_tt, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
       }
       ExpressionGE::CopyPrim(CopyPrimGE { range, loct, inner, result }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner, next_held_num)?;
       }
       ExpressionGE::StaticSizedArrayLookup(_) => unimplemented!(),
       ExpressionGE::RuntimeSizedArrayLookup(RuntimeSizedArrayLookupGE { range, array_expr, array_type, index_expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, group_tree, *index_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *index_expr, next_held_num)?;
       }
       ExpressionGE::MemberLookup(MemberLookupGE { struct_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, group_tree, *struct_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *struct_expr, next_held_num)?;
       }
     }
     Ok(())
@@ -555,4 +587,47 @@ fn merge_invalidations_into_from<'s, 't>(
         });
     merge_invalidations_into_from(into_child, from_child);
   }
+}
+
+
+fn churn_matches_func_declared_mut_effect<'s, 't, 'g>(
+  declared: &GroupPathG<'s, 't, 'g>,
+  churn_steps: &[GroupStep<'s, 't>],
+) -> bool {
+  match (declared.root, churn_steps[0]) {
+    (GroupRootG::Rune(declared_rune), GroupStep::Rune(churn_rune)) => {
+      if declared_rune != churn_rune {
+        return false;
+      }
+    },
+    (GroupRootG::Local(declared_local), _) => return false, // Func mut declarations cant start with local
+    _ => unimplemented!(),
+  }
+  if churn_steps.len() < declared.steps.len() {
+    return false;
+  }
+  let churn_children = &churn_steps[1..];
+  let num_steps = churn_children.len().min(declared.steps.len());
+  for i in 0..num_steps {
+    let declared_step = declared.steps[i];
+    let churn_step = churn_children[i];
+    match (declared_step, churn_step) {
+      (GroupChildStepG::Member { member_name: a }, GroupStep::Member { member_name: b }) => {
+        if a != b {
+          return false;
+        }
+      },
+      (GroupChildStepG::ChildElements {}, GroupStep::ChildElements) => {} // continue
+      (GroupChildStepG::InlineElements {}, GroupStep::InlineElements) => {} // continue
+      (GroupChildStepG::Variant { variant_name: a }, GroupStep::Variant { variant_name: b }) => {
+        if a != b {
+          return false;
+        }
+      },
+      _ => {
+        return false;
+      }
+    }
+  }
+  true
 }

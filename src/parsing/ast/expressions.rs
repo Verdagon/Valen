@@ -318,6 +318,7 @@ pub struct ConstantIntPE {
   pub range: RangeL,
   pub value: i64,
   pub bits: Option<i64>,
+  pub is_usize: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -330,6 +331,7 @@ pub struct ConstantBoolPE {
 pub struct ConstantStrPE<'p> {
   pub range: RangeL,
   pub value: StrI<'p>,
+  pub is_rust: bool,
 }
 
 #[derive(Debug, PartialEq)]

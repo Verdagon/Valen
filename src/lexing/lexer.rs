@@ -399,9 +399,13 @@ where
     begin: i32,
     attributes: &'p [IAttributeL<'p>],
   ) -> Result<Option<StructL<'p>>> {
-    if !iter.try_skip_complete_word("struct") {
+    let sharedness = if iter.try_skip_complete_word("struct") {
+      SharednessP::Single
+    } else if iter.try_skip_complete_word("class") {
+      SharednessP::Shared
+    } else {
       return Ok(None);
-    }
+    };
 
     iter.consume_comments_and_whitespace();
 
@@ -409,10 +413,6 @@ where
     iter.consume_comments_and_whitespace();
 
     let maybe_generic_args = self.lex_angled(iter)?;
-    iter.consume_comments_and_whitespace();
-
-    let sharedness =
-      if iter.try_skip_complete_word("share") { SharednessP::Shared } else { SharednessP::Single };
     iter.consume_comments_and_whitespace();
 
     let maybe_rules = if iter.try_skip_complete_word("where") {
@@ -499,9 +499,13 @@ where
     begin: i32,
     attributes: &'p [IAttributeL<'p>],
   ) -> Result<Option<InterfaceL<'p>>> {
-    if !iter.try_skip_complete_word("interface") {
+    let sharedness = if iter.try_skip_complete_word("interface") {
+      SharednessP::Single
+    } else if iter.try_skip_complete_word("classinterface") {
+      SharednessP::Shared
+    } else {
       return Ok(None);
-    }
+    };
 
     iter.consume_comments_and_whitespace();
 
@@ -509,10 +513,6 @@ where
     iter.consume_comments_and_whitespace();
 
     let maybe_generic_args = self.lex_angled(iter)?;
-    iter.consume_comments_and_whitespace();
-
-    let sharedness =
-      if iter.try_skip_complete_word("share") { SharednessP::Shared } else { SharednessP::Single };
     iter.consume_comments_and_whitespace();
 
     let maybe_rules = if iter.try_skip_complete_word("where") {
@@ -936,6 +936,11 @@ where
   fn lex_string(&self, iter: &mut LexingIterator) -> Result<Option<INodeLEEnum<'p>>> {
     let begin = iter.get_pos();
 
+    let is_rust = iter.code[begin as usize..].starts_with("rs\"");
+    if is_rust {
+      iter.try_skip_str("rs");
+    }
+
     let is_long_string = if iter.try_skip_str("\"\"\"") {
       true
     } else if iter.try_skip('"') {
@@ -983,6 +988,7 @@ where
     Ok(Some(INodeLEEnum::String(StringLE {
       range: RangeL::new(begin, iter.get_pos()),
       parts: self.parse_arena.alloc_slice_from_vec(parts),
+      is_rust,
     })))
   }
 
@@ -1096,6 +1102,7 @@ where
         range: RangeL::new(begin, iter.get_pos()),
         value: integer,
         bits: None,
+        is_usize: false,
       })));
     }
 
@@ -1105,6 +1112,7 @@ where
         range: RangeL::new(begin, iter.get_pos()),
         value: integer,
         bits: None,
+        is_usize: false,
       })));
     }
 
@@ -1136,7 +1144,8 @@ where
       })));
     }
 
-    // Check for integer type suffix (i32, i64, etc.)
+    // Check for integer type suffix (i32, i64, u, etc.)
+    let mut is_usize = false;
     let bits = if iter.try_skip('i') {
       let mut bits = 0i64;
       while !iter.at_end() {
@@ -1150,6 +1159,9 @@ where
       }
       assert!(bits > 0, "Integer type suffix 'i' must be followed by a number");
       Some(bits)
+    } else if iter.try_skip('u') {
+      is_usize = true;
+      None
     } else {
       None
     };
@@ -1160,6 +1172,7 @@ where
       range: RangeL::new(begin, iter.get_pos()),
       value: result,
       bits,
+      is_usize,
     })))
   }
 }

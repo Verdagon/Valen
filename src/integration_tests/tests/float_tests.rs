@@ -11,7 +11,6 @@ use crate::testvm::von::VonInt;
 
 pub struct FloatTests;
 
-#[ignore]
 #[test]
 fn print_float() {
     let compilation_bump = bumpalo::Bump::new();
@@ -90,7 +89,6 @@ fn float_equals() {
     }
 }
 
-#[ignore]
 #[test]
 fn concat_string_and_float() {
     let compilation_bump = bumpalo::Bump::new();

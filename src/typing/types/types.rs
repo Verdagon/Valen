@@ -107,13 +107,11 @@ impl<'s, 't> KindT<'s, 't> {
   }
 
   // A `&X -> X` read-out copies the value out of the borrow with no user-written clone,
-  // via a CopyPrim intrinsic. True for primitives and for str (a share value that copies
-  // like a primitive).
+  // via a CopyPrim intrinsic. True for primitives except for str.
   // VCOORD: TODO: also a ShareRef, and a bare `share` citizen (that one needs
   // the declare_type_sharedness query, so it moves to a Compiler method then).
-  // VCOORD: this helper should go away, shouldnt be hardcoding str like this.
   pub fn is_implicitly_cloneable(&self) -> bool {
-    self.is_primitive() || matches!(self, KindT::Str(_))
+    self.is_primitive()
   }
 }
 

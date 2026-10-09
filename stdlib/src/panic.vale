@@ -7,7 +7,7 @@ func vassert(cond bool) {
 
 func vassert(cond bool, msg str) {
   if (cond == false) {
-    println(msg);
+    println(^msg);
     __vbi_panic();
   }
 }
@@ -19,5 +19,5 @@ where func ==(&T, &T)bool {
 
 func vassertEq<T>(a &T, b &T, msg str) void
 where func ==(&T, &T)bool {
-  vassert(a == b, msg);
+  vassert(a == b, ^msg);
 }

@@ -183,7 +183,7 @@ where
         match nenv.lookup_nearest_with_imprecise_name(name_imprecise, &lookup_filter, self.typing_interner) {
                     Some(ITemplataT::Integer(num)) => {
                         Ok(Some(ExpressionTE::ConstantInt(self.typing_interner.alloc(
-                            ConstantIntTE::new(ranges[0], ITemplataT::Integer(num), 32, region)))))
+                            ConstantIntTE::new(ranges[0], ITemplataT::Integer(num), 32, false, region)))))
                     }
                     Some(ITemplataT::Boolean(b)) => {
                         Ok(Some(ExpressionTE::ConstantBool(self.typing_interner.alloc(
@@ -326,6 +326,7 @@ where
           c.range,
           ITemplataT::Integer(c.value),
           c.bits,
+          c.is_usize,
           region,
         ))),
         HashSet::default(),
@@ -1019,6 +1020,7 @@ where
                   dot.range,
                   ITemplataT::Integer(index),
                   32,
+                  false,
                   region,
                 )));
               ExpressionTE::StaticSizedArrayLookup(self.typing_interner.alloc(
@@ -1045,6 +1047,7 @@ where
                   dot.range,
                   ITemplataT::Integer(index),
                   32,
+                  false,
                   region,
                 )));
               let range_with_parent: Vec<RangeS<'s>> =
@@ -1944,15 +1947,24 @@ where
         }
         Ok((block_2, returns_from_exprs, PendingTempDrops::none()))
       }
-      IExpressionSE::ConstantStr(c) => {
-        let result = ExpressionTE::ConstantStr(self.typing_interner.alloc(ConstantStrTE::new(
-          self.typing_interner,
-          c.range,
-          loct,
-          c.value,
-          region,
-        )));
-        Ok((result, HashSet::default(), PendingTempDrops::none()))
+      IExpressionSE::ConstantStr(ConstantStrSE { range: range_s, value: str_value, is_rust }) => {
+        if !is_rust {
+          let result = ExpressionTE::ConstantStr(self.typing_interner.alloc(ConstantStrTE::new(
+            *range_s,
+            loct,
+            *str_value,
+            region,
+          )));
+          Ok((result, HashSet::default(), PendingTempDrops::none()))
+        } else {
+          let env = IInDenizenEnvironmentT::Node(nenv.snapshot(self.typing_interner));
+          let result_kind =
+              self.resolve_rust_str_struct(coutputs, env, parent_ranges, outer_call_location, range_s)?;
+          let result = ExpressionTE::ConstantRustStr(self.typing_interner.alloc(
+            ConstantRustStrTE::new(*range_s, loct, *str_value, region, result_kind),
+          ));
+          Ok((result, HashSet::default(), PendingTempDrops::none()))
+        }
       }
       IExpressionSE::ConstantFloat(c) => {
         let result = ExpressionTE::ConstantFloat(
@@ -2139,6 +2151,7 @@ where
               r.range,
               ITemplataT::Integer(value),
               32,
+              false,
               region,
             )));
             Ok((result, HashSet::default(), PendingTempDrops::none()))
@@ -2150,6 +2163,7 @@ where
               r.range,
               ITemplataT::Placeholder(p),
               32,
+              false,
               region,
             )));
             Ok((result, HashSet::default(), PendingTempDrops::none()))

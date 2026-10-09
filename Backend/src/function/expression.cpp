@@ -71,8 +71,12 @@ Ref translateExpressionInner(
   if (auto constantInt = dynamic_cast<ConstantInt*>(expr)) {
     // See ULTMCIE for why we load and store here.
     auto resultLE = makeConstIntExpr(functionState, builder, LLVMIntTypeInContext(globalState->context, constantInt->bits), constantInt->value);
-    auto intType =
-        globalState->metalCache->getInt(globalState->metalCache->mutRegionId, constantInt->bits);
+    Kind* intType;
+    if (constantInt->isUsize) {
+      intType = globalState->metalCache->getUSize(globalState->metalCache->mutRegionId);
+    } else {
+      intType = globalState->metalCache->getInt(globalState->metalCache->mutRegionId, constantInt->bits);
+    }
     return toRef(globalState->getRegion(intType), intType, resultLE);
   } else if (auto constantVoid = dynamic_cast<ConstantVoid*>(expr)) {
     // See ULTMCIE for why we load and store here.
@@ -312,6 +316,9 @@ Ref translateExpressionInner(
   } else if (auto constantStr = dynamic_cast<ConstantStr*>(expr)) {
     buildFlare(FL(), globalState, functionState, builder, typeid(*expr).name());
     auto resultLE = translateConstantStr(FL(), globalState, functionState, builder, constantStr);
+    return resultLE;
+  } else if (auto constantRustStr = dynamic_cast<ConstantRustStr*>(expr)) {
+    auto resultLE = translateConstantRustStr(FL(), globalState, functionState, builder, constantRustStr);
     return resultLE;
   } else if (auto newStruct = dynamic_cast<NewStruct*>(expr)) {
     buildFlare(FL(), globalState, functionState, builder, typeid(*expr).name());

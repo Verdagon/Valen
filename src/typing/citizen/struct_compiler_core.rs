@@ -87,7 +87,7 @@ where
       struct_a.attributes.iter().any(|attr| matches!(attr, ICitizenAttributeS::Extern(_)));
     if is_extern && sharedness == SharednessT::Shared {
       panic!(
-                "extern struct {:?} is declared `share`; post-cut design forbids share-flavored extern structs (they must be Own+Inline). Remove the `share` keyword.",
+                "extern struct {:?} is declared `class`; post-cut design forbids share-flavored extern structs (they must be Own+Inline). Use `struct` instead of `class`.",
                 struct_a.name,
             );
     }

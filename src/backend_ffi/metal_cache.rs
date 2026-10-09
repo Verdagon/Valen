@@ -178,10 +178,11 @@ extern "C" {
     ) -> *mut c_void;
 
     fn metal_expr_constant_void(loc: *mut c_void) -> *mut c_void;
-    fn metal_expr_constant_int(value: i64, bits: i32, loc: *mut c_void) -> *mut c_void;
+    fn metal_expr_constant_int(value: i64, bits: i32, is_usize: i32, loc: *mut c_void) -> *mut c_void;
     fn metal_expr_constant_bool(value: i32, loc: *mut c_void) -> *mut c_void;
     fn metal_expr_constant_f64(value: f64, loc: *mut c_void) -> *mut c_void;
     fn metal_expr_constant_str(value_ptr: *const c_char, value_len: usize, result: *mut c_void, loc: *mut c_void) -> *mut c_void;
+    fn metal_expr_constant_rust_str(value_ptr: *const c_char, value_len: usize, result: *mut c_void, loc: *mut c_void) -> *mut c_void;
     fn metal_expr_break(loc: *mut c_void) -> *mut c_void;
     fn metal_expr_return(source_expr: *mut c_void, source_type: *mut c_void, loc: *mut c_void) -> *mut c_void;
     fn metal_expr_discard(expr: *mut c_void, source_type: *mut c_void, loc: *mut c_void) -> *mut c_void;
@@ -615,8 +616,8 @@ impl MetalCache {
     pub fn expr_constant_void<'c>(&'c self, loc: SourceLocation<'c>) -> Expression<'c> {
         unsafe { Expression(NonNull::new(metal_expr_constant_void(loc_ptr(loc))).unwrap(), PhantomData) }
     }
-    pub fn expr_constant_int<'c>(&'c self, value: i64, bits: i32, loc: SourceLocation<'c>) -> Expression<'c> {
-        unsafe { Expression(NonNull::new(metal_expr_constant_int(value, bits, loc_ptr(loc))).unwrap(), PhantomData) }
+    pub fn expr_constant_int<'c>(&'c self, value: i64, bits: i32, is_usize: bool, loc: SourceLocation<'c>) -> Expression<'c> {
+        unsafe { Expression(NonNull::new(metal_expr_constant_int(value, bits, is_usize as i32, loc_ptr(loc))).unwrap(), PhantomData) }
     }
     pub fn expr_constant_bool<'c>(&'c self, value: bool, loc: SourceLocation<'c>) -> Expression<'c> {
         unsafe { Expression(NonNull::new(metal_expr_constant_bool(value as i32, loc_ptr(loc))).unwrap(), PhantomData) }
@@ -628,6 +629,14 @@ impl MetalCache {
         unsafe {
             Expression(
                 NonNull::new(metal_expr_constant_str(value.as_ptr() as *const c_char, value.len(), result.0.as_ptr(), loc_ptr(loc))).unwrap(),
+                PhantomData,
+            )
+        }
+    }
+    pub fn expr_constant_rust_str<'c>(&'c self, value: &str, result: Kind<'c>, loc: SourceLocation<'c>) -> Expression<'c> {
+        unsafe {
+            Expression(
+                NonNull::new(metal_expr_constant_rust_str(value.as_ptr() as *const c_char, value.len(), result.0.as_ptr(), loc_ptr(loc))).unwrap(),
                 PhantomData,
             )
         }

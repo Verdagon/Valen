@@ -107,6 +107,8 @@ IRegion* GlobalState::getRegion(Kind* typeM) {
   auto valueTypeM = peel_all_references(typeM);
   if (auto innt = dynamic_cast<Int*>(valueTypeM)) {
     return getRegion(innt->regionId);
+  } else if (auto usize = dynamic_cast<USize*>(valueTypeM)) {
+    return getRegion(usize->regionId);
   } else if (auto vooid = dynamic_cast<Void*>(valueTypeM)) {
     return getRegion(vooid->regionId);
   } else if (auto boool = dynamic_cast<Bool*>(valueTypeM)) {

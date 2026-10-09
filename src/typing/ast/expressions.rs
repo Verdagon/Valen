@@ -42,6 +42,7 @@ pub enum ExpressionTE<'s, 't> {
   ConstantInt(&'t ConstantIntTE<'s, 't>),
   ConstantBool(&'t ConstantBoolTE<'s, 't>),
   ConstantStr(&'t ConstantStrTE<'s, 't>),
+  ConstantRustStr(&'t ConstantRustStrTE<'s, 't>),
   ConstantFloat(&'t ConstantFloatTE<'s, 't>),
   ArgLookup(&'t ArgLookupTE<'s, 't>),
   ArrayLength(&'t ArrayLengthTE<'s, 't>),
@@ -98,7 +99,8 @@ where
       ExpressionTE::VoidLiteral(e) => e.result,
       ExpressionTE::ConstantInt(e) => e.result,
       ExpressionTE::ConstantBool(e) => e.result,
-      ExpressionTE::ConstantStr(e) => KindT::ShareRef(e.result),
+      ExpressionTE::ConstantStr(e) => e.result,
+      ExpressionTE::ConstantRustStr(e) => e.result,
       ExpressionTE::ConstantFloat(e) => e.result,
       ExpressionTE::ArgLookup(e) => e.result,
       ExpressionTE::ArrayLength(e) => e.result,
@@ -642,6 +644,7 @@ pub struct ConstantIntTE<'s, 't> {
   pub range: RangeS<'s>,
   pub value: ITemplataT<'s, 't>,
   pub bits: i32,
+  pub is_usize: bool,
   pub region: RegionT,
   pub result: KindT<'s, 't>,
   _sealed: (),
@@ -651,8 +654,9 @@ impl<'s, 't> ConstantIntTE<'s, 't>
 where
   's: 't,
 {
-  pub fn new(range: RangeS<'s>, value: ITemplataT<'s, 't>, bits: i32, region: RegionT) -> ConstantIntTE<'s, 't> {
-    ConstantIntTE { range, value, bits, region, result: KindT::Int(IntT { bits }), _sealed: () }
+  pub fn new(range: RangeS<'s>, value: ITemplataT<'s, 't>, bits: i32, is_usize: bool, region: RegionT) -> ConstantIntTE<'s, 't> {
+    let result = if is_usize { KindT::USize(USizeT) } else { KindT::Int(IntT { bits }) };
+    ConstantIntTE { range, value, bits, is_usize, region, result, _sealed: () }
   }
 }
 #[derive(Debug)]
@@ -678,7 +682,7 @@ pub struct ConstantStrTE<'s, 't> {
   pub loct: LocT<'t>,
   pub value: StrI<'s>,
   pub region: RegionT,
-  pub result: &'t ShareRefT<'s, 't>,
+  pub result: KindT<'s, 't>,
   _sealed: (),
 }
 
@@ -687,14 +691,36 @@ where
   's: 't,
 {
   pub fn new(
-    interner: &TypingInterner<'s, 't>,
     range: RangeS<'s>,
     loct: LocT<'t>,
     value: StrI<'s>,
     region: RegionT,
   ) -> ConstantStrTE<'s, 't> {
-    let result = interner.alloc(ShareRefT { inner: KindT::Str(StrT) });
-    ConstantStrTE { range, loct, value, region, result, _sealed: () }
+    ConstantStrTE { range, loct, value, region, result: KindT::Str(StrT), _sealed: () }
+  }
+}
+#[derive(Debug)]
+pub struct ConstantRustStrTE<'s, 't> {
+  pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
+  pub value: StrI<'s>,
+  pub region: RegionT,
+  pub result: KindT<'s, 't>,
+  _sealed: (),
+}
+
+impl<'s, 't> ConstantRustStrTE<'s, 't>
+where
+  's: 't,
+{
+  pub fn new(
+    range: RangeS<'s>,
+    loct: LocT<'t>,
+    value: StrI<'s>,
+    region: RegionT,
+    result: KindT<'s, 't>,
+  ) -> ConstantRustStrTE<'s, 't> {
+    ConstantRustStrTE { range, loct, value, region, result, _sealed: () }
   }
 }
 #[derive(Debug)]

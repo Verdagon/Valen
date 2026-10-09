@@ -82,7 +82,6 @@ pub enum ICompileErrorS<'s> {
   RangedInternalErrorS(RangedInternalErrorS<'s>),
   CantOwnershipInterfaceInImpl(CantOwnershipInterfaceInImpl<'s>),
   CantOwnershipStructInImpl(CantOwnershipStructInImpl<'s>),
-  UnanchoredGroupRuneS(UnanchoredGroupRuneS<'s>),
   ParamDestructureRequiresBody {
     range: RangeS<'s>,
   },
@@ -103,7 +102,6 @@ impl ICompileErrorS<'_> {
       ICompileErrorS::RangedInternalErrorS(x) => &x.range,
       ICompileErrorS::CantOwnershipInterfaceInImpl(x) => &x.range,
       ICompileErrorS::CantOwnershipStructInImpl(x) => &x.range,
-      ICompileErrorS::UnanchoredGroupRuneS(x) => &x.range,
       ICompileErrorS::ParamDestructureRequiresBody { range } => range,
     }
   }
@@ -117,12 +115,6 @@ pub struct CouldntFindVarToMutateS<'s> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CouldntFindRuneS<'s> {
-  pub range: RangeS<'s>,
-  pub name: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct UnanchoredGroupRuneS<'s> {
   pub range: RangeS<'s>,
   pub name: String,
 }

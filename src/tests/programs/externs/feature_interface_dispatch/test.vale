@@ -1,12 +1,12 @@
-sealed exported interface IShape share { }
+sealed exported classinterface IShape { }
 
-exported struct Circle share { radius int; }
+exported class Circle { radius int; }
 impl IShape for Circle;
 
-exported struct Square share { side int; }
+exported class Square { side int; }
 impl IShape for Square;
 
-exported struct Triangle share { base int; height int; }
+exported class Triangle { base int; height int; }
 impl IShape for Triangle;
 
 extern func computeArea(s IShape) int;

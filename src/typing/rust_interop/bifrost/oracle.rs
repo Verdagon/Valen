@@ -49,7 +49,17 @@ pub struct RustItemId(pub u32);
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub(crate) enum RustItemOrigin {
   Rustc(DefId),
+  // drop doesn't exist as a Rust function, there's no drop DefID.
+  // We can think of there being a conceptual/synthesized drop<T> function, that's what
+  // this refers to.
   SynthesizedDrop,
+  // Slice doesn't exist as a Rust struct, there's no slice DefId.
+  // We can think of there being a conceptual/synthesized `struct __slice<T>`, that's
+  // what this refers to.
+  Slice,
+  // Same with str, there's no DefID for it. Valen compiler should think about it like
+  // a struct that lives in rustc, though.
+  Str,
 }
 
 pub(crate) struct RustItem<'s> {

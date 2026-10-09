@@ -166,7 +166,6 @@ fn string_with_hex_escape() {
     assert_eq!(result, "sprog\u{001b}woggle");
 }
 
-#[ignore]
 #[test]
 fn int_to_string() {
     let compilation_bump = bumpalo::Bump::new();
@@ -192,7 +191,6 @@ fn int_to_string() {
     }
 }
 
-#[ignore]
 #[test]
 fn i64_to_string() {
     let compilation_bump = bumpalo::Bump::new();
@@ -218,7 +216,6 @@ fn i64_to_string() {
     }
 }
 
-#[ignore]
 #[test]
 fn string_length() {
     let compilation_bump = bumpalo::Bump::new();
@@ -244,7 +241,6 @@ fn string_length() {
     }
 }
 
-#[ignore]
 #[test]
 fn strings_equal() {
     let compilation_bump = bumpalo::Bump::new();
@@ -258,6 +254,81 @@ fn strings_equal() {
     let parser_keywords = Keywords::new_for_parse(&parse_arena);
     let typing_interner = TypingInterner::new(&typing_bump);
     let source = load_expected("programs/strings/strneq.vale");
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        &source,
+    );
+    match compile.eval_for_kind_primitive_args(Vec::new()).unwrap() {
+        IVonData::Int(VonInt { value: 42 }) => {}
+        other => panic!("expected VonInt(42), got {:?}", other),
+    }
+}
+
+#[test]
+fn str_add() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let source = load_expected("programs/strings/stradd.vale");
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        &source,
+    );
+    match compile.eval_for_kind_primitive_args(Vec::new()).unwrap() {
+        IVonData::Int(VonInt { value: 42 }) => {}
+        other => panic!("expected VonInt(42), got {:?}", other),
+    }
+}
+
+#[test]
+fn substring() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let source = load_expected("programs/strings/substring.vale");
+    let mut compile = test(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        &source,
+    );
+    match compile.eval_for_kind_primitive_args(Vec::new()).unwrap() {
+        IVonData::Int(VonInt { value: 42 }) => {}
+        other => panic!("expected VonInt(42), got {:?}", other),
+    }
+}
+
+#[test]
+fn strcmp() {
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let source = load_expected("programs/strings/strcmp.vale");
     let mut compile = test(
         &compilation_bump,
         &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
@@ -321,7 +392,7 @@ fn slice_a_slice() {
 import panicutils.*;
 import printutils.*;
 
-struct StrSlice share {
+class StrSlice {
   string str;
   begin int;
   end int;

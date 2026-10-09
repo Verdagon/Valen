@@ -1,16 +1,16 @@
 
-exported struct Flamscrankle share {
+exported class Flamscrankle {
   x int;
   b Bogglewoggle;
   y int;
 }
 
-exported struct Bogglewoggle share {
+exported class Bogglewoggle {
   s Spigglewigget;
   x int;
 }
 
-exported struct Spigglewigget share {
+exported class Spigglewigget {
   x int;
   y int;
   z int;

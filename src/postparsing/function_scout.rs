@@ -34,7 +34,7 @@ use crate::postparsing::patterns::AtomSP;
 use crate::postparsing::post_parser::{
   CouldntFindRuneS, ExternHasBodyS, FunctionEnvironmentS, ICompileErrorS, IEnvironmentS,
   InterfaceMethodNeedsSelf, PostParser, RangedInternalErrorS, StackFrame,
-  UnanchoredGroupRuneS, VirtualAndAbstractGoTogether,
+  VirtualAndAbstractGoTogether,
 };
 use crate::postparsing::rules::rule_scout::translate_rulexes;
 use crate::postparsing::rules::rules::{
@@ -52,63 +52,6 @@ use crate::utils::arena_index_map::ArenaIndexMap;
 use crate::utils::code_hierarchy::FileCoordinate;
 use crate::utils::fx::IndexSet;
 use crate::utils::range::RangeS;
-
-fn collect_group_runes<'s>(group: GroupS<'s>, out: &mut Vec<RuneUsage<'s>>) {
-  match group {
-    GroupS::Rune(rune_usage) => out.push(*rune_usage),
-    GroupS::Local(_) => {}
-    GroupS::Member { base, .. } => collect_group_runes(*base, out),
-    GroupS::Elements { base } => collect_group_runes(*base, out),
-    GroupS::Ellipsis { base } => collect_group_runes(*base, out),
-    GroupS::Union { members } => {
-      for member in members.iter().copied() {
-        collect_group_runes(*member, out);
-      }
-    }
-  }
-}
-
-fn collect_region_runes_in_type<'s>(tyype: ITypeST<'s>, out: &mut Vec<RuneUsage<'s>>) {
-  match tyype {
-    ITypeST::BorrowRef(borrow_ref) => {
-      if let RegionS::Group(group) = borrow_ref.region {
-        collect_group_runes(*group, out);
-      }
-      collect_region_runes_in_type(*borrow_ref.inner, out);
-    }
-    ITypeST::WeakRef(weak_ref) => collect_region_runes_in_type(*weak_ref.inner, out),
-    ITypeST::OwnRef(own_ref) => collect_region_runes_in_type(*own_ref.inner, out),
-    ITypeST::RuntimeSizedArray(rsa) => collect_region_runes_in_type(*rsa.element, out),
-    ITypeST::Call(call) => {
-      collect_region_runes_in_type(*call.template, out);
-      for arg in call.args.iter().copied() {
-        collect_region_runes_in_type(*arg, out);
-      }
-    }
-    ITypeST::Tuple(tuple) => {
-      for element in tuple.elements.iter().copied() {
-        collect_region_runes_in_type(*element, out);
-      }
-    }
-    ITypeST::Pack(pack) => {
-      for member in pack.members.iter().copied() {
-        collect_region_runes_in_type(*member, out);
-      }
-    }
-    ITypeST::Function(func) => {
-      for member in func.parameters.members.iter().copied() {
-        collect_region_runes_in_type(*member, out);
-      }
-      collect_region_runes_in_type(*func.return_type, out);
-    }
-    ITypeST::AnonymousRune(_)
-    | ITypeST::Name(_)
-    | ITypeST::Int(_)
-    | ITypeST::Bool(_)
-    | ITypeST::String(_)
-    | ITypeST::Rune(_) => {}
-  }
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum IFunctionParent<'s> {
@@ -129,7 +72,7 @@ struct ExplicitParamExtras<'s> {
   range: RangeS<'s>,
   abi_name: IVarDeclarationNameS<'s>,
   destructure: Option<(AtomSP<'s>, &'s [IRulexSR<'s>])>,
-  mut_group: Option<RuneUsage<'s>>,
+  mut_group: Option<&'s GroupS<'s>>,
 }
 
 impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
@@ -609,8 +552,8 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
                 match (pattern.mut_effect, tyype) {
                   (Some(_), ITypeST::BorrowRef(borrow_ref)) => {
                     match borrow_ref.region {
-                      RegionS::Group(GroupS::Rune(rune_usage)) => Some(**rune_usage),
-                      _ => None,
+                      RegionS::Group(group_s) => Some(group_s),
+                      RegionS::Held => None,
                     }
                   }
                   _ => None,
@@ -649,10 +592,8 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       if let Some(rune) = maybe_rune {
         explicit_params_synthesized_runes.push(rune);
       }
-      if let Some(mut_group_rune) = extras.mut_group {
-        effects_s.push(EffectS::Mut(
-          self.scout_arena.alloc(GroupS::Rune(self.scout_arena.alloc(mut_group_rune))),
-        ));
+      if let Some(mut_group) = extras.mut_group {
+        effects_s.push(EffectS::Mut(mut_group));
       }
       explicit_param_extras.push(extras);
     }
@@ -1025,30 +966,6 @@ impl<'s, 'p, 'ctx> PostParser<'s, 'p, 'ctx> {
       _ => panic!("POSTPARSER_FUNCTION_NAME_EXPECTED_FUNCTION_DECLARATION"),
     };
 
-    // Detect any runes that are used in a way that doesn't automatically declare them
-    let mut anchored_uses: Vec<RuneUsage<'s>> = Vec::new();
-    for param in total_params_s.iter() {
-      collect_region_runes_in_type(param.tyype, &mut anchored_uses);
-    }
-    let anchored_runes: IndexSet<IRuneS<'s>> =
-      anchored_uses.iter().map(|rune_usage| rune_usage.rune).collect();
-    let mut used: Vec<RuneUsage<'s>> = Vec::new();
-    for effect in effects_s.iter() {
-      let (EffectS::Mut(group) | EffectS::NotMut(group)) = effect;
-      collect_group_runes(**group, &mut used);
-    }
-    if let Some(return_type) = maybe_return_type {
-      collect_region_runes_in_type(return_type, &mut used);
-    }
-    for rune_usage in used.iter() {
-      let IRuneS::CodeRune(code_rune) = rune_usage.rune else { continue };
-      if !anchored_runes.contains(&rune_usage.rune) {
-        return Err(ICompileErrorS::UnanchoredGroupRuneS(UnanchoredGroupRuneS {
-          range: rune_usage.range,
-          name: code_rune.name.0.to_string(),
-        }));
-      }
-    }
 
     Ok((
       &*self.scout_arena.alloc(FunctionS::new(

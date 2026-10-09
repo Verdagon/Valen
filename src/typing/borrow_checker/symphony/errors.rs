@@ -26,7 +26,7 @@ pub fn humanize_borrow_error<'s, 't>(
       unimplemented!()
     }
     BorrowErrorKind::UndeclaredChurn => {
-      unimplemented!()
+      "this call changes an outside group, but function does not declare a mut effect for it.".to_string()
     }
   }
 }

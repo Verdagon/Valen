@@ -7,7 +7,6 @@ use crate::typing::typing_interner::TypingInterner;
 
 pub struct PrintTests;
 
-#[ignore]
 #[test]
 fn printlning_an_int() {
     let compilation_bump = bumpalo::Bump::new();
@@ -34,7 +33,6 @@ exported func main() {
     assert_eq!(compile.eval_for_stdout(Vec::new()).unwrap(), "6\n");
 }
 
-#[ignore]
 #[test]
 fn printlning_a_bool() {
     let compilation_bump = bumpalo::Bump::new();

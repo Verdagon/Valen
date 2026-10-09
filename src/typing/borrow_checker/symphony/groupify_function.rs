@@ -1,3 +1,5 @@
+// TODO: can we find a way for tests to see groupify's output?
+
 use std::marker::PhantomData;
 use bumpalo::Bump;
 use indexmap::IndexMap;
@@ -28,6 +30,13 @@ struct WrittenContext<'s> {
   name: Option<IVarDeclarationNameS<'s>>,
 }
 
+pub struct GroupifyResults<'s, 't, 'g> {
+  pub(crate) params_gt: Vec<KindGT<'s, 't, 'g>>,
+  pub(crate) body_g: ExpressionGE<'s, 't, 'g>,
+  pub(crate) access_log: Vec<&'g AccessEventG<'s, 't>>,
+  pub(crate) func_declared_mut_effects: Vec<GroupPathG<'s, 't, 'g>>,
+}
+
 impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   pub fn groupify_function<'g>(
     &self,
@@ -35,7 +44,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_s: &'s FunctionS<'s>,
     function_t: &'t FunctionDefinitionT<'s, 't>,
     bump_g: &'g Bump,
-  ) -> Result<(ExpressionGE<'s, 't, 'g>, Vec<&'g AccessEventG<'s, 't>>), ICompileErrorT<'s, 't>> {
+  ) -> Result<GroupifyResults<'s, 't, 'g>, ICompileErrorT<'s, 't>> {
     let mut access_log = Vec::new();
 
     // Insert PlaceholderTemplataG's for any non-group generic parameters, like the `T` in:
@@ -70,6 +79,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       };
     }
 
+    let mut param_name_to_type_gt = IndexMap::new();
+    let mut param_index_to_type_gt = Vec::new();
+
     // Now that we have PlaceholderTemplataG's for every non-group generic parameter,
     // let's populate our map with GroupTemplataG's for every group parameter, like the `tg` in:
     //     func observe<T, tg'>(x &T in tg) { }
@@ -85,7 +97,30 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     for (param_st, param_tt) in function_s.params.iter().zip(function_t.header.params.iter()) {
       let param_gt =
           self.simple_match_group_rune_types(
-            coutputs, bump_g, &mut local_rune_to_templata, param_st.tyype, ITemplataT::Kind(KindTemplataT { kind: param_tt.tyype }));
+            coutputs,
+            bump_g,
+            &param_name_to_type_gt,
+            &mut local_rune_to_templata,
+            param_st.tyype,
+            ITemplataT::Kind(KindTemplataT { kind: param_tt.tyype }),
+            // TODO: unique LocT for each parameter?
+            LocT { path: &[] });
+      let param_type_gt = expect_kind_templata_g(param_gt).kind;
+
+      // Make sure that all reference parameters are rooted with a rune (NOT a local).
+      match param_type_gt {
+        KindGT::BorrowRef(b) => {
+          assert!(b.group.group.len() == 1); // unimplemented
+          match b.group.group[0].root {
+            GroupRootG::Rune(r) => {} // Good
+            _ => panic!("Bad parameter root"),
+          }
+        }
+        _ => {}
+      }
+
+      param_name_to_type_gt.insert(param_tt.name, param_type_gt);
+      param_index_to_type_gt.push(param_type_gt);
     }
 
     // Will be populated as we go.
@@ -96,7 +131,27 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     // For now, just use the typed expressions.
     let expr_ge = self.groupify_expression(coutputs, function_s, function_t, bump_g, &mut access_log, function_t.body, &local_rune_to_templata, &mut local_to_type_g)?;
 
-    Ok((expr_ge, access_log))
+    let func_declared_mut_effects: Vec<GroupPathG<'s, 't, 'g>> =
+        function_s
+            .effects
+            .iter()
+            .filter_map(|e| match e {
+              EffectS::Mut(gs) => Some(gs),
+              _ => None,
+            })
+            .map(|group_s| {
+              self.groupify_group_expr(
+                coutputs,
+                bump_g,
+                &local_rune_to_templata,
+                &local_to_type_g,
+                **group_s,
+                LocT { path: &[] }
+              )
+            })
+            .collect();
+
+    Ok(GroupifyResults { params_gt: param_index_to_type_gt, body_g: expr_ge, access_log, func_declared_mut_effects })
   }
 
   fn new_rune_group_expr<'g>(bump_g: &'g Bump, rune: IRuneS<'s>) -> &'g [GroupPathG<'s, 't, 'g>] {
@@ -257,27 +312,23 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         Ok(ExpressionGE::ConstantFloat(bump_g.alloc(ConstantFloatGE { range: *range, value: *value, result: result_gt, })))
       }
       ExpressionTE::ConstantStr(ConstantStrTE { range, loct, value, .. }) => {
-        let result_gt =
-            bump_g.alloc(ShareRefGT {
-              inner: KindGT::Str(StrGT {}),
-              group: GroupTemplataG {
-                group: bump_g.alloc_slice_copy(&[
-                  GroupPathG {
-                    root: GroupRootG::AmbientMulti(),
-                    steps: bump_g.alloc_slice_copy(&[
-                      GroupChildStepG::Variant { variant_name: self.scout_arena.intern_str("str") }
-                    ]),
-                    ellipsis: false,
-                  }
-                ]),
-                kind: KindGT::Str(StrGT {}),
-                born_at: *loct,
-              }
-            });
+        let result_gt = KindGT::Str(StrGT {});
         Ok(
           ExpressionGE::ConstantStr(
             bump_g.alloc(
               ConstantStrGE {
+                range: *range,
+                loct: *loct,
+                value: *value,
+                result: result_gt,
+              })))
+      }
+      ExpressionTE::ConstantRustStr(ConstantRustStrTE { range, loct, value, result, .. }) => {
+        let result_gt = self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *result, None, *loct);
+        Ok(
+          ExpressionGE::ConstantRustStr(
+            bump_g.alloc(
+              ConstantRustStrGE {
                 range: *range,
                 loct: *loct,
                 value: *value,
@@ -497,8 +548,6 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                   let result_inner_gt =
                     match (source_inner_gt, desired_inner_tt) {
                       (KindGT::Str(StrGT { }), KindT::Str(StrT { })) => KindGT::Str(StrGT { }),
-                      // Temporary, until we can fix the typing pass's output
-                      (KindGT::ShareRef(ShareRefGT { inner: KindGT::Str(StrGT), group: inner_share_group}), KindT::Str(StrT {})) => KindGT::Str(StrGT { }),
                       other => panic!("Unimplemented: {:?} to {:?}", source_inner_gt, desired_inner_tt),
                     };
                   KindGT::BorrowRef(
@@ -1160,7 +1209,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   // Returns:
   // - Root
   // - Path, starting from root, for the given group_s path
-  // - The type at this path so far
+  // - The type at this path so far. Note this *isnt* a borrow ref.
   (GroupRootG<'s, 't>, Vec<GroupChildStepG<'s>>, KindGT<'s, 't, 'g>) {
     match group_s {
       GroupS::Rune(RuneUsage { range: ru_range, rune: group_expr_g_rune }) => {
@@ -1185,7 +1234,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             local_to_type_g.iter()
                 .find(|(v, k)| v.imprecise_name() == Some(imprecise_name))
                 .expect("Local not found");
-        (GroupRootG::Local(*var_name_t), vec![], *var_kind_gt)
+        match *var_kind_gt {
+          KindGT::BorrowRef(b) => {
+            assert!(b.group.group.len() == 1);
+            let path = b.group.group[0];
+            (path.root, path.steps.to_vec(), b.inner)
+          },
+          other => unimplemented!(),
+        }
       }
       GroupS::Member { base, member_name } => {
         let (root, mut path, type_gt) =
@@ -1255,42 +1311,31 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       &self,
       coutputs: &CompilerOutputs<'s, 't>,
       bump_g: &'g Bump,
+      local_to_type_g: &IndexMap<IVarNameT<'s, 't>, KindGT<'s, 't, 'g>>,
       group_rune_to_type_gt: &mut IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
       type_st: ITypeST<'s>,
       templata_t: ITemplataT<'s, 't>,
+      group_born_at_loc: LocT<'t>,
   ) -> ITemplataG<'s, 't, 'g>{
     match type_st {
       ITypeST::BorrowRef(BorrowRefST{ inner: inner_type_s, region: group_s, .. }) => {
         match templata_t {
           ITemplataT::Kind(KindTemplataT { kind: KindT::BorrowRef(BorrowRefT { inner: inner_type_t }) }) => {
             let inner_gt =
-                self.simple_match_group_rune_types(coutputs, bump_g, group_rune_to_type_gt, **inner_type_s, ITemplataT::Kind(KindTemplataT { kind: *inner_type_t }));
+                self.simple_match_group_rune_types(
+                  coutputs,
+                  bump_g,
+                  local_to_type_g,
+                  group_rune_to_type_gt,
+                  **inner_type_s,
+                  ITemplataT::Kind(KindTemplataT { kind: *inner_type_t }),
+                  group_born_at_loc);
             let inner_kind_gt = expect_kind_templata_g(inner_gt).kind;
 
+            // Soon saying the type on a borrow ref will be optional if there's a path, so let's
+            // calculate the path first, and grab the type off of that, and just use the written
+            // one as a double-check.
             match group_s {
-              // RegionS::Unspecified => {
-              //   // TODO: consider generating this in the postparser instead...
-              //   // I guess that would depend on our closure handling too.
-              //   let implicit_group_rune =
-              //       self.scout_arena.intern_rune(
-              //           IRuneValS::ImplicitGroupRune(
-              //             ImplicitGroupRuneS { number: group_rune_to_type_gt.len() as u32 }));
-              //   let group_templata_g =
-              //       GroupTemplataG {
-              //         group: Self::new_rune_group_expr(bump_g, implicit_group_rune),
-              //         kind: inner_kind_gt,
-              //         born_at: LocT { path: &[] },
-              //       };
-              //   group_rune_to_type_gt.insert(implicit_group_rune, ITemplataG::Group(group_templata_g));
-              //
-              //   ITemplataG::Kind(KindTemplataG {
-              //     kind: KindGT::BorrowRef(
-              //       bump_g.alloc(BorrowRefGT {
-              //         inner: inner_kind_gt,
-              //         group: group_templata_g
-              //       }))
-              //   })
-              // }
               RegionS::Held => unimplemented!(),
               RegionS::Group(group_s) => {
                 match group_s {
@@ -1326,11 +1371,29 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                         }))
                     })
                   }
+
                   GroupS::Local(_) => unimplemented!(),
-                  GroupS::Member { .. } => unimplemented!(),
-                  GroupS::Elements { .. } => unimplemented!(),
-                  GroupS::Ellipsis { .. } => unimplemented!(),
                   GroupS::Union { .. } => unimplemented!(),
+                  GroupS::Member { .. } | GroupS::Elements { .. } => {
+                    // TODO: this assumes there's no runes in the path. Which I think is true?
+                    // we can't have runes as non-root path parts right?
+                    let group_path_g =
+                        self.groupify_group_expr(
+                          coutputs, bump_g, group_rune_to_type_gt, local_to_type_g, **group_s, group_born_at_loc);
+                    let group_expr_g = bump_g.alloc_slice_copy(&[group_path_g]);
+                    let group_templata_g =
+                        GroupTemplataG {
+                          group: group_expr_g,
+                          kind: inner_kind_gt,
+                          born_at: group_born_at_loc
+                        };
+                    ITemplataG::Kind(KindTemplataG {
+                      kind: KindGT::BorrowRef(
+                        bump_g.alloc(
+                          BorrowRefGT { inner: inner_kind_gt, group: group_templata_g })),
+                    })
+                  }
+                  GroupS::Ellipsis { .. } => unimplemented!(),
                 }
               }
             }
@@ -1351,9 +1414,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                     self.simple_match_group_rune_types(
                       coutputs,
                       bump_g,
+                      local_to_type_g,
                       group_rune_to_type_gt,
                       **element_st,
-                      ITemplataT::Kind(KindTemplataT{ kind: rsa_local_name.arr.element_type })));
+                      ITemplataT::Kind(KindTemplataT{ kind: rsa_local_name.arr.element_type }),
+                      group_born_at_loc));
             ITemplataG::Kind(KindTemplataG{
               kind: KindGT::RuntimeSizedArray(bump_g.alloc(RuntimeSizedArrayGT {
                 name: *rsa_id_t,
@@ -1390,7 +1455,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             let mut template_args_g_vec = Vec::new();
             for (template_arg_s, template_arg_t) in template_args_s.iter().zip(template_args_tt.iter()) {
               template_args_g_vec.push(
-                self.simple_match_group_rune_types(coutputs, bump_g, group_rune_to_type_gt, **template_arg_s, *template_arg_t));
+                self.simple_match_group_rune_types(
+                  coutputs,
+                  bump_g,
+                  local_to_type_g,
+                  group_rune_to_type_gt,
+                  **template_arg_s,
+                  *template_arg_t,
+                  group_born_at_loc));
             }
             let template_args_g = bump_g.alloc_slice_copy(template_args_g_vec.as_slice());
             ITemplataG::Kind(KindTemplataG {
@@ -1423,7 +1495,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
             let mut template_args_g_vec = Vec::new();
             for (template_arg_s, template_arg_t) in template_args_s.iter().zip(template_args_tt.iter()) {
               template_args_g_vec.push(
-                self.simple_match_group_rune_types(coutputs, bump_g, group_rune_to_type_gt, **template_arg_s, *template_arg_t));
+                self.simple_match_group_rune_types(
+                  coutputs,
+                  bump_g,
+                  local_to_type_g,
+                  group_rune_to_type_gt,
+                  **template_arg_s,
+                  *template_arg_t,
+                  group_born_at_loc));
             }
             let template_args_g = bump_g.alloc_slice_copy(template_args_g_vec.as_slice());
             ITemplataG::Kind(KindTemplataG {
@@ -1446,18 +1525,22 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 self.simple_match_group_rune_types(
                   coutputs,
                   bump_g,
+                  local_to_type_g,
                   group_rune_to_type_gt,
                   *size_templata_s,
-                  ITemplataT::Kind(KindTemplataT { kind: *element_type_t }));
+                  ITemplataT::Kind(KindTemplataT { kind: *element_type_t }),
+                  group_born_at_loc);
             let element_type_s = template_args_s[1];
             let element_type_g =
               expect_kind_templata_g(
                 self.simple_match_group_rune_types(
                   coutputs,
                   bump_g,
+                  local_to_type_g,
                   group_rune_to_type_gt,
                   *element_type_s,
-                  ITemplataT::Kind(KindTemplataT { kind: *element_type_t })));
+                  ITemplataT::Kind(KindTemplataT { kind: *element_type_t }),
+                  group_born_at_loc));
             ITemplataG::Kind(KindTemplataG {
               kind: KindGT::StaticSizedArray(
                 bump_g.alloc(StaticSizedArrayGT {
@@ -1480,9 +1563,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                   self.simple_match_group_rune_types(
                     coutputs,
                     bump_g,
+                    local_to_type_g,
                     group_rune_to_type_gt,
                     *element_type_s,
-                    ITemplataT::Kind(KindTemplataT { kind: *element_type_t })));
+                    ITemplataT::Kind(KindTemplataT { kind: *element_type_t }),
+                    group_born_at_loc));
             ITemplataG::Kind(KindTemplataG {
               kind: KindGT::RuntimeSizedArray(
                 bump_g.alloc(RuntimeSizedArrayGT {

@@ -357,7 +357,7 @@ where
     }
 
     match iter.peek_cloned().expect("peek should not be empty") {
-      INodeLEEnum::String(StringLE { range, parts }) => {
+      INodeLEEnum::String(StringLE { range, parts, .. }) => {
         iter.advance();
         match parts {
           [StringPart::Literal { range, s }] => {

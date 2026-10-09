@@ -83,7 +83,37 @@ pub fn add_str_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>, 
     let b_slice = &b_str.0[b_begin as usize .. (b_begin as i32 + b_length as i32) as usize];
     let concat = format!("{}{}", a_slice, b_slice);
     let interned = memory.scout_arena.intern_str(&concat);
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+}
+
+
+pub fn substring<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>, args: &'v [ReferenceV<'v, 'i, 's>]) -> Result<ReferenceV<'v, 'i, 's>, VmRuntimeErrorV<'s>> where 's: 'i, 'i: 'v, {
+    assert_eq!(args.len(), 3);
+    let s = match memory.dereference(args[0]) { KindV::Str(StrV { value, .. }) => value, _ => panic!("substring: arg 0 not StrV") };
+    let begin = match memory.dereference(args[1]) { KindV::Int(IntV { value, bits: 32, .. }) => value, _ => panic!("substring: arg 1 not IntV(_, 32)") };
+    let end = match memory.dereference(args[2]) { KindV::Int(IntV { value, bits: 32, .. }) => value, _ => panic!("substring: arg 2 not IntV(_, 32)") };
+    let slice = &s.0[begin as usize .. end as usize];
+    let interned = memory.scout_arena.intern_str(slice);
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+}
+
+
+pub fn strcmp<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>, args: &'v [ReferenceV<'v, 'i, 's>]) -> Result<ReferenceV<'v, 'i, 's>, VmRuntimeErrorV<'s>> where 's: 'i, 'i: 'v, {
+    assert_eq!(args.len(), 6);
+    let a_str = match memory.dereference(args[0]) { KindV::Str(StrV { value, .. }) => value, _ => panic!("strcmp: arg 0 not StrV") };
+    let a_begin = match memory.dereference(args[1]) { KindV::Int(IntV { value, bits: 32, .. }) => value, _ => panic!("strcmp: arg 1 not IntV(_, 32)") };
+    let a_end = match memory.dereference(args[2]) { KindV::Int(IntV { value, bits: 32, .. }) => value, _ => panic!("strcmp: arg 2 not IntV(_, 32)") };
+    let b_str = match memory.dereference(args[3]) { KindV::Str(StrV { value, .. }) => value, _ => panic!("strcmp: arg 3 not StrV") };
+    let b_begin = match memory.dereference(args[4]) { KindV::Int(IntV { value, bits: 32, .. }) => value, _ => panic!("strcmp: arg 4 not IntV(_, 32)") };
+    let b_end = match memory.dereference(args[5]) { KindV::Int(IntV { value, bits: 32, .. }) => value, _ => panic!("strcmp: arg 5 not IntV(_, 32)") };
+    let a_slice = &a_str.0[a_begin as usize .. a_end as usize];
+    let b_slice = &b_str.0[b_begin as usize .. b_end as usize];
+    let result: i64 = match a_slice.cmp(b_slice) {
+        std::cmp::Ordering::Less => -1,
+        std::cmp::Ordering::Equal => 0,
+        std::cmp::Ordering::Greater => 1,
+    };
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Int(IntV { value: result, bits: 32, _phantom: PhantomData })))
 }
 
 
@@ -188,7 +218,7 @@ pub fn cast_float_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's
         _ => panic!("cast_float_str: non-FloatV arg"),
     };
     let interned = memory.scout_arena.intern_str(&value.to_string());
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
 }
 
 
@@ -360,7 +390,7 @@ pub fn cast_i32_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>,
         _ => panic!("cast_i32_str: non-IntV(_, 32) arg"),
     };
     let interned = memory.scout_arena.intern_str(&value.to_string());
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
 }
 
 
@@ -452,7 +482,7 @@ pub fn cast_i64_str<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>,
         _ => panic!("cast_i64_str: non-IntV(_, 64) arg"),
     };
     let interned = memory.scout_arena.intern_str(&value.to_string());
-    Ok(memory.add_allocation_for_return(OwnershipV::Share, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
+    Ok(memory.add_allocation_for_return(OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData })))
 }
 
 pub fn cast_float_i64<'v, 'i, 's>(memory: &mut AdapterForExternsV<'_, 'v, 'i, 's>, args: &'v [ReferenceV<'v, 'i, 's>]) -> Result<ReferenceV<'v, 'i, 's>, VmRuntimeErrorV<'s>> where 's: 'i, 'i: 'v, { panic!("Unimplemented: cast_float_i64"); }

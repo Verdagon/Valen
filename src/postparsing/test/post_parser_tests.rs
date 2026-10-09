@@ -145,6 +145,26 @@ fn lookup_plus() {
 }
 
 #[test]
+fn usize_literal() {
+  let parse_bump = Bump::new();
+  let scout_bump = Bump::new();
+  let parse_arena = ParseArena::new(&parse_bump);
+  let scout_arena = ScoutArena::new(&scout_bump);
+  let keywords = Keywords::new_for_scout(&scout_arena);
+  let program =
+    compile(&scout_arena, &keywords, &parse_arena, "exported func main() int { return 42u; }");
+  let main = program.lookup_function("main");
+  let code_body = cast!(&main.body, IBodyS::CodeBody);
+  assert!(matches!(
+    code_body.body.block.expr,
+    IExpressionSE::Return(ReturnSE {
+      inner: IExpressionSE::ConstantInt(ConstantIntSE { value: 42, is_usize: true, .. }),
+      ..
+    })
+  ));
+}
+
+#[test]
 fn test_struct() {
   let parse_bump = Bump::new();
   let scout_bump = Bump::new();
@@ -2047,50 +2067,6 @@ exported func f(e &Entity mut) int { return 0; }
         other => panic!("bad effects: {:?}", other),
       };
   assert_eq!(param_rune, effect_rune);
-}
-
-#[test]
-fn unanchored_group_rune_is_rejected() {
-  let parse_bump = Bump::new();
-  let scout_bump = Bump::new();
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let err = compile_for_error(
-    &scout_arena,
-    &keywords,
-    &parse_arena,
-    r#"
-struct Entity { hp int; }
-exported func f(x &Entity) int mut(r) { return 0; }
-"#,
-  );
-  match &err {
-    ICompileErrorS::UnanchoredGroupRuneS(e) => assert_eq!(e.name, "r"),
-    _ => panic!("expected UnanchoredGroupRuneS, got {:?}", err),
-  }
-}
-
-#[test]
-fn declared_but_unanchored_group_rune_is_rejected() {
-  let parse_bump = Bump::new();
-  let scout_bump = Bump::new();
-  let parse_arena = ParseArena::new(&parse_bump);
-  let scout_arena = ScoutArena::new(&scout_bump);
-  let keywords = Keywords::new_for_scout(&scout_arena);
-  let err = compile_for_error(
-    &scout_arena,
-    &keywords,
-    &parse_arena,
-    r#"
-struct Entity { hp int; }
-exported func f<r'>(x &Entity) int mut(r) { return 0; }
-"#,
-  );
-  match &err {
-    ICompileErrorS::UnanchoredGroupRuneS(e) => assert_eq!(e.name, "r"),
-    _ => panic!("expected UnanchoredGroupRuneS, got {:?}", err),
-  }
 }
 
 #[test]

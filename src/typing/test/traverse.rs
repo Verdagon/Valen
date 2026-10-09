@@ -454,6 +454,7 @@ where
     ExpressionTE::ConstantInt(x) => visit_constant_int(pred, out, x),
     ExpressionTE::ConstantBool(x) => visit_constant_bool(pred, out, x),
     ExpressionTE::ConstantStr(x) => visit_constant_str(pred, out, x),
+    ExpressionTE::ConstantRustStr(_) => {}
     ExpressionTE::ConstantFloat(x) => visit_constant_float(pred, out, x),
     ExpressionTE::ArgLookup(x) => visit_arg_lookup(pred, out, x),
     ExpressionTE::ArrayLength(x) => visit_array_length(pred, out, x),

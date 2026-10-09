@@ -3,7 +3,7 @@ use crate::utils::range::RangeS;
 use crate::instantiating::ast::types::{
 	KindIT, BorrowRefIT,
 	InterfaceIT, RuntimeSizedArrayIT, StaticSizedArrayIT, StructIT,
-	BoolIT, IntIT, VoidIT, NeverIT, StrIT, FloatIT,
+	BoolIT, IntIT, USizeIT, VoidIT, NeverIT, StrIT, FloatIT,
 };
 use crate::instantiating::ast::names::{IdI, IVarNameI};
 use crate::instantiating::ast::ast::{
@@ -36,6 +36,7 @@ pub enum ExpressionIE<'s, 'i> {
     ConstantInt(&'i ConstantIntIE<'s>),
     ConstantBool(&'i ConstantBoolIE<'s>),
     ConstantStr(&'i ConstantStrIE<'s, 'i>),
+    ConstantRustStr(&'i ConstantRustStrIE<'s, 'i>),
     ConstantFloat(&'i ConstantFloatIE<'s>),
     ArgLookup(&'i ArgLookupIE<'s, 'i>),
     ArrayLength(&'i ArrayLengthIE<'s, 'i>),
@@ -88,6 +89,7 @@ impl<'s, 'i> ExpressionIE<'s, 'i> {
             ExpressionIE::ConstantInt(x) => x.result(),
             ExpressionIE::ConstantBool(x) => x.result(),
             ExpressionIE::ConstantStr(x) => x.result(),
+            ExpressionIE::ConstantRustStr(x) => x.result(),
             ExpressionIE::ConstantFloat(x) => x.result(),
             ExpressionIE::ArgLookup(x) => x.tyype,
             ExpressionIE::ArrayLength(x) => x.result(),
@@ -139,6 +141,7 @@ impl<'s, 'i> ExpressionIE<'s, 'i> {
             ExpressionIE::ConstantInt(x) => x.range,
             ExpressionIE::ConstantBool(x) => x.range,
             ExpressionIE::ConstantStr(x) => x.range,
+            ExpressionIE::ConstantRustStr(x) => x.range,
             ExpressionIE::ConstantFloat(x) => x.range,
             ExpressionIE::ArgLookup(x) => x.range,
             ExpressionIE::ArrayLength(x) => x.range,
@@ -403,13 +406,18 @@ pub struct ConstantIntIE<'s> {
 	pub range: RangeS<'s>,
 	pub value: i64,
 	pub bits: i32,
+	pub is_usize: bool,
 }
 
 
 
 impl<'s> ConstantIntIE<'s> {
 	pub fn result<'i>(&self) -> KindIT<'s, 'i> {
-		KindIT::IntIT(IntIT { bits: self.bits })
+		if self.is_usize {
+			KindIT::USizeIT(USizeIT {})
+		} else {
+			KindIT::IntIT(IntIT { bits: self.bits })
+		}
 	}
 }
 
@@ -440,6 +448,20 @@ pub struct ConstantStrIE<'s, 'i> {
 
 
 impl<'s, 'i> ConstantStrIE<'s, 'i> {
+	pub fn result(&self) -> KindIT<'s, 'i> {
+		self.result
+	}
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ConstantRustStrIE<'s, 'i> {
+	pub range: RangeS<'s>,
+	pub _marker: PhantomData<(&'s (),)>,
+	pub value: &'s str,
+	pub result: KindIT<'s, 'i>,
+}
+
+impl<'s, 'i> ConstantRustStrIE<'s, 'i> {
 	pub fn result(&self) -> KindIT<'s, 'i> {
 		self.result
 	}

@@ -1561,6 +1561,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                     range: c.range,
                     value: expect_integer_templata(self.translate_templata(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &c.value)).value,
                     bits: c.bits,
+                    is_usize: c.is_usize,
                 }))
             }
             ExpressionTE::ConstantBool(c) => {
@@ -1568,6 +1569,9 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             }
             ExpressionTE::ConstantStr(c) => {
                 ExpressionIE::ConstantStr(self.interner.alloc(ConstantStrIE { range: c.range, _marker: PhantomData, value: c.value.0, result: result_it }))
+            }
+            ExpressionTE::ConstantRustStr(c) => {
+                ExpressionIE::ConstantRustStr(self.interner.alloc(ConstantRustStrIE { range: c.range, _marker: PhantomData, value: c.value.0, result: result_it }))
             }
             ExpressionTE::ConstantFloat(c) => {
                 ExpressionIE::ConstantFloat(self.interner.alloc(ConstantFloatIE { range: c.range, value: c.value }))

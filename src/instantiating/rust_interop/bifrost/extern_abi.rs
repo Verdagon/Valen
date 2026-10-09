@@ -18,6 +18,10 @@ pub(super) fn compute_extern_abi<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tc
       None => panic!("requires_caller_location is true but fn_abi has no args"),
     }
   }
+  if tcx.item_name(instance.def_id()).as_str() == "__vale_drop" {
+    assert!(args.len() == 1);
+    args[0] = PassModeR::Indirect;
+  }
   ExternAbi { ret, args }
 }
 

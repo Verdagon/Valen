@@ -52,14 +52,17 @@ class ConstantInt : public Expression {
 public:
   int64_t value;
   int bits;
+  bool isUsize;
 
   ConstantInt(
       SourceLocation* sourceLocation_,
       int64_t value_,
-      int bits_)
+      int bits_,
+      bool isUsize_)
       : Expression(sourceLocation_),
         value(value_),
-        bits(bits_) {}
+        bits(bits_),
+        isUsize(isUsize_) {}
 };
 
 class ConstantBool : public Expression {
@@ -80,6 +83,20 @@ public:
   Kind* result;
 
   ConstantStr(
+      SourceLocation* sourceLocation_,
+      const std::string &value_,
+      Kind* result_) :
+      Expression(sourceLocation_),
+      value(value_),
+      result(result_) {}
+};
+
+class ConstantRustStr : public Expression {
+public:
+  std::string value;
+  Kind* result;
+
+  ConstantRustStr(
       SourceLocation* sourceLocation_,
       const std::string &value_,
       Kind* result_) :

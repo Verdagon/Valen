@@ -231,6 +231,7 @@ pub struct ConstantIntSE<'s> {
   pub range: RangeS<'s>,
   pub value: i64,
   pub bits: i32,
+  pub is_usize: bool,
 }
 #[derive(Debug, PartialEq)]
 pub struct ConstantBoolSE<'s> {
@@ -241,7 +242,8 @@ pub struct ConstantBoolSE<'s> {
 #[derive(Debug, PartialEq)]
 pub struct ConstantStrSE<'s> {
   pub range: RangeS<'s>,
-  pub value: StrI<'s>,
+  pub value: StrI<'s>, // VCOORD: reconsider interning all string values...
+  pub is_rust: bool,
 }
 
 #[derive(Debug, PartialEq)]
