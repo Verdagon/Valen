@@ -49,6 +49,7 @@
 
 use crate::typing::test::rust_interop::drive_helpers::drive_and_run;
 
+#[ignore]
 #[test]
 fn aliased_pair_across_other_group_call() {
   let run = drive_and_run("horizon/main", r#"

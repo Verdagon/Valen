@@ -331,6 +331,7 @@ pub struct ConstantBoolPE {
 pub struct ConstantStrPE<'p> {
   pub range: RangeL,
   pub value: StrI<'p>,
+  pub is_rust: bool,
 }
 
 #[derive(Debug, PartialEq)]

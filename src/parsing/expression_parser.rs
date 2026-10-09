@@ -1111,7 +1111,7 @@ where
         iter.advance();
         return Ok(IExpressionPE::ConstantFloat(ConstantFloatPE { range, value }));
       }
-      Some(INodeLEEnum::String(StringLE { range, parts })) => {
+      Some(INodeLEEnum::String(StringLE { range, parts, is_rust })) => {
         iter.advance();
 
         if parts.len() == 1 {
@@ -1119,6 +1119,7 @@ where
             return Ok(IExpressionPE::ConstantStr(ConstantStrPE {
               range,
               value: self.parse_arena.intern_str(s),
+              is_rust,
             }));
           }
         }
@@ -1130,6 +1131,7 @@ where
               parts_p.push(self.parse_arena.alloc(IExpressionPE::ConstantStr(ConstantStrPE {
                 range: *range,
                 value: self.parse_arena.intern_str(s.as_str()),
+                is_rust: false,
               })));
             }
             StringPart::Expr(scramble) => {

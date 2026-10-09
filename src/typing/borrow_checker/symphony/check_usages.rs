@@ -212,6 +212,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::ConstantStr(_) => {
         // Do nothing
       }
+      ExpressionGE::ConstantRustStr(_) => {
+        // Do nothing
+      }
       ExpressionGE::InterfaceFunctionCall(_) => unimplemented!(),
       ExpressionGE::ExternFunctionCall(_) => unimplemented!(),
       ExpressionGE::BoundFunctionCall(_) => unimplemented!(),

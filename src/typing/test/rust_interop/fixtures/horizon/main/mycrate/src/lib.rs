@@ -370,3 +370,11 @@ impl Deref for Sheath {
 pub fn make_sheath() -> Sheath {
     Sheath { inner: Core { val: 7 } }
 }
+
+pub fn greeting() -> &'static str {
+    "hi"
+}
+
+pub fn str_len(s: &str) -> i32 {
+    s.len() as i32
+}

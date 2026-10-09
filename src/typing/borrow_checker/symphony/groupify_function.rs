@@ -323,6 +323,18 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 result: result_gt,
               })))
       }
+      ExpressionTE::ConstantRustStr(ConstantRustStrTE { range, loct, value, result, .. }) => {
+        let result_gt = self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, *result, None, *loct);
+        Ok(
+          ExpressionGE::ConstantRustStr(
+            bump_g.alloc(
+              ConstantRustStrGE {
+                range: *range,
+                loct: *loct,
+                value: *value,
+                result: result_gt,
+              })))
+      }
       ExpressionTE::ArgLookup(ArgLookupTE { range, loct, param_index, result, .. }) => {
         let param_type_t = function_t.header.params[*param_index as usize].tyype;
         let param_type_s = function_s.params[*param_index as usize].tyype;

@@ -135,6 +135,7 @@ pub fn execute_node<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner: &Inst
         ExpressionIE::ConstantInt(_) => "ConstantInt",
         ExpressionIE::ConstantBool(_) => "ConstantBool",
         ExpressionIE::ConstantStr(_) => "ConstantStr",
+        ExpressionIE::ConstantRustStr(_) => "ConstantRustStr",
         ExpressionIE::ConstantFloat(_) => "ConstantFloat",
         ExpressionIE::ArgLookup(_) => "ArgLookup",
         ExpressionIE::ArrayLength(_) => "ArrayLength",
@@ -336,6 +337,7 @@ pub fn execute_node_inner<'v, 'i, 's>(program_h: &'i HinputsI<'s, 'i>, interner:
             let r#ref = make_primitive(heap, interner, call_id, OwnershipV::Own, KindV::Str(StrV { value: interned, _phantom: PhantomData }));
             INodeExecuteResultV::Continue(NodeContinueV { result_ref: r#ref })
         }
+        ExpressionIE::ConstantRustStr(_) => unimplemented!(),
         ExpressionIE::Discard(d) => {
             let source_ref = match execute_node(program_h, interner, scout_arena, stdin, stdout, heap, expression_id.add_step(heap.vivem_bump, 0), &d.expr) {
                 r @ (INodeExecuteResultV::Return(_) | INodeExecuteResultV::Break(_) | INodeExecuteResultV::Error(_)) => return r,

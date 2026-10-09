@@ -42,6 +42,7 @@ pub enum ExpressionTE<'s, 't> {
   ConstantInt(&'t ConstantIntTE<'s, 't>),
   ConstantBool(&'t ConstantBoolTE<'s, 't>),
   ConstantStr(&'t ConstantStrTE<'s, 't>),
+  ConstantRustStr(&'t ConstantRustStrTE<'s, 't>),
   ConstantFloat(&'t ConstantFloatTE<'s, 't>),
   ArgLookup(&'t ArgLookupTE<'s, 't>),
   ArrayLength(&'t ArrayLengthTE<'s, 't>),
@@ -99,6 +100,7 @@ where
       ExpressionTE::ConstantInt(e) => e.result,
       ExpressionTE::ConstantBool(e) => e.result,
       ExpressionTE::ConstantStr(e) => e.result,
+      ExpressionTE::ConstantRustStr(e) => e.result,
       ExpressionTE::ConstantFloat(e) => e.result,
       ExpressionTE::ArgLookup(e) => e.result,
       ExpressionTE::ArrayLength(e) => e.result,
@@ -695,6 +697,30 @@ where
     region: RegionT,
   ) -> ConstantStrTE<'s, 't> {
     ConstantStrTE { range, loct, value, region, result: KindT::Str(StrT), _sealed: () }
+  }
+}
+#[derive(Debug)]
+pub struct ConstantRustStrTE<'s, 't> {
+  pub range: RangeS<'s>,
+  pub loct: LocT<'t>,
+  pub value: StrI<'s>,
+  pub region: RegionT,
+  pub result: KindT<'s, 't>,
+  _sealed: (),
+}
+
+impl<'s, 't> ConstantRustStrTE<'s, 't>
+where
+  's: 't,
+{
+  pub fn new(
+    range: RangeS<'s>,
+    loct: LocT<'t>,
+    value: StrI<'s>,
+    region: RegionT,
+    result: KindT<'s, 't>,
+  ) -> ConstantRustStrTE<'s, 't> {
+    ConstantRustStrTE { range, loct, value, region, result, _sealed: () }
   }
 }
 #[derive(Debug)]

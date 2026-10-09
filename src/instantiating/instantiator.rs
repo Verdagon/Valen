@@ -1570,6 +1570,9 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
             ExpressionTE::ConstantStr(c) => {
                 ExpressionIE::ConstantStr(self.interner.alloc(ConstantStrIE { range: c.range, _marker: PhantomData, value: c.value.0, result: result_it }))
             }
+            ExpressionTE::ConstantRustStr(c) => {
+                ExpressionIE::ConstantRustStr(self.interner.alloc(ConstantRustStrIE { range: c.range, _marker: PhantomData, value: c.value.0, result: result_it }))
+            }
             ExpressionTE::ConstantFloat(c) => {
                 ExpressionIE::ConstantFloat(self.interner.alloc(ConstantFloatIE { range: c.range, value: c.value }))
             }

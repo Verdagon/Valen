@@ -307,6 +307,18 @@ fn push_slice_citizen<'s>(scout_arena: &ScoutArena<'s>, items: &mut Vec<RustItem
   items.len() - 1
 }
 
+fn push_str_citizen<'s>(scout_arena: &ScoutArena<'s>, items: &mut Vec<RustItem<'s>>) -> usize {
+  let package = scout_arena.intern_package_coordinate(scout_arena.intern_str("core"), &[]);
+  items.push(RustItem {
+    human_name: scout_arena.intern_str("__str"),
+    origin: RustItemOrigin::Str,
+    package,
+    kind: ItemKind::Type,
+    generic_params: vec![],
+  });
+  items.len() - 1
+}
+
 /// Attach the slice's inherent methods (the `impl<T> [T]` block), reached via
 /// `incoherent_inherent_impls(SimplifiedType::Slice)` because a slice has no ADT `DefId` to key
 /// `inherent_impls` on. Minimum scope: only `get` (the element accessor); other slice methods come
@@ -387,6 +399,7 @@ impl<'s> RustItem<'s> {
       RustItemOrigin::Rustc(def_id) => Some(def_id),
       RustItemOrigin::SynthesizedDrop => None,
       RustItemOrigin::Slice => None,
+      RustItemOrigin::Str => None,
     }
   }
 
@@ -583,7 +596,11 @@ impl<'tcx, 's> TyCtxtOracle<'tcx, 's> {
     // Single-step, shared `Deref`: register each imported type's `Deref` target + a `deref` method,
     // so a Deref-reached method (`s.read()` where `read` lives on `Sheath`'s `Deref::Target`) can
     // resolve via a callsite receiver rewrite to `deref(s)`.
-    let deref_target_indices = discover_deref_targets(tcx, scout_arena, keywords, &mut items);
+    let mut deref_target_indices = discover_deref_targets(tcx, scout_arena, keywords, &mut items);
+
+    let str_idx = push_str_citizen(scout_arena, &mut items);
+    add_synthesized_drop(keywords, &mut items, str_idx);
+    deref_target_indices.push(str_idx);
 
     TyCtxtOracle { tcx, items, deref_target_indices }
   }
@@ -661,6 +678,8 @@ impl<'tcx, 's> TyCtxtOracle<'tcx, 's> {
       TyKind::Ref(_, inner, mutbl) => {
         if let TyKind::Slice(elem) = inner.kind() {
           self.slice_citizen_type(*elem, own_param_names, interner)
+        } else if matches!(inner.kind(), TyKind::Str) {
+          self.str_citizen_type(interner)
         } else {
           Ok(TypeR::Borrow {
             inner: interner.alloc(self.lower_sig_ty(*inner, own_param_names, interner)?),
@@ -671,6 +690,7 @@ impl<'tcx, 's> TyCtxtOracle<'tcx, 's> {
       // A bare (by-value) slice position reduces to the same `__slice<T>` citizen. A truly unsized
       // by-value slice never appears in a real signature; this keeps the mapping total.
       TyKind::Slice(elem) => self.slice_citizen_type(*elem, own_param_names, interner),
+      TyKind::Str => self.str_citizen_type(interner),
       _ => Ok(TypeR::Primitive(lower_primitive(ty)?)),
     }
   }
@@ -697,6 +717,25 @@ impl<'tcx, 's> TyCtxtOracle<'tcx, 's> {
       package: self.items[idx].package,
       name: self.items[idx].human_name,
       args: interner.alloc_slice_from_vec(vec![elem_r]),
+    })
+  }
+
+  fn str_citizen_type<'t>(
+    &self,
+    interner: &TypingInterner<'s, 't>,
+  ) -> Result<TypeR<'s, 't>, CouldNotPostparseReason>
+  where
+    's: 't,
+  {
+    let idx = self
+      .items
+      .iter()
+      .position(|i| i.origin == RustItemOrigin::Str)
+      .ok_or(CouldNotPostparseReason::UnimportedType)?;
+    Ok(TypeR::Citizen {
+      package: self.items[idx].package,
+      name: self.items[idx].human_name,
+      args: interner.alloc_slice_from_vec(vec![]),
     })
   }
 

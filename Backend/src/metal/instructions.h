@@ -91,6 +91,20 @@ public:
       result(result_) {}
 };
 
+class ConstantRustStr : public Expression {
+public:
+  std::string value;
+  Kind* result;
+
+  ConstantRustStr(
+      SourceLocation* sourceLocation_,
+      const std::string &value_,
+      Kind* result_) :
+      Expression(sourceLocation_),
+      value(value_),
+      result(result_) {}
+};
+
 
 class ConstantF64 : public Expression {
 public:

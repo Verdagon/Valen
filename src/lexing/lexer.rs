@@ -936,6 +936,11 @@ where
   fn lex_string(&self, iter: &mut LexingIterator) -> Result<Option<INodeLEEnum<'p>>> {
     let begin = iter.get_pos();
 
+    let is_rust = iter.code[begin as usize..].starts_with("rs\"");
+    if is_rust {
+      iter.try_skip_str("rs");
+    }
+
     let is_long_string = if iter.try_skip_str("\"\"\"") {
       true
     } else if iter.try_skip('"') {
@@ -983,6 +988,7 @@ where
     Ok(Some(INodeLEEnum::String(StringLE {
       range: RangeL::new(begin, iter.get_pos()),
       parts: self.parse_arena.alloc_slice_from_vec(parts),
+      is_rust,
     })))
   }
 

@@ -147,6 +147,9 @@ pub(super) fn citizen_to_rustc_ty<'tcx>(
     let slice = Ty::new_slice(tcx, elem);
     return Some(Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, slice));
   }
+  if is_str_citizen(id) {
+    return Some(Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, tcx.types.str_));
+  }
   let (def_id, arg_tys) = citizen_def_id_and_args(tcx, rust_crates, id)?;
   let args = build_generic_args(tcx, def_id, &arg_tys);
   Some(Ty::new_adt(tcx, tcx.adt_def(def_id), args))
@@ -169,6 +172,16 @@ fn slice_citizen_element_ty<'tcx>(
     return None;
   }
   templata_to_rustc_ty(tcx, rust_crates, sn.template_args.first()?)
+}
+
+fn is_str_citizen(id: &IdI) -> bool {
+  let INameI::StructName(sn) = id.local_name else {
+    return false;
+  };
+  let IStructTemplateNameI::StructTemplate(t) = sn.template else {
+    return false;
+  };
+  t.human_name.as_str() == "__str"
 }
 
 /// A citizen's rustc `DefId` and its converted type arguments, from its instantiated id.

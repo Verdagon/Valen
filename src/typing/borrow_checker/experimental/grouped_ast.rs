@@ -59,6 +59,7 @@ impl<'s, 't, 'g> ExpressionGE<'s, 't, 'g> {
       | ExpressionGE::ConstantInt(_)
       | ExpressionGE::ConstantBool(_)
       | ExpressionGE::ConstantStr(_)
+      | ExpressionGE::ConstantRustStr(_)
       | ExpressionGE::ConstantFloat(_)
       | ExpressionGE::ArgLookup(_)
       | ExpressionGE::LocalLookup(_) => vec![],
@@ -256,6 +257,7 @@ pub(crate) fn node_range<'s, 't, 'g>(expr: ExpressionGE<'s, 't, 'g>) -> RangeS<'
     ExpressionGE::ConstantInt(e) => e.range,
     ExpressionGE::ConstantBool(e) => e.range,
     ExpressionGE::ConstantStr(e) => e.range,
+    ExpressionGE::ConstantRustStr(e) => e.range,
     ExpressionGE::ConstantFloat(e) => e.range,
     ExpressionGE::ArgLookup(e) => e.range,
     ExpressionGE::LocalLookup(e) => e.range,

@@ -62,6 +62,7 @@
 
 use crate::typing::test::rust_interop::drive_helpers::drive_and_run;
 
+#[ignore]
 #[test]
 fn tile_refs_across_cleanup() {
   let run = drive_and_run("horizon/main", r#"

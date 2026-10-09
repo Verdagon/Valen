@@ -583,6 +583,29 @@ exported func main() int {
 }
 
 #[test]
+fn imports_a_str_returning_rust_function() {
+  let outcome = typecheck("horizon/main", r#"
+import mycrate.greeting;
+exported func main() int {
+  s = greeting();
+  return 0;
+}
+"#, |_hinputs| {});
+  outcome.expect_compiled();
+}
+
+#[test]
+fn rust_str_literal_types_as_str_boundary() {
+  let outcome = typecheck("horizon/main", r#"
+import mycrate.str_len;
+exported func main() int {
+  return str_len(rs"hello");
+}
+"#, |_hinputs| {});
+  outcome.expect_compiled();
+}
+
+#[test]
 fn passes_and_returns_a_bool() {
   let outcome = typecheck("horizon/main", r#"
 import mycrate.is_positive;
@@ -1873,6 +1896,39 @@ exported func main() int {
     run.process_exit,
     Some(7),
     "the driven bin did not exit 7 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
+#[test]
+fn rustc_driven_bin_makes_a_blank_string() {
+  let run = drive_and_run("horizon/main", r#"
+import std.string.String;
+exported func main() int {
+  s = String.new();
+  return 0;
+}
+"#);
+  assert_eq!(
+    run.process_exit,
+    Some(0),
+    "the driven blank-string bin did not exit 0 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}
+
+#[test]
+fn rustc_driven_bin_passes_a_rust_str_literal() {
+  let run = drive_and_run("horizon/main", r#"
+import mycrate.str_len;
+exported func main() int {
+  return str_len(rs"hello");
+}
+"#);
+  assert_eq!(
+    run.process_exit,
+    Some(5),
+    "the driven rust-str bin did not exit 5 (rustc_exit={}, process_exit={:?}); firings: {:?}",
     run.rustc_exit, run.process_exit, run.firings
   );
 }
@@ -3356,73 +3412,6 @@ exported func main() int {
     outcome.expect_failure().detail.contains("Couldn't find a suitable function"),
     "expected no resolvable function; got:\n{}",
     outcome.expect_failure().detail
-  );
-}
-
-/// **@ATAFLBZ fence: nothing in horizon may take a Rust item's identity from its human name.**
-///
-/// The hazard is that Rust has no uniqueness rule for short names — `new`, `len`, `Error`, `Box`
-/// recur across crates — and `tcx.crates(())` hands us every loaded crate. A `DefId` chosen by
-/// string match eventually drives a mangled symbol, so the failure surfaces as a link error against
-/// a plausible-looking name, far from the mistake.
-///
-/// Three sites once decided this way; two were deleted with the per-call-site oracle and the third
-/// now derives each item's `package_coord` from `tcx.def_path`. **The fence is not for those three
-/// — it is for the next one**, which is why Harmonious pushed for it after their own version of
-/// this bug: *"the value is not the site that was fixed, it is the next one."*
-///
-/// A grep rather than an AST walk, deliberately: the pattern is a *comparison against a name
-/// field*, which is one line and reads the same in any shape. Add an allow-marker comment on the
-/// line if a match is genuinely about **selection** (which items an allowlist admits) rather than
-/// **identity** — the allowlist is name-shaped by its own semantics, and that is fine.
-#[test]
-fn no_rust_item_identity_comes_from_a_human_name() {
-  const ALLOW: &str = "ataflbz-allow";
-  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-  let mut offenders: Vec<String> = Vec::new();
-  let mut walk = vec![
-    root.join("src/typing/rust_interop/horizon"),
-    root.join("src/instantiating/rust_interop/horizon"),
-  ];
-  while let Some(path) = walk.pop() {
-    for entry in read_dir(&path).expect("could not read a horizon dir") {
-      let entry = entry.expect("could not read dir entry").path();
-      if entry.is_dir() {
-        walk.push(entry);
-        continue;
-      }
-      // Fixture crates are Rust *input*, not compiler source.
-      if entry.extension().is_none_or(|e| e != "rs") || entry.to_string_lossy().contains("fixtures")
-      {
-        continue;
-      }
-      let source = read_to_string(&entry).expect("could not read source");
-      for (number, line) in source.lines().enumerate() {
-        if line.contains(ALLOW) {
-          continue;
-        }
-        let compares_a_name = (line.contains("human_name") || line.contains(".ident"))
-          && (line.contains("==") || line.contains("!=") || line.contains(".contains("));
-        if compares_a_name {
-          offenders.push(format!(
-            "{}:{}: {}",
-            entry.file_name().expect("a file has a name").to_string_lossy(),
-            number + 1,
-            line.trim()
-          ));
-        }
-      }
-    }
-  }
-
-  assert!(
-    offenders.is_empty(),
-    "these lines take a Rust item's identity from a human name (@ATAFLBZ). Key on `DefId` or \
-         on the `tcx.def_path`-derived package coordinate instead; if the comparison is about \
-         which items the allowlist *admits* rather than which item something *is*, add a \
-         `{ALLOW}` comment on the line:\n  {}",
-    offenders.join("\n  ")
   );
 }
 

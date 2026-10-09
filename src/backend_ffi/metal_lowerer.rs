@@ -383,6 +383,7 @@ impl<'cache, 'cm, 'sm> Lowerer<'cache, 'cm, 'sm> {
             ExpressionIE::ConstantBool(x) => c.expr_constant_bool(x.value, loc),
             ExpressionIE::ConstantFloat(x) => c.expr_constant_f64(x.value, loc),
             ExpressionIE::ConstantStr(x) => c.expr_constant_str(x.value, self.lower_kind(x.result), loc),
+            ExpressionIE::ConstantRustStr(x) => c.expr_constant_rust_str(x.value, self.lower_kind(x.result), loc),
             ExpressionIE::VoidLiteral(_) => c.expr_constant_void(loc),
             ExpressionIE::Break(_) => c.expr_break(loc),
 

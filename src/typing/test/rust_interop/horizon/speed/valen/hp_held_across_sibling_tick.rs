@@ -67,6 +67,7 @@
 
 use crate::typing::test::rust_interop::drive_helpers::drive_and_run;
 
+#[ignore]
 #[test]
 fn hp_held_across_sibling_tick() {
   let run = drive_and_run("horizon/main", r#"

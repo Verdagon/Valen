@@ -1,3 +1,4 @@
+use std::iter::once;
 use crate::keywords::Keywords;
 use crate::utils::range::RangeS;
 
@@ -22,9 +23,12 @@ use crate::typing::rust_interop::rust_method_entries;
 use crate::typing::templata::templata::*;
 use crate::typing::templata_compiler::*;
 use crate::typing::types::types::*;
-use crate::utils::fx::HashMap;
+use crate::utils::fx::{HashMap, HashSet};
 use crate::utils::fx::IndexMap;
 use std::marker::PhantomData;
+use crate::typing::ast::expressions::ExpressionTE;
+use crate::typing::expression::local_helper::PendingTempDrops;
+
 pub struct UncheckedDefiningConclusions<'s, 't> {
   pub envs: InferEnv<'s, 't>,
   pub ranges: Vec<RangeS<'s>>,
@@ -400,5 +404,53 @@ where
         )
       });
     local_name.template_args()
+  }
+
+  pub fn resolve_rust_str_struct(
+    &self,
+    coutputs: &mut CompilerOutputs<'s, 't>,
+    env: IInDenizenEnvironmentT<'s, 't>,
+    parent_ranges: &'t [RangeS<'s>],
+    outer_call_location: LocationInDenizen<'s>,
+    range_s: &RangeS<'s>,
+  ) -> Result<KindT<'s, 't>, ICompileErrorT<'s, 't>> {
+    let str_template =
+        match env.lookup_nearest_with_name(
+          INameT::StructTemplate(self.typing_interner.intern_struct_template_name(
+            StructTemplateNameT { human_name: self.keywords.dunder_str },
+          )),
+          once(ILookupContext::TemplataLookupContext).collect(),
+          self.typing_interner,
+        ) {
+          Some(ITemplataT::StructDefinition(t)) => *t,
+          _ => {
+            return Err(ICompileErrorT::CouldntFindTypeT {
+              range: self.typing_interner.alloc_slice_copy(&[*range_s]),
+              name: self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(
+                CodeNameValS { name: self.keywords.dunder_str },
+              )),
+            })
+          }
+        };
+    let result_kind =
+        match self.resolve_struct(
+          coutputs,
+          env,
+          parent_ranges,
+          outer_call_location,
+          str_template,
+          &[],
+        ) {
+          IResolveOutcome::ResolveSuccess(s) => KindT::Struct(self.typing_interner.alloc(s.kind)),
+          IResolveOutcome::ResolveFailure(_) => {
+            return Err(ICompileErrorT::CouldntFindTypeT {
+              range: self.typing_interner.alloc_slice_copy(&[*range_s]),
+              name: self.scout_arena.intern_imprecise_name(IImpreciseNameValS::CodeName(
+                CodeNameValS { name: self.keywords.dunder_str },
+              )),
+            })
+          }
+        };
+    Ok(result_kind)
   }
 }

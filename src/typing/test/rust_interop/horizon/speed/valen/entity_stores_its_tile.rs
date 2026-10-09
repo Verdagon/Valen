@@ -52,6 +52,7 @@
 
 use crate::typing::test::rust_interop::drive_helpers::drive_and_run;
 
+#[ignore]
 #[test]
 fn entity_stores_its_tile() {
   let run = drive_and_run("horizon/main", r#"

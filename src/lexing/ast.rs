@@ -251,6 +251,7 @@ impl INodeLE for SymbolLE {
 pub struct StringLE<'p> {
   pub range: RangeL,
   pub parts: &'p [StringPart<'p>],
+  pub is_rust: bool,
 }
 
 impl INodeLE for StringLE<'_> {

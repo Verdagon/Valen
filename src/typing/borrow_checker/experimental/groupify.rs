@@ -963,6 +963,10 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let result = KindGT::Str(StrGT {});
         Ok(ExpressionGE::ConstantStr(bump_g.alloc(ConstantStrGE { range: c.range, loct: c.loct, value: c.value, result })))
       }
+      ExpressionTE::ConstantRustStr(c) => {
+        let result = self.groupify_type(coutputs, bump_g, local_rune_to_templata, local_to_type_g, c.result, None);
+        Ok(ExpressionGE::ConstantRustStr(bump_g.alloc(ConstantRustStrGE { range: c.range, loct: c.loct, value: c.value, result })))
+      }
       // A virtual, bound, or extern call: no callee signature to read groups or effects off, so the
       // result is groupless and the call churns nothing.
       ExpressionTE::InterfaceFunctionCall(e) => {

@@ -311,6 +311,9 @@ extern "C" VIS ExpressionHandle* metal_expr_constant_f64(double value, SourceLoc
 extern "C" VIS ExpressionHandle* metal_expr_constant_str(const char* p, size_t n, KindHandle* result, SourceLocationHandle* source_loc) {
   return reinterpret_cast<ExpressionHandle*>(new ConstantStr(srcloc(source_loc), str(p, n), knd(result)));
 }
+extern "C" VIS ExpressionHandle* metal_expr_constant_rust_str(const char* p, size_t n, KindHandle* result, SourceLocationHandle* source_loc) {
+  return reinterpret_cast<ExpressionHandle*>(new ConstantRustStr(srcloc(source_loc), str(p, n), knd(result)));
+}
 extern "C" VIS ExpressionHandle* metal_expr_break(SourceLocationHandle* source_loc) {
   return reinterpret_cast<ExpressionHandle*>(new Break(srcloc(source_loc)));
 }
