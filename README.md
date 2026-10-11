@@ -3,7 +3,7 @@
 
 Valen is a programming language that aims to be not only **fast** and **memory-safe**, but also **easy and flexible**.
 
-NOTE: Valen is _still a prototype_ and barely past the proof-of-concept stage. There are holes and sharp edges. We'll release a 0.1 version once it's stable enough to use, stay tuned!
+NOTE: Valen is _still a prototype_ and barely past the proof-of-concept stage. There are holes and sharp edges. For example, String and HashMap require some more Rust-interop work. After a few months of solidifying and stabilizing, we'll release a 0.1 version that's nice and usable for basic cases. Stay tuned!
 
 Our plans for Valen:
 
