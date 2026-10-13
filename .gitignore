@@ -56,7 +56,6 @@ migration-drive-todo.legacy.md
 /Luz/
 /Guardian/
 
-docs/convos/
 guardian_port.txt
 opencode_port.txt
 
@@ -66,4 +65,24 @@ opencode_port.txt
 /fire-commit-config.md
 /fire-commit-config.toml
 /opencode.json
-docs/arcana/reports/
+/.migrate-private-backups/
+/src/typing/borrow_checker/experimental
+/src/typing/rust_interop/horizon
+/src/instantiating/rust_interop/horizon
+/src/typing/test/rust_interop/horizon
+/src/typing/test/rust_interop/fixtures/horizon
+/tests/rust_interop/horizon
+/scripts/bundler
+/src/typing/macros/anonymous_substruct_macro.rs
+/src/typing/test/anonymous_substruct_tests.rs
+/src/integration_tests/tests/anonymous_substruct_tests.rs
+/highlighter
+/docs
+/Backend/docs
+/src/instantiating/docs
+/src/postparsing/docs
+/src/solver/docs
+/src/typing/docs
+/Backend/backend-design.md
+/src/testvm/testvm-design.md
+/src/typing/typing-design.md
