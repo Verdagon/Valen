@@ -256,6 +256,7 @@ pub struct DrivenRun {
   pub firings: Vec<String>,
   pub rustc_exit: i32,
   pub process_exit: Option<i32>,
+  pub stdout: String,
 }
 
 pub fn drive_lib(fixture: &str, vale: &str) -> DrivenRun {
@@ -302,14 +303,14 @@ fn drive_fixture_program(
     )
   });
 
-  let process_exit = if run_exe && rustc_exit == 0 {
+  let (process_exit, stdout) = if run_exe && rustc_exit == 0 {
     let exe = deps_dir_of(&project.valen_project_dir).join("stub");
     let output = Command::new(&exe)
       .output()
       .unwrap_or_else(|e| panic!("could not run the driven bin at {}: {e}", exe.display()));
-    Some(output.status.code().unwrap_or(-1))
+    (Some(output.status.code().unwrap_or(-1)), String::from_utf8_lossy(&output.stdout).into_owned())
   } else {
-    None
+    (None, String::new())
   };
-  DrivenRun { firings: firings.into_inner(), rustc_exit, process_exit }
+  DrivenRun { firings: firings.into_inner(), rustc_exit, process_exit, stdout }
 }

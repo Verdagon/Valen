@@ -14,6 +14,9 @@ extern func __vbi_ExtendI32ToI64(x int) i64;
 func usize<g'>(x &i64 in g) usize { __vbi_I64ToUSize(__copy_prim(x)) }
 extern func __vbi_I64ToUSize(x i64) usize;
 
+func int(x usize) int { __vbi_USizeToI32(x) }
+extern func __vbi_USizeToI32(x usize) int;
+
 func -<g'>(x &int in g) int { return __vbi_negateI32(__copy_prim(x)); }
 extern func __vbi_negateI32(x int) int;
 
