@@ -254,6 +254,7 @@ fn compile_inputs(
             verbose_errors: false,
             debug_output: false,
             borrow_check: true,
+            check_only: false,
         },
         cli_args,
     );

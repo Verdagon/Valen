@@ -403,6 +403,15 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
               return_type_s_from_callee_perspective,
               callable.return_type,
               *loct);
+        let mut callee_param_to_caller_type: IndexMap<IImpreciseNameS<'s>, KindGT<'s, 't, 'g>> =
+            IndexMap::new();
+        for (param_index, param_s) in callee_func_s.params.iter().enumerate() {
+          if let Some(arg_ge) = arg_exprs_ge.get(param_index) {
+            callee_param_to_caller_type.insert(
+              param_s.name.imprecise_name(self.scout_arena),
+              arg_ge.result());
+          }
+        }
         let mut stuff: Vec<&'g MutEffectPath> = Vec::new();
         for callee_effect_s in callee_func_s.effects {
           stuff.push(
@@ -410,7 +419,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
               MutEffectPath {
                 effecting_node_loc: *loct,
                 range: range[0],
-                steps: self.groupify_effect(bump_g, callee_effect_s, &callee_rune_to_caller_templata),
+                steps: self.groupify_effect(coutputs, bump_g, callee_effect_s, &callee_rune_to_caller_templata, &callee_param_to_caller_type, *loct),
               }
             )
           );
@@ -635,7 +644,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
               *array_group,
               GroupChildStepG::ChildElements { },
               array_gt.element_type,
-              *loct)
+              array_group.born_at)
           }),
         })))
       }
@@ -675,7 +684,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
                 *struct_group_templata,
                 GroupChildStepG::Member { member_name: *member_name_str },
                 *member_gt,
-                *loct)
+                struct_group_templata.born_at)
             });
         Ok(ExpressionGE::MemberLookup(bump_g.alloc(MemberLookupGE {
           range: *range,
@@ -1120,63 +1129,121 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
   fn groupify_group<'g>(
     &self,
+    coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     group_s: &'s GroupS<'s>,
     // NOTE: This might be keyed on caller or callee runes.
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    callee_param_to_caller_type: &IndexMap<IImpreciseNameS<'s>, KindGT<'s, 't, 'g>>,
+    born_at: LocT<'t>,
   ) -> &'g [GroupStep<'s, 't>] {
+    let (root, steps, _kind) =
+        self.groupify_callee_group_inner(coutputs, bump_g, *group_s, rune_to_templata, callee_param_to_caller_type, born_at);
+    // Translate it from GroupRootG/GroupChildStepG to GroupStep
+    let mut result = Vec::new();
+    result.push(match root {
+      GroupRootG::Rune(r) => GroupStep::Rune(r),
+      GroupRootG::ParamAnonymousGroup(n) => GroupStep::ParamAnonymousGroup(n),
+      GroupRootG::Local(n) => GroupStep::Local(n),
+      GroupRootG::AmbientMulti() => GroupStep::AmbientMulti(),
+    });
+    for step in steps {
+      result.push(match step {
+        GroupChildStepG::Member { member_name } => GroupStep::Member { member_name },
+        GroupChildStepG::ChildElements {} => GroupStep::ChildElements,
+        GroupChildStepG::InlineElements {} => GroupStep::InlineElements,
+        GroupChildStepG::Variant { variant_name } => GroupStep::Variant { variant_name },
+      });
+    }
+    bump_g.alloc_slice_copy(result.as_slice())
+  }
+
+  fn groupify_callee_group_inner<'g>(
+    &self,
+    coutputs: &CompilerOutputs<'s, 't>,
+    bump_g: &'g Bump,
+    group_s: GroupS<'s>,
+    rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    callee_param_to_caller_type: &IndexMap<IImpreciseNameS<'s>, KindGT<'s, 't, 'g>>,
+    born_at: LocT<'t>,
+  ) -> (GroupRootG<'s, 't>, Vec<GroupChildStepG<'s>>, KindGT<'s, 't, 'g>) {
     match group_s {
-      GroupS::Rune(RuneUsage { range, rune: rune_s }) => {
-        // rune_s might be from the callee, so look it up in our (the caller) map.
-        let path =
-            match rune_to_templata.get(rune_s).expect("vfail: group rune missing") {
-              ITemplataG::Group(GroupTemplataG { group, .. }) => {
-                assert!(group.len() == 1); // unimplemented
-                group[0]
-              }
-              other => panic!("vfail: group rune bound to a non-group: {other:?}"),
-            };
-        // Translate it from GroupRootG/GroupChildStepG to GroupStep
-        let mut result = Vec::new();
-        result.push(match path.root {
-          GroupRootG::Rune(r) => GroupStep::Rune(r),
-          GroupRootG::ParamAnonymousGroup(n) => GroupStep::ParamAnonymousGroup(n),
-          GroupRootG::Local(n) => GroupStep::Local(n),
-          GroupRootG::AmbientMulti() => GroupStep::AmbientMulti(),
-        });
-        for step in path.steps {
-          result.push(match step {
-            GroupChildStepG::Member { member_name } => GroupStep::Member { member_name: *member_name },
-            GroupChildStepG::ChildElements {} => GroupStep::ChildElements,
-            GroupChildStepG::InlineElements {} => GroupStep::InlineElements,
-            GroupChildStepG::Variant { variant_name } => GroupStep::Variant { variant_name: *variant_name },
-          });
+      GroupS::Rune(RuneUsage { rune: rune_s, .. }) => {
+        match rune_to_templata.get(rune_s).unwrap() {
+          ITemplataG::Group(GroupTemplataG { group, kind, .. }) => {
+            assert!(group.len() == 1); // unions unimplemented
+            let path = group[0];
+            (path.root, path.steps.to_vec(), *kind)
+          }
+          other => panic!("{other:?}"),
         }
-        bump_g.alloc_slice_copy(result.as_slice())
       }
-      GroupS::Local(_) => unimplemented!(),
-      GroupS::Member { .. } => unimplemented!(),
-      GroupS::Elements { .. } => unimplemented!(),
-      GroupS::Ellipsis { .. } => unimplemented!(),
+      GroupS::Local(imprecise_name) => {
+        let caller_type =
+            callee_param_to_caller_type.get(&imprecise_name)
+                .unwrap();
+        match *caller_type {
+          KindGT::BorrowRef(b) => {
+            assert!(b.group.group.len() == 1); // unions unimplemented
+            let path = b.group.group[0];
+            (path.root, path.steps.to_vec(), b.inner)
+          }
+          _ => unimplemented!(),
+        }
+      }
+      GroupS::Member { base, member_name } => {
+        let (root, mut path, type_gt) =
+            self.groupify_callee_group_inner(coutputs, bump_g, *base, rune_to_templata, callee_param_to_caller_type, born_at);
+        let member_type_gt =
+          match type_gt {
+            KindGT::Struct(struct_gt) => {
+              let name_to_member_type_gt =
+                self.translate_struct_members(coutputs, bump_g, *struct_gt, born_at);
+              *name_to_member_type_gt.get(&member_name).expect("No member in struct with that name")
+            }
+            _ => panic!("Unexpected type in group member expr"),
+          };
+        path.push(GroupChildStepG::Member { member_name });
+        (root, path, member_type_gt)
+      }
+      GroupS::Elements { base } => {
+        let (root, mut path, type_gt) =
+            self.groupify_callee_group_inner(coutputs, bump_g, *base, rune_to_templata, callee_param_to_caller_type, born_at);
+        match type_gt {
+          KindGT::StaticSizedArray(StaticSizedArrayGT { element_type, .. }) => {
+            path.push(GroupChildStepG::InlineElements { });
+            (root, path, *element_type)
+          }
+          KindGT::RuntimeSizedArray(RuntimeSizedArrayGT { element_type, .. }) => {
+            path.push(GroupChildStepG::ChildElements { });
+            (root, path, *element_type)
+          }
+          _ => panic!("Unexpected type in group elements expr"),
+        }
+      }
+      GroupS::Ellipsis { base } => {
+        self.groupify_callee_group_inner(coutputs, bump_g, *base, rune_to_templata, callee_param_to_caller_type, born_at)
+      }
       GroupS::Union { .. } => unimplemented!(),
     }
   }
 
   fn groupify_effect<'g>(
     &self,
+    coutputs: &CompilerOutputs<'s, 't>,
     bump_g: &'g Bump,
     effect_s: &'s EffectS<'s>,
     // NOTE: This might be keyed on caller or callee runes.
     rune_to_templata: &IndexMap<IRuneS<'s>, ITemplataG<'s, 't, 'g>>,
+    callee_param_to_caller_type: &IndexMap<IImpreciseNameS<'s>, KindGT<'s, 't, 'g>>,
+    born_at: LocT<'t>,
   ) -> &'g [GroupStep<'s, 't>] {
-    let something =
-      match effect_s {
-        EffectS::Mut(group_s) => {
-          self.groupify_group(bump_g, group_s, rune_to_templata)
-        }
-        EffectS::NotMut(_) => unimplemented!(),
-      };
-    something
+    match effect_s {
+      EffectS::Mut(group_s) => {
+        self.groupify_group(coutputs, bump_g, group_s, rune_to_templata, callee_param_to_caller_type, born_at)
+      }
+      EffectS::NotMut(_) => unimplemented!(),
+    }
   }
 
   fn groupify_group_expr<'g>(

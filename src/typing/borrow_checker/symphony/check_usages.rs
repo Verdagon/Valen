@@ -190,13 +190,31 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
           self.note_mut_effect(group_tree, mel, mut_effect.steps);
         }
       }
-      ExpressionGE::Mutate(MutateGE { destination_expr, source_expr, .. }) => {
+      ExpressionGE::Mutate(MutateGE { range, loct, destination_expr, source_expr, .. }) => {
         self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_expr, next_held_num)?;
         self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *destination_expr, next_held_num)?;
 
-        // TODO: issue mut effects for `set` statements
-        // let dest_group_path = ...
-        // self.note_mut_effect(group_tree, MutEffectLoc { loct, range }, dest_group_path);
+        if let KindGT::BorrowRef(BorrowRefGT { group: dest_group_templata, .. }) = destination_expr.result() {
+          let mel = MutEffectLoc { loct: *loct, range: *range };
+          for dest_path in dest_group_templata.group {
+            let mut steps = Vec::new();
+            steps.push(match dest_path.root {
+              GroupRootG::Rune(r) => GroupStep::Rune(r),
+              GroupRootG::ParamAnonymousGroup(n) => GroupStep::ParamAnonymousGroup(n),
+              GroupRootG::Local(n) => GroupStep::Local(n),
+              GroupRootG::AmbientMulti() => GroupStep::AmbientMulti(),
+            });
+            for step in dest_path.steps {
+              steps.push(match step {
+                GroupChildStepG::Member { member_name } => GroupStep::Member { member_name: *member_name },
+                GroupChildStepG::ChildElements {} => GroupStep::ChildElements,
+                GroupChildStepG::InlineElements {} => GroupStep::InlineElements,
+                GroupChildStepG::Variant { variant_name } => GroupStep::Variant { variant_name: *variant_name },
+              });
+            }
+            self.note_mut_effect(group_tree, mel, arena.alloc_slice_copy(steps.as_slice()));
+          }
+        }
       }
       ExpressionGE::Restackify(_) => unimplemented!(),
       ExpressionGE::Break(_) => {
@@ -271,9 +289,11 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::RuntimeSizedArrayLookup(RuntimeSizedArrayLookupGE { range, array_expr, array_type, index_expr, result, .. }) => {
         self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
         self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *index_expr, next_held_num)?;
+        self.check_kind_still_valid(group_tree, array_expr.range(), array_expr.result())?;
       }
       ExpressionGE::MemberLookup(MemberLookupGE { struct_expr, .. }) => {
         self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *struct_expr, next_held_num)?;
+        self.check_kind_still_valid(group_tree, struct_expr.range(), struct_expr.result())?;
       }
     }
     Ok(())

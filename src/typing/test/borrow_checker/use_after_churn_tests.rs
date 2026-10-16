@@ -459,5 +459,91 @@ Invalidated at test:0.vale:7:3:
   );
 }
 
+#[test]
+fn test_set_statement_invalidates_inner_element_ref_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+#!DeriveStructDrop
+struct Vec<T> { data []T; }
+func drop<T>(v Vec<T>) where func drop(T)void {
+  [data] = ^v;
+  drop(^data);
+}
+func new<T>() Vec<T> { return Vec<T>(Array<T>(8)); }
+struct Entity { hp int; }
+struct World { entities Vec<Entity>; }
+func observe<T>(x &T) { }
+exported func main() int {
+  world = World(Vec<Entity>.new());
+  first_ref = &world.entities.data[0];
+  set world.entities = Vec<Entity>.new();
+  observe(first_ref);
+  return 0;
+}
+"#,
+    r#"At test:0.vale:18:11:
+  observe(first_ref);
+          ^^^^^^^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:17:7:
+  set world.entities = Vec<Entity>.new();
+      ^^^^^^^^^^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_member_lookup_on_invalidated_ref_rejected() {
+  assert_borrow_check_gives_error(
+    &[],
+    r#"
+struct Entity { hp int; }
+func churn<r'>(a &[]Entity in r) mut(r) { }
+exported func peek<r'>(a &[]Entity in r) int mut(r) {
+  ref = &a[0];
+  churn(a);
+  return __copy_prim(&ref.hp);
+}
+"#,
+    r#"At test:0.vale:7:23:
+  return __copy_prim(&ref.hp);
+                      ^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:6:3:
+  churn(a);
+  ^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_array_lookup_on_invalidated_ref_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[][]int in r) mut(r) { }
+exported func main() int {
+  outer = Array<[]int>(3);
+  inner_ref = &outer[0];
+  churn(&outer);
+  return __copy_prim(&inner_ref[0]);
+}
+"#,
+    r#"At test:0.vale:9:23:
+  return __copy_prim(&inner_ref[0]);
+                      ^^^^^^^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:8:3:
+  churn(&outer);
+  ^^^^^
+"#,
+  );
+}
+
 
 

@@ -24,6 +24,7 @@ pub fn compile_in_process(
   benchmark: bool,
   sanity_check: bool,
   borrow_check: bool,
+  check_only: bool,
   verbose: bool,
   debug_output: bool,
   include_builtins: bool,
@@ -45,6 +46,8 @@ pub fn compile_in_process(
   }
   frontend_args.push("--borrow_check".to_string());
   frontend_args.push(borrow_check.to_string());
+  frontend_args.push("--check_only".to_string());
+  frontend_args.push(check_only.to_string());
   if verbose {
     frontend_args.push("--verbose".to_string());
   }
@@ -86,6 +89,7 @@ pub fn compile_in_process(
       verbose_errors: false,
       debug_output: false,
       borrow_check: true,
+      check_only: false,
     },
     frontend_args,
   );

@@ -138,6 +138,7 @@ pub struct Options<'a> {
   pub verbose_errors: bool,
   pub debug_output: bool,
   pub borrow_check: bool,
+  pub check_only: bool,
 }
 
 
@@ -192,6 +193,14 @@ fn parse_opts_recursive<'a>(
         exit(22);
       }
       opts.borrow_check = list[index + 1].parse().unwrap_or(true);
+      parse_opts_recursive(parse_arena, opts, list, index + 2)
+    }
+    "--check_only" => {
+      if index + 1 >= list.len() {
+        eprintln!("--check_only requires a value");
+        exit(22);
+      }
+      opts.check_only = list[index + 1].parse().unwrap_or(false);
       parse_opts_recursive(parse_arena, opts, list, index + 2)
     }
     "--include_builtins" => {
@@ -478,6 +487,10 @@ where
       &|x| crate::utils::source_code_utils::line_containing(&vale_code_map, &x),
       e)),
     Ok(_) => {}
+  }
+
+  if opts.check_only {
+    return Ok(BuiltProgram { rc: 0, package_stems: Vec::new(), exe_path: PathBuf::from(output_dir_path) });
   }
 
   let monouts = compilation.get_monouts();
