@@ -20,6 +20,7 @@ use std::any::Any;
 use std::marker::PhantomData;
 use crate::postparsing::names::IRuneS;
 use crate::typing::ast::expressions::ExpressionTE;
+use crate::typing::borrow_checker::group_expr::{GroupExprG, GroupPathG};
 use crate::typing::borrow_checker::kind_g::{BorrowRefGT, ISuperKindGT, InterfaceGT, KindGT, RuntimeSizedArrayGT, ShareRefGT, StaticSizedArrayGT, StructGT, WeakRefGT};
 use crate::typing::borrow_checker::templata_g::ITemplataG;
 
@@ -28,7 +29,7 @@ use crate::typing::borrow_checker::templata_g::ITemplataG;
 pub struct MutEffectPath<'s, 't, 'g> {
   pub effecting_node_loc: LocT<'t>, // Which expr had this mut effect (e.g. loc of `level.tiles.clear()`)
   pub range: RangeS<'s>, // That expr's source range, so a use-after-churn can name the churn.
-  pub steps: &'g [GroupStep<'s, 't>], // What group the effect mutated (e.g. ["level", "tiles"])
+  pub path: GroupPathG<'s, 't, 'g>, // What group the effect mutated (e.g. ["level", "tiles"])
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

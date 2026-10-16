@@ -26,10 +26,9 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_g_body: ExpressionGE<'s, 't, 'g>,
     func_declared_mut_effects: Vec<GroupPathG<'s, 't, 'g>>
   ) -> Result<(), ICompileErrorT<'s, 't>> {
-    let mut group_tree =
-        GroupSubtree {
-          last_mut_effect: None,
-          name_to_child: IndexMap::new(),
+    let mut group_forest =
+        GroupForest {
+          name_to_tree: IndexMap::new(),
         };
     let mut next_held_num = 0;
     self.check_expr(
@@ -37,7 +36,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       function_s,
       arena,
       &func_declared_mut_effects,
-      &mut group_tree,
+      &mut group_forest,
       function_g_body,
       &mut next_held_num)?;
     Ok(())
@@ -49,20 +48,20 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_s: &'s FunctionS<'s>,
     arena: &'g Bump,
     func_declared_mut_effects: &Vec<GroupPathG<'s, 't, 'g>>,
-    group_tree: &mut GroupSubtree<'s, 't>,
+    group_forest: &mut GroupForest<'s, 't>,
     expr: ExpressionGE<'s, 't, 'g>,
     next_held_num: &mut u32,
   ) -> Result<(), ICompileErrorT<'s, 't>> {
     match expr {
       ExpressionGE::Block(BlockGE { range, inner, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner, next_held_num)?;
       }
       ExpressionGE::LetNormal(LetNormalGE { range, variable, expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
         // self.insert_new_variable(group_tree, RefKey::Named(variable.name), variable.tyype);
       }
       ExpressionGE::LetAndLend(LetAndLendGE { range, loct, variable, expr, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
       }
       ExpressionGE::LocalLookup(LocalLookupGE { range, local_variable, result, .. }) => {
         // self.check_variable_still_valid(group_tree, *range, RefKey::Named(local_variable.name), local_variable.tyype)?;
@@ -83,14 +82,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         // Nothing needed
       }
       ExpressionGE::Discard(DiscardGE { range, expr: inner, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner, next_held_num)?;
       }
       ExpressionGE::Return(ReturnGE { range, source_expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_expr, next_held_num)?;
       }
       ExpressionGE::Consecutor(ConsecutorGE { range, exprs, result: result_tt, .. }) => {
         for expr in exprs.iter() {
-          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
         }
       }
       ExpressionGE::ConstantInt(ConstantIntGE { range, value, bits, .. }) => {
@@ -109,18 +108,18 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         unimplemented!()
       }
       ExpressionGE::Deref(DerefGE { range, loct, inner: source_te, result: result_tt, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_te, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_te, next_held_num)?;
       }
       ExpressionGE::FunctionCall(FunctionCallGE { loct, range, callable, args, result, mut_effects, .. }) => {
         for arg in args.iter() {
           // Careful, this may cause some mut effects, that could invalidate other arguments.
           // We check the argument types again below, in case that happened.
-          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *arg, next_held_num)?;
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *arg, next_held_num)?;
         }
         // Check each argument again, just in case any of the arguments invalidated any of the
         // other args.
         for arg in args.iter() {
-          self.check_kind_still_valid(group_tree, arg.range(), arg.result())?;
+          self.check_kind_still_valid(group_forest, arg.range(), arg.result())?;
         }
 
         // Conceptually, the call happens here
@@ -128,92 +127,76 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         let mel = MutEffectLoc { loct: *loct, range: range[0] };
 
         for mut_effect in mut_effects.iter() {
-          self.note_mut_effect(group_tree, mel, mut_effect.steps);
+          self.note_mut_effect(group_forest, mel, mut_effect.path);
 
           // If the effect affects a parameter, make sure it doesn't violate the function's declared
           // mut effects
-          match mut_effect.steps[0] {
-            GroupStep::Rune(rune) => {
+          match mut_effect.path.root {
+            GroupRootG::Rune(rune) => {
               let allowed =
-                  func_declared_mut_effects.iter().any(|d| churn_matches_func_declared_mut_effect(d, mut_effect.steps));
+                  func_declared_mut_effects.iter().any(|d| churn_matches_func_declared_mut_effect(d, &mut_effect.path));
               if !allowed {
                 return Err(ICompileErrorT::BorrowCheckError { range: range[0], kind: BorrowErrorKind::UndeclaredChurn });
               }
             }
-            GroupStep::Local(_) => {} // we don't care about mutations to these
-            GroupStep::AmbientMulti() => unimplemented!(),
-            GroupStep::ParamAnonymousGroup(_) => unimplemented!(),
-            // I think all the below should be impossible
-            GroupStep::Member { .. } => panic!("Impossible effect root"),
-            GroupStep::ChildElements => panic!("Impossible effect root"),
-            GroupStep::InlineElements => panic!("Impossible effect root"),
-            GroupStep::Variant { .. } => panic!("Impossible effect root"),
+            GroupRootG::Local(_) => {} // we don't care about mutations to these
+            GroupRootG::AmbientMulti() => unimplemented!(),
+            GroupRootG::ParamAnonymousGroup(_) => unimplemented!(),
           }
         }
       }
       ExpressionGE::LockWeak(_) => unimplemented!(),
       ExpressionGE::BorrowToWeak(_) => unimplemented!(),
       ExpressionGE::If(IfGE { range, loct, condition: condition_ge, then_call: then_ge, else_call: else_ge, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *condition_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *condition_ge, next_held_num)?;
 
-        let mut group_tree_for_then = group_tree.clone();
+        // TODO(optimize): possibly expensive clones here. i wonder if an arena would do well...
+
+        let mut group_tree_for_then = group_forest.clone();
         self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut group_tree_for_then, *then_ge, next_held_num)?;
 
-        let mut group_tree_for_else = group_tree.clone();
+        let mut group_tree_for_else = group_forest.clone();
         self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut group_tree_for_else, *else_ge, next_held_num)?;
 
         // Can be typed Never if a break or a return exited out of the branch, in which case,
         // don't incorporate its invalidations
         if !matches!(then_ge.result(), KindGT::Never(_)) {
-          merge_invalidations_into_from(group_tree, group_tree_for_then);
+          merge_invalidations_into_from(group_forest, group_tree_for_then);
         }
         // Can be typed Never if a break or a return exited out of the branch, in which case,
         // don't incorporate its invalidations
         if !matches!(else_ge.result(), KindGT::Never(_)) {
-          merge_invalidations_into_from(group_tree, group_tree_for_else);
+          merge_invalidations_into_from(group_forest, group_tree_for_else);
         }
       }
       ExpressionGE::While(WhileGE { range, loct, pre_iteration_loct, post_iteration_loct, block, result, mut_effects }) => {
         // Before the loop, note all the mut effects that happen inside the loop.
         let mel = MutEffectLoc { loct: *pre_iteration_loct, range: *range };
         for mut_effect in mut_effects.iter() {
-          self.note_mut_effect(group_tree, mel, mut_effect.steps);
+          self.note_mut_effect(group_forest, mel, mut_effect.path);
         }
 
         // Now do the body. "Past iterations"'s mutations were noted above, so we'll correctly
         // detect invalidations inside the loop.
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, block.inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, block.inner, next_held_num)?;
 
         // After the loop, note all the mut effects that happen inside the loop.
         let mel = MutEffectLoc { loct: *post_iteration_loct, range: *range };
         for mut_effect in mut_effects.iter() {
-          self.note_mut_effect(group_tree, mel, mut_effect.steps);
+          self.note_mut_effect(group_forest, mel, mut_effect.path);
         }
       }
       ExpressionGE::Mutate(MutateGE { range, loct, destination_expr, source_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *destination_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *destination_expr, next_held_num)?;
 
-        if let KindGT::BorrowRef(BorrowRefGT { group: dest_group_templata, .. }) = destination_expr.result() {
-          let mel = MutEffectLoc { loct: *loct, range: *range };
-          for dest_path in dest_group_templata.group {
-            let mut steps = Vec::new();
-            steps.push(match dest_path.root {
-              GroupRootG::Rune(r) => GroupStep::Rune(r),
-              GroupRootG::ParamAnonymousGroup(n) => GroupStep::ParamAnonymousGroup(n),
-              GroupRootG::Local(n) => GroupStep::Local(n),
-              GroupRootG::AmbientMulti() => GroupStep::AmbientMulti(),
-            });
-            for step in dest_path.steps {
-              steps.push(match step {
-                GroupChildStepG::Member { member_name } => GroupStep::Member { member_name: *member_name },
-                GroupChildStepG::ChildElements {} => GroupStep::ChildElements,
-                GroupChildStepG::InlineElements {} => GroupStep::InlineElements,
-                GroupChildStepG::Variant { variant_name } => GroupStep::Variant { variant_name: *variant_name },
-              });
+        match destination_expr.result() {
+          KindGT::BorrowRef(BorrowRefGT { inner, group }) => {
+            for path in group.group {
+              self.note_mut_effect(group_forest, MutEffectLoc { loct: *loct, range: *range }, *path);
             }
-            self.note_mut_effect(group_tree, mel, arena.alloc_slice_copy(steps.as_slice()));
           }
+          _ => unimplemented!(),
         }
       }
       ExpressionGE::Restackify(_) => unimplemented!(),
@@ -237,63 +220,67 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::ExternFunctionCall(_) => unimplemented!(),
       ExpressionGE::BoundFunctionCall(_) => unimplemented!(),
       ExpressionGE::Reinterpret(ReinterpretGE { range, expr: source_ge, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *source_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_ge, next_held_num)?;
       }
       ExpressionGE::Construct(ConstructGE { args, .. }) => {
         for arg in args.iter() {
-          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *arg, next_held_num)?;
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *arg, next_held_num)?;
         }
       }
       ExpressionGE::NewRuntimeSizedArray(NewRuntimeSizedArrayGE { capacity_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *capacity_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *capacity_expr, next_held_num)?;
       }
       ExpressionGE::StaticArrayFromCallable(StaticArrayFromCallableGE { generator, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *generator, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *generator, next_held_num)?;
       }
       ExpressionGE::DestroyStaticSizedArrayIntoFunction(DestroyStaticSizedArrayIntoFunctionGE { array_expr, consumer, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *consumer, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *consumer, next_held_num)?;
       }
       ExpressionGE::DestroyStaticSizedArrayIntoLocals(DestroyStaticSizedArrayIntoLocalsGE { expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
       }
       ExpressionGE::DestroyRuntimeSizedArray(DestroyRuntimeSizedArrayGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
       }
       ExpressionGE::RuntimeSizedArrayCapacity(RuntimeSizedArrayCapacityGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
       }
       ExpressionGE::PushRuntimeSizedArray(PushRuntimeSizedArrayGE { array_expr, new_element_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *new_element_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *new_element_expr, next_held_num)?;
       }
       ExpressionGE::PopRuntimeSizedArray(PopRuntimeSizedArrayGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
       }
       ExpressionGE::InterfaceToInterfaceUpcast(InterfaceToInterfaceUpcastGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner_expr, next_held_num)?;
       }
       ExpressionGE::UpcastInterface(UpcastInterfaceGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner_expr, next_held_num)?;
       }
       ExpressionGE::UpcastGeneric(UpcastGenericGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner_expr, next_held_num)?;
       }
       ExpressionGE::Destroy(DestroyGE { range, expr, struct_tt, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
       }
       ExpressionGE::CopyPrim(CopyPrimGE { range, loct, inner, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner, next_held_num)?;
       }
       ExpressionGE::StaticSizedArrayLookup(_) => unimplemented!(),
       ExpressionGE::RuntimeSizedArrayLookup(RuntimeSizedArrayLookupGE { range, array_expr, array_type, index_expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *index_expr, next_held_num)?;
-        self.check_kind_still_valid(group_tree, array_expr.range(), array_expr.result())?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *index_expr, next_held_num)?;
+
+        // Check the array is still valid
+        self.check_kind_still_valid(group_forest, array_expr.range(), array_expr.result())?;
       }
       ExpressionGE::MemberLookup(MemberLookupGE { struct_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_tree, *struct_expr, next_held_num)?;
-        self.check_kind_still_valid(group_tree, struct_expr.range(), struct_expr.result())?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *struct_expr, next_held_num)?;
+
+        // Check the struct is still valid
+        self.check_kind_still_valid(group_forest, struct_expr.range(), struct_expr.result())?;
       }
     }
     Ok(())
@@ -301,30 +288,44 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
   fn note_mut_effect<'g>(
     &self,
-    group_subtree: &mut GroupSubtree<'s, 't>,
+    group_subtree: &mut GroupForest<'s, 't>,
     effect_loc: MutEffectLoc<'s, 't>,
-    mut_effect_steps: &'g [GroupStep<'s, 't>],
+    path: GroupPathG<'s, 't, 'g>,
   ) {
-    match mut_effect_steps.split_first() {
-      None => {
-        group_subtree.last_mut_effect = Some(effect_loc);
-      }
-      Some((first, rest)) => {
-        let child =
-            group_subtree.name_to_child
-            .entry(*first)
-            .or_insert_with(|| GroupSubtree {
-                last_mut_effect: None,
-                name_to_child: IndexMap::new(),
+    let child =
+        group_subtree.name_to_tree
+            .entry(path.root)
+            .or_insert_with(|| GroupTree {
+              last_mut_effect: None,
+              name_to_child: IndexMap::new(),
             });
-        self.note_mut_effect(child, effect_loc, rest);
-      }
+      self.note_mut_effect_inner(child, effect_loc, path.steps);
+  }
+
+  fn note_mut_effect_inner<'g>(
+    &self,
+    group_subtree: &mut GroupTree<'s, 't>,
+    effect_loc: MutEffectLoc<'s, 't>,
+    remaining_steps: &'g [GroupChildStepG<'s>],
+  ) {
+    if remaining_steps.len() == 0 {
+      group_subtree.last_mut_effect = Some(effect_loc);
+    } else {
+      let next_step = remaining_steps[0];
+      let child =
+      group_subtree.name_to_child
+          .entry(next_step)
+          .or_insert_with(|| GroupTree {
+            last_mut_effect: None,
+            name_to_child: IndexMap::new(),
+          });
+      self.note_mut_effect_inner(child, effect_loc, &remaining_steps[1..]);
     }
   }
 
   // fn invalidate_descendant_groups_of<'g>(
   //   &self,
-  //   group_subtree: &mut GroupSubtree<'s, 't>,
+  //   group_subtree: &mut GroupForest<'s, 't>,
   //   effect_range: RangeS<'s>
   // ) {
   //   // DON'T invalidate every local in this group. We don't invalidate references into this group,
@@ -349,7 +350,7 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 
   // fn deep_invalidate<'g>(
   //   &self,
-  //   group_subtree: &mut GroupSubtree<'s, 't>,
+  //   group_subtree: &mut GroupForest<'s, 't>,
   //   effect_range: RangeS<'s>
   // ) {
   //   // Invalidate every local in this group
@@ -433,36 +434,43 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     }
   }
 
+  fn lookup_group_subtree<'g, 'x>(
+    &self,
+    forest: &'x mut GroupForest<'s, 't>,
+    path: GroupPathG<'s, 't, 'g>,
+  ) -> &'x mut GroupTree<'s, 't> {
+    let tree =
+        forest.name_to_tree
+            .entry(path.root)
+            .or_insert_with(|| GroupTree {
+              last_mut_effect: None,
+              name_to_child: IndexMap::new(),
+            });
+    self.lookup_group_subtree_inner(tree, &path.steps)
+  }
+
   fn lookup_group_subtree_inner<'g, 'x>(
     &self,
-    subtree: &'x mut GroupSubtree<'s, 't>,
+    subtree: &'x mut GroupTree<'s, 't>,
     remaining_path: &'g [GroupChildStepG<'s>]
-  ) -> &'x mut GroupSubtree<'s, 't> {
-    match remaining_path.first() {
-      None => subtree,
-      Some(first) => {
-        let key =
-            match first {
-              GroupChildStepG::Member { member_name } => GroupStep::Member { member_name: *member_name },
-              GroupChildStepG::ChildElements {} => GroupStep::ChildElements {},
-              GroupChildStepG::InlineElements { .. } => GroupStep::InlineElements {},
-              GroupChildStepG::Variant { variant_name } => GroupStep::Variant { variant_name: *variant_name }
-            };
-        let subroot =
-            subtree.name_to_child
-                .entry(key)
-                .or_insert_with(|| GroupSubtree {
-                  last_mut_effect: None,
-                  name_to_child: IndexMap::new(),
-                });
-        self.lookup_group_subtree_inner(subroot, &remaining_path[1..])
-      }
+  ) -> &'x mut GroupTree<'s, 't> {
+    if remaining_path.len() == 0 {
+      subtree
+    } else {
+      let subroot =
+          subtree.name_to_child
+              .entry(remaining_path[0])
+              .or_insert_with(|| GroupTree {
+                last_mut_effect: None,
+                name_to_child: IndexMap::new(),
+              });
+      self.lookup_group_subtree_inner(subroot, &remaining_path[1..])
     }
   }
 
   fn check_kind_still_valid<'g>(
     &self,
-    group_tree: &mut GroupSubtree<'s, 't>,
+    group_forest: &mut GroupForest<'s, 't>,
     use_range: RangeS<'s>,
     kind_g: KindGT<'s, 't, 'g>
   ) -> Result<(), ICompileErrorT<'s, 't>> {
@@ -472,14 +480,14 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
       // (Perhaps we should make it one)
       self.check_templata_still_valid(
-        group_tree, use_range, mentioned_group_templata)?;
+        group_forest, use_range, mentioned_group_templata)?;
     }
     Ok(())
   }
 
   fn check_templata_still_valid<'g>(
     &self,
-    group_tree: &mut GroupSubtree<'s, 't>,
+    group_forest: &mut GroupForest<'s, 't>,
     use_range: RangeS<'s>,
     group_templata: GroupTemplataG<'s, 't, 'g>
   ) -> Result<(), ICompileErrorT<'s, 't>> {
@@ -487,32 +495,25 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
       // (Perhaps we should make it one)
 
-      let key =
-          match mentioned_group.root {
-            GroupRootG::Rune(rune) => GroupStep::Rune(rune),
-            GroupRootG::ParamAnonymousGroup(_) => unimplemented!(),
-            GroupRootG::Local(var_name) => GroupStep::Local(var_name),
-            GroupRootG::AmbientMulti() => GroupStep::AmbientMulti {}
-          };
-      let subroot =
-          group_tree.name_to_child
-              .entry(key)
-              .or_insert_with(|| GroupSubtree {
-                last_mut_effect: None,
-                name_to_child: IndexMap::new(),
-              });
+      // let subroot =
+      //     group_forest.name_to_tree
+      //         .entry(mentioned_group.root)
+      //         .or_insert_with(|| GroupTree {
+      //           last_mut_effect: None,
+      //           name_to_child: IndexMap::new(),
+      //         });
       match mentioned_group.ellipsis {
         false => {
           self.check_target_group_invalidated_since(
-            subroot, mentioned_group.steps, use_range, group_templata.born_at)?;
+            group_forest, *mentioned_group, use_range, group_templata.born_at)?;
         }
         true => {
           // Will detect any mutations to any ancestors
           self.check_target_group_invalidated_since(
-            subroot, mentioned_group.steps, use_range, group_templata.born_at)?;
+            group_forest, *mentioned_group, use_range, group_templata.born_at)?;
           // TODO: optimize, we're descending into the subtree twice
           // Now detect any mutations to the target itself, plus its descendant groups
-          let subtree = self.lookup_group_subtree_inner(subroot, mentioned_group.steps);
+          let subtree = self.lookup_group_subtree(group_forest, *mentioned_group);
           if let Some(last_mut_effect_loc) = subtree.last_mut_effect {
             if last_mut_effect_loc.loct.path > group_templata.born_at.path {
               return Err(ICompileErrorT::BorrowCheckError {
@@ -531,7 +532,30 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
   // This function visits each group down to the target group
   fn check_target_group_invalidated_since<'g>(
     &self,
-    subtree: &mut GroupSubtree<'s, 't>,
+    forest: &mut GroupForest<'s, 't>,
+    path: GroupPathG<'s, 't, 'g>,
+    use_range: RangeS<'s>,
+    target_group_invalidated_since: LocT<'t>,
+    // The bool is true iff the target group is an independent descendant of the current group.
+  ) -> Result<(), ICompileErrorT<'s, 't>> {
+    // TODO: we really need to get a better term than child group. "independent descendant group"?
+    let child_tree =
+        forest.name_to_tree
+            .entry(path.root)
+            .or_insert_with(|| GroupTree {
+              last_mut_effect: None,
+              name_to_child: IndexMap::new(),
+            });
+    let _ =
+        self.check_target_group_invalidated_since_inner(
+          child_tree, &path.steps, use_range, target_group_invalidated_since)?;
+    Ok(())
+  }
+
+  // This function visits each group down to the target group
+  fn check_target_group_invalidated_since_inner<'g>(
+    &self,
+    subtree: &mut GroupTree<'s, 't>,
     remaining_path: &'g [GroupChildStepG<'s>],
     use_range: RangeS<'s>,
     target_group_invalidated_since: LocT<'t>,
@@ -540,24 +564,25 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     match remaining_path.first() {
       None => Ok(false),
       Some(first) => {
-        let (child_is_independent, group_step) =
+        let (child_is_independent) =
             match first {
-              GroupChildStepG::Member { member_name } => (false, GroupStep::Member { member_name: *member_name }),
-              GroupChildStepG::ChildElements {} => (true, GroupStep::ChildElements {}),
-              GroupChildStepG::InlineElements { .. } => (false, GroupStep::InlineElements {}),
-              GroupChildStepG::Variant { variant_name } => (true, GroupStep::Variant { variant_name: *variant_name })
+              GroupChildStepG::Member { member_name } => false,
+              GroupChildStepG::ChildElements {} => true,
+              GroupChildStepG::InlineElements { .. } => false,
+              GroupChildStepG::Variant { variant_name } => true,
             };
+
         // TODO: we really need to get a better term than child group. "independent descendant group"?
         let child_tree =
-        subtree.name_to_child
-                .entry(group_step)
-                .or_insert_with(|| GroupSubtree {
+            subtree.name_to_child
+                .entry(*first)
+                .or_insert_with(|| GroupTree {
                   last_mut_effect: None,
                   name_to_child: IndexMap::new(),
                 });
         // First, check if anyone has mutated anything closer to the target group.
         let target_is_independent_of_child =
-            self.check_target_group_invalidated_since(
+            self.check_target_group_invalidated_since_inner(
               child_tree, &remaining_path[1..], use_range, target_group_invalidated_since)?;
         let target_is_independent = child_is_independent || target_is_independent_of_child;
 
@@ -583,8 +608,24 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
 }
 
 fn merge_invalidations_into_from<'s, 't>(
-  into: &mut GroupSubtree<'s, 't>,
-  from: GroupSubtree<'s, 't>,
+  into: &mut GroupForest<'s, 't>,
+  from: GroupForest<'s, 't>,
+) {
+  for (step, from_child) in from.name_to_tree {
+    let into_child =
+        into.name_to_tree
+        .entry(step)
+        .or_insert_with(|| GroupTree {
+            last_mut_effect: None,
+            name_to_child: IndexMap::new(),
+        });
+    merge_invalidations_into_from_inner(into_child, from_child);
+  }
+}
+
+fn merge_invalidations_into_from_inner<'s, 't>(
+  into: &mut GroupTree<'s, 't>,
+  from: GroupTree<'s, 't>,
 ) {
   match (into.last_mut_effect, from.last_mut_effect) {
     (Some(into_mel), Some(from_mel)) => {
@@ -600,22 +641,22 @@ fn merge_invalidations_into_from<'s, 't>(
   for (step, from_child) in from.name_to_child {
     let into_child =
         into.name_to_child
-        .entry(step)
-        .or_insert_with(|| GroupSubtree {
-            last_mut_effect: None,
-            name_to_child: IndexMap::new(),
-        });
-    merge_invalidations_into_from(into_child, from_child);
+            .entry(step)
+            .or_insert_with(|| GroupTree {
+              last_mut_effect: None,
+              name_to_child: IndexMap::new(),
+            });
+    merge_invalidations_into_from_inner(into_child, from_child);
   }
 }
 
 
 fn churn_matches_func_declared_mut_effect<'s, 't, 'g>(
   declared: &GroupPathG<'s, 't, 'g>,
-  churn_steps: &[GroupStep<'s, 't>],
+  churn_path: &GroupPathG<'s, 't, 'g>,
 ) -> bool {
-  match (declared.root, churn_steps[0]) {
-    (GroupRootG::Rune(declared_rune), GroupStep::Rune(churn_rune)) => {
+  match (declared.root, churn_path.root) {
+    (GroupRootG::Rune(declared_rune), GroupRootG::Rune(churn_rune)) => {
       if declared_rune != churn_rune {
         return false;
       }
@@ -623,23 +664,22 @@ fn churn_matches_func_declared_mut_effect<'s, 't, 'g>(
     (GroupRootG::Local(declared_local), _) => return false, // Func mut declarations cant start with local
     _ => unimplemented!(),
   }
-  if churn_steps.len() < declared.steps.len() {
+  if churn_path.steps.len() < declared.steps.len() {
     return false;
   }
-  let churn_children = &churn_steps[1..];
-  let num_steps = churn_children.len().min(declared.steps.len());
+  let num_steps = churn_path.steps.len().min(declared.steps.len());
   for i in 0..num_steps {
     let declared_step = declared.steps[i];
-    let churn_step = churn_children[i];
+    let churn_step = churn_path.steps[i];
     match (declared_step, churn_step) {
-      (GroupChildStepG::Member { member_name: a }, GroupStep::Member { member_name: b }) => {
+      (GroupChildStepG::Member { member_name: a }, GroupChildStepG::Member { member_name: b }) => {
         if a != b {
           return false;
         }
       },
-      (GroupChildStepG::ChildElements {}, GroupStep::ChildElements) => {} // continue
-      (GroupChildStepG::InlineElements {}, GroupStep::InlineElements) => {} // continue
-      (GroupChildStepG::Variant { variant_name: a }, GroupStep::Variant { variant_name: b }) => {
+      (GroupChildStepG::ChildElements {}, GroupChildStepG::ChildElements {}) => {} // continue
+      (GroupChildStepG::InlineElements {}, GroupChildStepG::InlineElements {}) => {} // continue
+      (GroupChildStepG::Variant { variant_name: a }, GroupChildStepG::Variant { variant_name: b }) => {
         if a != b {
           return false;
         }
