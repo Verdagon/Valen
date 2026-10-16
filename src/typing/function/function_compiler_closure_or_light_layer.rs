@@ -171,6 +171,7 @@ where
     call_range: &[RangeS<'s>],
     call_location: LocationInDenizen<'s>,
     function: &'s FunctionS<'s>,
+    num_dispatcher_placeholders: usize,
     args: &[Option<KindT<'s, 't>>],
   ) -> Result<IDefineFunctionResult<'s, 't>, ICompileErrorT<'s, 't>> {
     self.check_not_closure(function);
@@ -200,6 +201,7 @@ where
       calling_env,
       call_range,
       call_location,
+      num_dispatcher_placeholders,
       args,
     )
   }

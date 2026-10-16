@@ -105,4 +105,8 @@ pub trait RustOracle<'s, 't> {
   // Get the publicly importable path for a type, because some types are private to their own
   // crate but are publicly exported under a different name.
   fn rust_spelling(&self, package_coord: &PackageCoordinate<'s>, name: StrI<'s>) -> Option<String>;
+
+  // Get whether the given trait has any supertraits. We'll use this to help us figure out whether
+  // we can/should invoke the anonymous substruct macro.
+  fn trait_has_supertraits(&self, item: RustItemId) -> bool;
 }

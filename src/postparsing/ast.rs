@@ -266,12 +266,6 @@ impl<'s> InterfaceS<'s> {
       !generic_params.iter().any(|x| matches!(x.rune.rune, IRuneS::DenizenDefaultRegionRune(_))),
       "vassert: generic_params should not contain DenizenDefaultRegionRuneS"
     );
-    for internal_method in internal_methods {
-      assert!(
-        generic_params == internal_method.generic_params,
-        "vassert: genericParams == internalMethod.genericParams"
-      );
-    }
     Self {
       range,
       name,

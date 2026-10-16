@@ -780,3 +780,104 @@ fn failed_owning_downcast_with_as() {
     }
 }
 
+#[test]
+fn generic_interface_with_generic_method_dispatched_through_bound() {
+    // Calls a generic interface's generic method, with static dispatch (no run-time dispatch).
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test_without_borrow_check(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+#!DeriveInterfaceDrop
+sealed interface Visitor<E> {
+  func visit<T>(virtual self &Visitor<E>, item &T, seed &E) int;
+}
+
+#!DeriveStructDrop
+struct MyVisitor<E> { val E; }
+
+impl<E> Visitor<E> for MyVisitor<E>;
+
+func visit<E, T>(self &MyVisitor<E>, item &T, seed &E) int {
+  return 7;
+}
+
+func run<V>(v &V) int
+where implements(V, Visitor<int>) {
+  x = 5;
+  s = 9;
+  return v.visit(&x, &s);
+}
+
+exported func main() int {
+  f = MyVisitor<int>(3);
+  z = run(&f);
+  [_] = ^f;
+  return ^z;
+}
+",
+    );
+    let _monouts = compile.get_monouts();
+}
+
+#[test]
+fn generic_method_through_bound_with_independent_and_concrete_impl_params() {
+    // This test exercises all four kinds of generic params, see @DKOGPZ.
+    let compilation_bump = bumpalo::Bump::new();
+    let parse_bump = bumpalo::Bump::new();
+    let scout_bump = bumpalo::Bump::new();
+    let typing_bump = bumpalo::Bump::new();
+    let instantiating_bump = bumpalo::Bump::new();
+    let parse_arena = ParseArena::new(&parse_bump);
+    let scout_arena = ScoutArena::new(&scout_bump);
+    let keywords = Keywords::new_for_scout(&scout_arena);
+    let parser_keywords = Keywords::new_for_parse(&parse_arena);
+    let typing_interner = TypingInterner::new(&typing_bump);
+    let mut compile = test_without_borrow_check(
+        &compilation_bump,
+        &typing_interner, &scout_arena, &keywords, &parser_keywords, &parse_arena,
+        &instantiating_bump,
+        r"
+#!DeriveInterfaceDrop
+sealed interface Store<K, V> {
+  func fetch<Q>(virtual self &Store<K, V>, query &Q, key &K, value &V) int;
+}
+
+#!DeriveStructDrop
+struct DiskStore<VV, Cache> { val VV; cached Cache; }
+
+impl<VV, Cache> Store<int, VV> for DiskStore<VV, Cache>;
+
+func fetch<VV, Cache, Q>(self &DiskStore<VV, Cache>, query &Q, key &int, value &VV) int {
+  return 7;
+}
+
+func run<V>(v &V) int
+where implements(V, Store<int, i64>) {
+  q = 9u;
+  k = 5;
+  val = 11i64;
+  return v.fetch(&q, &k, &val);
+}
+
+exported func main() int {
+  d = DiskStore<i64, bool>(3i64, true);
+  z = run(&d);
+  [_, _] = ^d;
+  return ^z;
+}
+",
+    );
+    let _monouts = compile.get_monouts();
+}
+

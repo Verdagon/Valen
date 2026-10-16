@@ -283,6 +283,10 @@ where
     }
     None
   }
+
+  fn trait_has_supertraits(&self, _item: RustItemId) -> bool {
+    unimplemented!()
+  }
 }
 
 // Get the publicly importable path for a type, because some types are private to their own

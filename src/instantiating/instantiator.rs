@@ -227,7 +227,8 @@ pub struct InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
     pub abstract_func_to_bounds: IndexMap<IdI<'s, 'i>, (DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
     pub interface_to_impl_to_abstract_prototype_to_override: IndexMap<IdI<'s, 'i>, IndexMap<IdI<'s, 'i>, IndexMap<PrototypeI<'s, 'i>, PrototypeI<'s, 'i>>>>,
     pub new_impls: Vec<(IdT<'s, 't>, IdI<'s, 'i>, &'i InstantiationBoundArgumentsI<'s, 'i>)>,
-    pub new_abstract_funcs: Vec<(PrototypeT<'s, 't>, PrototypeI<'s, 'i>, usize, IdI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>)>,
+    // This is just for vtables for run-time.
+    pub new_abstract_funcs_for_vtable: Vec<(PrototypeT<'s, 't>, PrototypeI<'s, 'i>, usize, IdI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>)>,
     pub new_functions: Vec<(PrototypeT<'s, 't>, PrototypeI<'s, 'i>, InstantiationBoundArgumentsI<'s, 'i>, Option<DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>>)>,
     pub kind_externs: Vec<KindExternI<'s, 'i>>,
     pub function_externs: Vec<FunctionExternI<'s, 'i>>,
@@ -259,7 +260,7 @@ impl<'s, 't, 'i> InstantiatedOutputsI<'s, 't, 'i> where 's: 't, 's: 'i {
       abstract_func_to_bounds: IndexMap::default(),
       interface_to_impl_to_abstract_prototype_to_override: IndexMap::default(),
       new_impls: Vec::new(),
-      new_abstract_funcs: Vec::new(),
+      new_abstract_funcs_for_vtable: Vec::new(),
       new_functions: Vec::new(),
       kind_externs: Vec::new(),
       function_externs: Vec::new(),
@@ -596,9 +597,9 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 let (impl_id_t, impl_id, instantiation_bounds_for_unsubstituted_impl) = monouts.new_impls.remove(0);
                 self.translate_impl_callsite(monouts, &impl_id_t, &impl_id, instantiation_bounds_for_unsubstituted_impl);
                 true
-            } else if !monouts.new_abstract_funcs.is_empty() {
-                let (abstract_func_t, abstract_func, virtual_index, interface_id, instantiation_bound_args) = monouts.new_abstract_funcs.remove(0);
-                self.translate_abstract_func(monouts, &interface_id, &abstract_func_t, &abstract_func, virtual_index, instantiation_bound_args);
+            } else if !monouts.new_abstract_funcs_for_vtable.is_empty() {
+                let (abstract_func_t, abstract_func, virtual_index, interface_id, instantiation_bound_args) = monouts.new_abstract_funcs_for_vtable.remove(0);
+                self.translate_abstract_func_for_vtable(monouts, &interface_id, &abstract_func_t, &abstract_func, virtual_index, instantiation_bound_args);
                 true
             } else {
                 false
@@ -746,108 +747,185 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
     }
 
 
-    pub fn translate_override(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, abstract_func_prototype_t: &PrototypeT<'s, 't>, _abstract_func_prototype: &PrototypeI<'s, 'i>, _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>) {
+    // This is just for vtables, for run-time.
+    pub fn translate_override_for_vtable(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, abstract_func_prototype_t: &PrototypeT<'s, 't>, _abstract_func_prototype: &PrototypeI<'s, 'i>, _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>) {
         let impl_instantiation_bound_args = _monouts.impls.get(_impl_id).expect("vassertSome monouts.impls").3;
         let override_prototype =
-            self.resolve_override_prototype(_monouts, impl_id_t, _impl_id, abstract_func_prototype_t, _abstract_func_instantiation_bound_args, impl_instantiation_bound_args);
+            self.resolve_override_prototype(_monouts, impl_id_t, _impl_id, abstract_func_prototype_t, _abstract_func_instantiation_bound_args, impl_instantiation_bound_args, &IndexMap::default());
         let super_interface_id = _monouts.impls.get(_impl_id).expect("vassertSome monouts.impls").1;
         _monouts.add_method_to_v_table(*_impl_id, super_interface_id, *_abstract_func_prototype, override_prototype);
     }
 
-    pub fn resolve_override_prototype(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, impl_id_t: &IdT<'s, 't>, _impl_id: &IdI<'s, 'i>, abstract_func_prototype_t: &PrototypeT<'s, 't>, _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>, impl_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>) -> PrototypeI<'s, 'i> {
-        let impl_template_id = Compiler::get_impl_template(self.typing_interner, *impl_id_t);
-        let edge_t = vassert_one(
-            self.hinputs.interface_template_to_sub_citizen_to_edge.values()
-                .flat_map(|sub_to_edge| sub_to_edge.values().copied())
-                .filter(|edge| Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template_id));
-        let _edge_id = edge_t.edge_id;
-        let _edge_sub_citizen = edge_t.sub_citizen;
-        let _edge_super_interface = edge_t.super_interface;
-        let edge_abstract_func_to_override_func = &edge_t.abstract_func_to_override_func;
-        let abstract_func_template_name = Compiler::get_function_template(self.typing_interner, abstract_func_prototype_t.id);
-        let abstract_func_placeholdered_name_t = self.hinputs.functions.iter().copied()
-            .find(|func| Compiler::get_function_template(self.typing_interner, func.header.id) == abstract_func_template_name)
-            .expect("vassertSome abstractFuncPlaceholderedNameT")
-            .header.id;
-        let override_t = *edge_abstract_func_to_override_func.get(&abstract_func_placeholdered_name_t).expect("vassertSome OverrideT");
-        let dispatcher_id_t = override_t.dispatcher_call_id;
-        let _impl_placeholder_to_dispatcher_placeholder = override_t.impl_placeholder_to_dispatcher_placeholder;
-        let _impl_placeholder_to_case_placeholder = override_t.impl_placeholder_to_case_placeholder;
-        let _dispatcher_and_case_placeholdered_impl_reachable_prototypes = &override_t.dispatcher_and_case_placeholdered_impl_reachable_prototypes;
-        let _dispatcher_case_id_t = override_t.case_id;
-        let _override_prototype_t = override_t.override_prototype;
-        let _dispatcher_instantiation_bound_params = override_t.dispatcher_instantiation_bound_params;
-        let _dispatcher_template_id = Compiler::get_template(self.typing_interner, dispatcher_id_t);
-        let dispatcher_template_args = IInstantiationNameT::try_from(dispatcher_id_t.local_name).unwrap().template_args();
-        let dispatcher_placeholder_id_to_supplied_templata: Vec<(IdT<'s, 't>, ITemplataI<'s, 'i>)> =
-            dispatcher_template_args.iter().map(|dispatcher_placeholder_templata| {
-                let dispatcher_placeholder_id = Compiler::get_placeholder_templata_id(*dispatcher_placeholder_templata);
-                let impl_placeholder = _impl_placeholder_to_dispatcher_placeholder.iter().find(|(_, v)| v == dispatcher_placeholder_templata).expect("vassertSome implPlaceholderToDispatcherPlaceholder").0;
-                let index = match impl_placeholder.local_name {
-                    INameT::KindPlaceholder(kp) => kp.template.index,
-                    INameT::NonKindNonRegionPlaceholder(nk) => nk.index,
-                    _ => panic!("vwat translate_override dispatcher placeholder index"),
-                };
-                let impl_id_c_local: IImplNameI<'s, 'i> = _impl_id.local_name.try_into().unwrap();
-                let templata: ITemplataI<'s, 'i> = impl_id_c_local.template_args()[index as usize];
-                (dispatcher_placeholder_id, templata)
-            }).collect();
-        let case_local_name = match _dispatcher_case_id_t.local_name {
-            INameT::OverrideDispatcherCase(n) => n,
-            _ => panic!("translate_override: dispatcher_case_id_t.local_name not OverrideDispatcherCase"),
-        };
-        let dispatcher_case_placeholder_id_to_supplied_templata: Vec<(IdT<'s, 't>, ITemplataI<'s, 'i>)> =
-            case_local_name.independent_impl_template_args.iter().enumerate().map(|(_enum_index, case_placeholder_templata)| {
-                let case_placeholder_id = Compiler::get_placeholder_templata_id(*case_placeholder_templata);
-                let impl_placeholder = _impl_placeholder_to_case_placeholder.iter().find(|(_, v)| v == case_placeholder_templata).expect("vassertSome implPlaceholderToCasePlaceholder").0;
-                let index = match impl_placeholder.local_name {
-                    INameT::KindPlaceholder(kp) => kp.template.index,
-                    _ => panic!("vwat translate_override case placeholder index"),
-                };
-                let impl_id_c_local: IImplNameI<'s, 'i> = _impl_id.local_name.try_into().unwrap();
-                let templata: ITemplataI<'s, 'i> = impl_id_c_local.template_args()[index as usize];
-                (case_placeholder_id, templata)
-            }).collect();
-        let dispatcher_placeholder_id_to_supplied_templata_map: HashMap<IdT<'s, 't>, ITemplataI<'s, 'i>> =
-            dispatcher_placeholder_id_to_supplied_templata.iter().copied().collect();
-        let dispatcher_case_placeholder_id_to_supplied_templata_map: HashMap<IdT<'s, 't>, ITemplataI<'s, 'i>> =
-            dispatcher_case_placeholder_id_to_supplied_templata.iter().copied().collect();
-        assert!(dispatcher_placeholder_id_to_supplied_templata_map.len() + dispatcher_case_placeholder_id_to_supplied_templata_map.len() ==
-            dispatcher_placeholder_id_to_supplied_templata_map.iter().chain(dispatcher_case_placeholder_id_to_supplied_templata_map.iter()).map(|(k, _)| *k).collect::<HashSet<_>>().len());
-        let mut _case_substitutions: HashMap<IdT<'s, 't>, ITemplataI<'s, 'i>> = dispatcher_placeholder_id_to_supplied_templata_map.clone();
-        _case_substitutions.extend(dispatcher_case_placeholder_id_to_supplied_templata_map.iter().map(|(k, v)| (*k, *v)));
+  // This function is called for both vtables (run-time) and for bound calls (static dispatch).
+  // This indirectly calls translate_function_callsite, this is what determines the PrototypeI
+  // of the override. It does this by calculating it based on the impl, the interface, and the
+  // abstract method.
+  pub fn resolve_override_prototype(
+    &self,
+    monouts: &mut InstantiatedOutputsI<'s, 't, 'i>,
+    impl_id_t: &IdT<'s, 't>,
+    _impl_id: &IdI<'s, 'i>,
+    abstract_func_callsite_prototype_t: &PrototypeT<'s, 't>,
+    _abstract_func_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>,
+    impl_instantiation_bound_args: &InstantiationBoundArgumentsI<'s, 'i>,
+    method_generic_values: &IndexMap<i32, ITemplataI<'s, 'i>>,
+  ) -> PrototypeI<'s, 'i> {
+    // VCOORD: mirror this into some arcana, and mention it in typing pass too
+    //
+    // # Different Kinds Of Generic Params (@DKOGPZ)
+    //
+    // For this function we'll use this example interface:
+    //     interface Store<K, V> {
+    //       func fetch<Q>(virtual self &Store<K, V>, query &Q, key &K, value &V) int;
+    //     }
+    // whose method can be thought of as this standalone abstract function:
+    //     func fetch<K, V, Q>(virtual self &Store<K, V>, query &Q, key &K, value &V) int;
+    // and we'll use this substruct:
+    //     struct DiskStore<VV, Cache> { val VV; cached Cache; }
+    //     impl<VV, Cache> Store<int, VV> for DiskStore<VV, Cache>;
+    //     func fetch<VV, Cache, Q>(self &DiskStore<VV, Cache>, query &Q, key &int, value &VV) int { ... }
+    // Let's say that someone called it like this:
+    //     z = run(&DiskStore<i64, bool>(3i64, true));
+    //     func run<S impl Store<int, i64>>(s &S) int {
+    //       s.fetch(&9u, &5, &11i64)
+    //     }
+    // The goal of resolve_override_prototype is to figure out the actual override we're looking
+    // for, so we can instantiate it. Specifically, we want to combine the `interface`, the
+    // standalone abstract function, the struct, and the impl, all into the override func:
+    //     func fetch<VV, Cache, Q>(self &DiskStore<VV, Cache>, query &Q, key &int, value &VV) int { ... }
+    //
+    // Here are the templatas in play: K=int, VV=i64, Q=usize, Cache=bool.
+    //  * K is a "impl-specified interface generic parameter". it's generic on interface, not impl, not method.
+    //  * V (and VV) is a normal ("vanilla") generic parameter; it's generic on both interface and impl.
+    //  * Q is a "method generic parameter". It's a generic on the interface method and the override.
+    //  * Cache is an "independent generic parameter" It's unknown to interface, a generic on the impl.
+    // Their placeholders are:
+    //  * K gets no placeholder, it's just `int` to us here.
+    //  * VV is dis$VV here. (Placeholder contains index 0)
+    //  * Q is dis$Q here. (Placeholder contains index 1)
+    //  * Cache is case$Cache. (Placeholder contains index 2)
+    // Yes, it's weird that we're placeholdering from both `dis` and `case`. We should probably
+    // unify those soon, because these really are all for one conceptual generated wrapper function
+    // (which is entered into the vtable) which just calls the actual override function.
+    //
+    // Other comments in this function will use this as an example.
 
-        let impl_rune_to_impl_instantiation_bound_args = impl_instantiation_bound_args;
-        let _bound_param_prototype_t_to_bound_arg_prototype_i_from_impl: HashMap<IdT<'s, 't>, &'i PrototypeI<'s, 'i>> =
-            _dispatcher_and_case_placeholdered_impl_reachable_prototypes.iter().flat_map(|(rune_in_impl, citizen_rune_to_bound)| {
-                citizen_rune_to_bound.iter().map(move |(rune_in_citizen, prototype_t)| {
-                    let INameT::FunctionBound(_fbn) = prototype_t.id.local_name else {
-                        panic!("translate_override: prototype_t.id.local_name not FunctionBound");
-                    };
-                    let prototype_i = *impl_rune_to_impl_instantiation_bound_args.caller_rune_to_callee_rune_to_reachable_func
-                        .get(rune_in_impl).expect("vassertSome rune_in_impl")
-                        .get(rune_in_citizen).expect("vassertSome rune_in_citizen");
-                    (prototype_t.id, prototype_i)
-                })
-            }).collect();
-        let dispatcher_instantiation_bound_params_to_args = Self::assemble_instantiation_bound_param_to_arg(_dispatcher_instantiation_bound_params, _abstract_func_instantiation_bound_args);
+    let impl_template_id = Compiler::get_impl_template(self.typing_interner, *impl_id_t);
+    let edge_t = vassert_one(
+        self.hinputs.interface_template_to_sub_citizen_to_edge.values()
+            .flat_map(|sub_to_edge| sub_to_edge.values().copied())
+            .filter(|edge| Compiler::get_impl_template(self.typing_interner, edge.edge_id) == impl_template_id));
+    let _edge_id = edge_t.edge_id;
+    let _edge_sub_citizen = edge_t.sub_citizen;
+    let _edge_super_interface = edge_t.super_interface;
+    let edge_abstract_func_to_override_func = &edge_t.abstract_func_to_override_func;
+    let abstract_func_template_name = Compiler::get_function_template(self.typing_interner, abstract_func_callsite_prototype_t.id);
+    let abstract_func_placeholdered_name_t = self.hinputs.functions.iter().copied()
+        .find(|func| Compiler::get_function_template(self.typing_interner, func.header.id) == abstract_func_template_name)
+        .expect("vassertSome abstractFuncPlaceholderedNameT")
+        .header.id;
+    let override_t = *edge_abstract_func_to_override_func.get(&abstract_func_placeholdered_name_t).expect("vassertSome OverrideT");
+    let dispatcher_id_t = override_t.dispatcher_call_id;
+    let impl_placeholder_to_dispatcher_placeholder = override_t.impl_placeholder_to_dispatcher_placeholder;
+    let impl_placeholder_to_case_placeholder = override_t.impl_placeholder_to_case_placeholder;
+    let dispatcher_and_case_placeholdered_impl_reachable_prototypes = &override_t.dispatcher_and_case_placeholdered_impl_reachable_prototypes;
+    let dispatcher_case_id_t = override_t.case_id;
+    let override_prototype_t = override_t.override_prototype;
+    let dispatcher_instantiation_bound_params = override_t.dispatcher_instantiation_bound_params;
+    let _dispatcher_template_id = Compiler::get_template(self.typing_interner, dispatcher_id_t);
+    let dispatcher_template_args = IInstantiationNameT::try_from(dispatcher_id_t.local_name).unwrap().template_args();
+    let impl_id_c_local: IImplNameI<'s, 'i> = _impl_id.local_name.try_into().unwrap();
 
-        let mut bound_param_func_id_to_bound_arg_index_map: IndexMap<IdT<'s, 't>, &'i PrototypeI<'s, 'i>> = IndexMap::default();
-        for (k, v) in _bound_param_prototype_t_to_bound_arg_prototype_i_from_impl.iter() {
-            bound_param_func_id_to_bound_arg_index_map.insert(*k, *v);
-        }
-        let extra_bounds = DenizenBoundToDenizenCallerBoundArgI {
-            func_id_to_bound_arg_prototype: bound_param_func_id_to_bound_arg_index_map,
-            bound_param_impl_id_to_bound_arg_impl_id: IndexMap::default(),
-        };
-        let case_instantiation_bound_params_to_args = dispatcher_instantiation_bound_params_to_args.plus(&extra_bounds);
+    // Here's the map of templatas that we want to substitute into the typed dispatcher function.
+    // This doesn't contain impl-specified interface generic params (that's already baked into the
+    // impl / its ID), but it does have mappings for the other three kinds of generic params
+    // (vanilla generic param, method generic param, independent generic param).
+    // So we want this to contain VV=i64, Q=usize, Cache=bool.
+    let mut case_substitutions: IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>> = IndexMap::default();
 
-        let case_substitutions_idx: IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>> = _case_substitutions.iter().map(|(k, v)| (*k, *v)).collect();
-        let override_prototype =
-            self.translate_prototype(_monouts, &_dispatcher_case_id_t, &case_instantiation_bound_params_to_args, &case_substitutions_idx, &RegionT::Default, &_override_prototype_t);
+    let num_dependent_placeholders = impl_placeholder_to_dispatcher_placeholder.len();
+    // All the placeholders share a common index space (of the conceptual wrapper function that
+    // conceptually lives in the vtable).
+    // The below loops assume it, so we assert it here.
+    assert!(dispatcher_template_args[..num_dependent_placeholders].iter()
+        .all(|p| impl_placeholder_to_dispatcher_placeholder.iter().any(|(_, v)| v == p)),
+        "dispatcher's impl-derived generic params must come before its method generics");
+    assert!(dispatcher_template_args[num_dependent_placeholders..].iter()
+        .all(|p| !impl_placeholder_to_dispatcher_placeholder.iter().any(|(_, v)| v == p)),
+        "dispatcher's method generics must come after its impl-derived generic params");
 
-        override_prototype
+    // Now we find the templatas for the vanilla generic params. These are easy, they can just come
+    // from the impl instance.
+    for (impl_placeholder, dispatcher_placeholder_templata) in impl_placeholder_to_dispatcher_placeholder.iter() {
+      let dispatcher_placeholder_id = Compiler::get_placeholder_templata_id(*dispatcher_placeholder_templata);
+      let index = match impl_placeholder.local_name {
+          INameT::KindPlaceholder(kp) => kp.template.index,
+          INameT::NonKindNonRegionPlaceholder(nk) => nk.index,
+          _ => panic!("vwat translate_override dispatcher placeholder index"),
+      };
+      let templata: ITemplataI<'s, 'i> = impl_id_c_local.template_args()[index as usize];
+      let existing = case_substitutions.insert(dispatcher_placeholder_id, templata);
+      assert!(existing.is_none(), "placeholder id must be unique");
     }
+    for method_generic_placeholder_templata in dispatcher_template_args[num_dependent_placeholders..].iter() {
+      let method_generic_placeholder_id =
+          Compiler::get_placeholder_templata_id(*method_generic_placeholder_templata);
+      let index_of_method_generic =
+          match method_generic_placeholder_id.local_name {
+            INameT::KindPlaceholder(kp) => kp.template.index as usize - num_dependent_placeholders,
+            _ => panic!("vwat translate_override method generic placeholder rune"),
+          };
+      let templata_i = *method_generic_values.get(&(index_of_method_generic as i32)).expect("method generic value not supplied by caller");
+      let existing = case_substitutions.insert(method_generic_placeholder_id, templata_i);
+      assert!(existing.is_none(), "placeholder id must be unique");
+    }
+    let case_local_name = match dispatcher_case_id_t.local_name {
+        INameT::OverrideDispatcherCase(n) => n,
+        _ => panic!("translate_override: dispatcher_case_id_t.local_name not OverrideDispatcherCase"),
+    };
+    // Now we find the templatas that will be filled in for the independent generic params (e.g. for
+    // Cache, find the bool).
+    for case_placeholder_templata in case_local_name.independent_impl_template_args.iter() {
+      let case_placeholder_id = Compiler::get_placeholder_templata_id(*case_placeholder_templata);
+      let impl_placeholder = impl_placeholder_to_case_placeholder.iter().find(|(_, v)| v == case_placeholder_templata).expect("vassertSome implPlaceholderToCasePlaceholder").0;
+      let index = match impl_placeholder.local_name {
+          INameT::KindPlaceholder(kp) => kp.template.index,
+          _ => panic!("vwat translate_override case placeholder index"),
+      };
+      let templata: ITemplataI<'s, 'i> = impl_id_c_local.template_args()[index as usize];
+      let existing = case_substitutions.insert(case_placeholder_id, templata);
+      assert!(existing.is_none(), "placeholder id must be unique");
+    }
+
+    let mut bound_param_prototype_t_to_bound_arg_prototype_i_from_impl: HashMap<IdT<'s, 't>, &'i PrototypeI<'s, 'i>> = HashMap::default();
+    for (rune_in_impl, citizen_rune_to_bound) in dispatcher_and_case_placeholdered_impl_reachable_prototypes.iter() {
+        for (rune_in_citizen, prototype_t) in citizen_rune_to_bound.iter() {
+            let INameT::FunctionBound(_fbn) = prototype_t.id.local_name else {
+                panic!("translate_override: prototype_t.id.local_name not FunctionBound");
+            };
+            let prototype_i = *impl_instantiation_bound_args.caller_rune_to_callee_rune_to_reachable_func
+                .get(rune_in_impl).expect("vassertSome rune_in_impl")
+                .get(rune_in_citizen).expect("vassertSome rune_in_citizen");
+            bound_param_prototype_t_to_bound_arg_prototype_i_from_impl.insert(prototype_t.id, prototype_i);
+        }
+    }
+    let dispatcher_instantiation_bound_params_to_args = Self::assemble_instantiation_bound_param_to_arg(dispatcher_instantiation_bound_params, _abstract_func_instantiation_bound_args);
+
+    let mut bound_param_func_id_to_bound_arg_index_map: IndexMap<IdT<'s, 't>, &'i PrototypeI<'s, 'i>> = IndexMap::default();
+    for (k, v) in bound_param_prototype_t_to_bound_arg_prototype_i_from_impl.iter() {
+        bound_param_func_id_to_bound_arg_index_map.insert(*k, *v);
+    }
+    let extra_bounds = DenizenBoundToDenizenCallerBoundArgI {
+        func_id_to_bound_arg_prototype: bound_param_func_id_to_bound_arg_index_map,
+        bound_param_impl_id_to_bound_arg_impl_id: IndexMap::default(),
+    };
+    let case_instantiation_bound_params_to_args = dispatcher_instantiation_bound_params_to_args.plus(&extra_bounds);
+
+    let override_prototype =
+        self.translate_prototype(monouts, &dispatcher_case_id_t, &case_instantiation_bound_params_to_args, &case_substitutions, &RegionT::Default, &override_prototype_t);
+
+    override_prototype
+  }
 
 
     pub fn translate_impl_callsite(&self, _monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, _impl_id_t: &IdT<'s, 't>, impl_id: &IdI<'s, 'i>, _instantiation_bounds_for_unsubstituted_impl: &'i InstantiationBoundArgumentsI<'s, 'i>) {
@@ -890,7 +968,8 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
     }
 
 
-    pub fn translate_abstract_func(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, interface_id: &IdI<'s, 'i>, desired_abstract_prototype_t: &PrototypeT<'s, 't>, desired_abstract_prototype: &PrototypeI<'s, 'i>, virtual_index: usize, supplied_bound_args: InstantiationBoundArgumentsI<'s, 'i>) {
+    // This is just for vtables, for run-time abstract funcs.
+    pub fn translate_abstract_func_for_vtable(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, interface_id: &IdI<'s, 'i>, desired_abstract_prototype_t: &PrototypeT<'s, 't>, desired_abstract_prototype: &PrototypeI<'s, 'i>, virtual_index: usize, supplied_bound_args: InstantiationBoundArgumentsI<'s, 'i>) {
         let desired_abstract_prototype = *desired_abstract_prototype;
 
         let desired_super_template_id = Compiler::get_super_template(self.typing_interner, &desired_abstract_prototype_t.id);
@@ -927,7 +1006,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
 
         let impls = monouts.interface_to_impls.get(interface_id).expect("vassertSome interface_to_impls").clone();
         for (impl_t, impl_) in impls.iter() {
-            self.translate_override(monouts, impl_t, impl_, desired_abstract_prototype_t, &desired_abstract_prototype, supplied_bound_args_ref);
+            self.translate_override_for_vtable(monouts, impl_t, impl_, desired_abstract_prototype_t, &desired_abstract_prototype, supplied_bound_args_ref);
         }
     }
 
@@ -1340,8 +1419,16 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, expr)
     }
 
-
-    pub fn translate_ref_expr(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, denizen_name: &IdT<'s, 't>, denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, perspective_region_t: &RegionT, expr: &ExpressionTE<'s, 't>) -> (KindIT<'s, 'i>, ExpressionIE<'s, 'i>) {
+    // VCOORD: get rid of perspective_region_t
+    pub fn translate_ref_expr(
+      &self,
+      monouts: &mut InstantiatedOutputsI<'s, 't, 'i>,
+      denizen_name: &IdT<'s, 't>,
+      denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>,
+      substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>,
+      perspective_region_t: &RegionT,
+      expr: &ExpressionTE<'s, 't>
+    ) -> (KindIT<'s, 'i>, ExpressionIE<'s, 'i>) {
         let _denizen_template_name = Compiler::get_template(self.typing_interner, *denizen_name);
         let result_it = self.translate_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &expr.result());
         let result_ce = match expr {
@@ -1624,9 +1711,13 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 }));
                 let interface_id = super_function_prototype.param_types()[virtual_param_index as usize].peel_all_references().expect_interface().id;
                 let instantiation_bound_args = self.translate_bound_args_for_callee(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, self.hinputs.get_instantiation_bound_args(super_function_prototype_t.id));
-                monouts.new_abstract_funcs.push((*super_function_prototype_t, super_function_prototype, virtual_param_index as usize, interface_id, instantiation_bound_args));
+                // This is just for vtables, for run-time.
+                monouts.new_abstract_funcs_for_vtable.push((*super_function_prototype_t, super_function_prototype, virtual_param_index as usize, interface_id, instantiation_bound_args));
                 result_ce
             }
+            // VCOORD: consider combining ExternFunctionCallTE into FunctionCallTE.
+            // the reason is that we can call externs through function bounds and through impl calls
+            // so the instantiator has to distinguish between them already.
             ExpressionTE::ExternFunctionCall(efc) => {
                 let ExternFunctionCallTE { prototype2: prototype_t, args, .. } = **efc;
                 let prototype = self.translate_prototype(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, prototype_t);
@@ -1657,32 +1748,7 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
                 }))
             }
             ExpressionTE::BoundFunctionCall(b) => {
-                let virtual_param_index = b.virtual_param_index;
-                let concrete_impl_id = *denizen_bound_to_denizen_caller_supplied_thing
-                    .bound_param_impl_id_to_bound_arg_impl_id.get(&b.impl_name)
-                    .expect("BoundFunctionCall: missing impl bound arg");
-                let args_it_ce: Vec<(KindIT<'s, 'i>, ExpressionIE<'s, 'i>)> = b.args.iter().map(|arg_te| {
-                    self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, arg_te)
-                }).collect();
-                let receiver_it = args_it_ce[virtual_param_index].0;
-                match receiver_it.peel_all_references() {
-                    KindIT::StructIT(_) => {
-                        let (concrete_impl_id_t, impl_bound_args) = *monouts.instantiated_impl_to_typed_impl_and_bounds.get(&concrete_impl_id)
-                            .expect("BoundFunctionCall: concrete impl not recorded in instantiated_impl_to_typed_impl_and_bounds");
-                        let abstract_bound_args = self.translate_bound_args_for_callee(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, self.hinputs.get_instantiation_bound_args(b.abstract_prototype.id));
-                        let override_prototype = self.resolve_override_prototype(monouts, &concrete_impl_id_t, &concrete_impl_id, b.abstract_prototype, &abstract_bound_args, impl_bound_args);
-                        let args_ce: Vec<ExpressionIE<'s, 'i>> = args_it_ce.iter().map(|(_, ce)| *ce).collect();
-                        ExpressionIE::FunctionCall(self.interner.alloc(FunctionCallIE {
-                            range: b.range,
-                            callable: override_prototype,
-                            args: self.interner.bump().alloc_slice_fill_iter(args_ce.into_iter()),
-                            result: result_it,
-                            loci: LocI { path: self.interner.alloc_slice_from_vec(b.loct.path.to_vec()) },
-                        }))
-                    }
-                    KindIT::InterfaceIT(_) => panic!("unimplemented: interface-receiver impl-bound dispatch"),
-                    other => panic!("BoundFunctionCall receiver peeled to a non-citizen: {:?}", other),
-                }
+              self.translate_bound_function_call(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &b, result_it)
             }
             ExpressionTE::Reinterpret(r) => {
                 let (inner_it, inner_ce) =
@@ -1983,25 +2049,95 @@ impl<'s, 'ctx, 't, 'i> InstantiatorI<'s, 'ctx, 't, 'i> where 's: 't, 's: 'i {
         (result_it, result_ce)
     }
 
-
-    pub fn maybe_immutabilify(_inner_ie: &ExpressionIE<'s, 'i>) -> ExpressionIE<'s, 'i> {
-        panic!("Unimplemented: maybe_immutabilify");
-        // innerIE.result.kind match {
-        //   case x if x.isPrimitive => return innerIE
-        //   case _ =>
-        // }
-        // innerIE match {
-        //   case SoftLoadIE(expr, MutableBorrowI, result) => return SoftLoadIE(expr, ImmutableBorrowI, result.copy(ownership = ImmutableBorrowI))
-        //   case SoftLoadIE(expr, MutableShareI, result) => return SoftLoadIE(expr, ImmutableShareI, result.copy(ownership = ImmutableShareI))
-        //   case _ =>
-        // }
-        // innerIE.result.ownership match {
-        //   case OwnI => innerIE
-        //   case ImmutableBorrowI | ImmutableShareI => innerIE
-        //   case MutableBorrowI => ImmutabilifyIE(innerIE, innerIE.result.copy(ownership = ImmutableBorrowI))
-        //   case MutableShareI => ImmutabilifyIE(innerIE, innerIE.result.copy(ownership = ImmutableShareI))
-        // }
+  fn translate_bound_function_call(
+    &self,
+    monouts: &mut InstantiatedOutputsI<'s, 't, 'i>,
+    denizen_name: &IdT<'s, 't>,
+    denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>,
+    substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>,
+    perspective_region_t: &RegionT,
+    b: &BoundFunctionCallTE<'s, 't>,
+    result_it: KindIT<'s, 'i>
+  ) -> ExpressionIE<'s, 'i> {
+    let virtual_param_index = b.virtual_param_index;
+    let concrete_impl_id = *denizen_bound_to_denizen_caller_supplied_thing
+        .bound_param_impl_id_to_bound_arg_impl_id.get(&b.impl_name)
+        .expect("BoundFunctionCall: missing impl bound arg");
+    let args_it_ce: Vec<(KindIT<'s, 'i>, ExpressionIE<'s, 'i>)> = b.args.iter().map(|arg_te| {
+      self.translate_ref_expr(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, arg_te)
+    }).collect();
+    let receiver_it = args_it_ce[virtual_param_index].0;
+    match receiver_it.peel_all_references() {
+      KindIT::StructIT(receiver_struct) => {
+        #[cfg(feature = "rust_interop")]
+        if self.rust_crates.contains(&receiver_struct.id.package_coord.module) {
+          let translated_id = self.translate_function_id(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &b.abstract_prototype.id);
+          let IFunctionNameI::Function(translated_fnix) = IFunctionNameI::try_from(translated_id.local_name).unwrap() else {
+            panic!("BoundFunctionCall extern dispatch: expected a Function name");
+          };
+          let mut extern_parameters: Vec<KindIT<'s, 'i>> = translated_fnix.parameters.to_vec();
+          extern_parameters[virtual_param_index] = receiver_it;
+          let extern_prototype = PrototypeI {
+            id: IdI {
+              package_coord: translated_id.package_coord,
+              init_steps: translated_id.init_steps,
+              local_name: INameI::from(IFunctionNameI::Function(self.interner.alloc(FunctionNameIX {
+                template: translated_fnix.template,
+                template_args: translated_fnix.template_args,
+                parameters: self.interner.alloc_slice_from_vec(extern_parameters),
+              }))),
+            },
+            return_type: self.translate_kind(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, &b.abstract_prototype.return_type),
+          };
+          let args_ce: Vec<ExpressionIE<'s, 'i>> = args_it_ce.iter().map(|(_, ce)| *ce).collect();
+          monouts.rust_instantiation_requests
+              .entry(extern_prototype.id)
+              .or_insert_with(|| self.interner.alloc(extern_prototype));
+          return ExpressionIE::ExternFunctionCall(self.interner.bump().alloc(ExternFunctionCallIE {
+            range: b.range,
+            prototype2: extern_prototype,
+            args: self.interner.bump().alloc_slice_fill_iter(args_ce.into_iter()),
+            result: result_it,
+          }))
+        }
+        let (concrete_impl_id_t, impl_bound_args) = *monouts.instantiated_impl_to_typed_impl_and_bounds.get(&concrete_impl_id)
+            .expect("BoundFunctionCall: concrete impl not recorded in instantiated_impl_to_typed_impl_and_bounds");
+        let abstract_bound_args =
+            self.translate_bound_args_for_callee(
+              monouts,
+              denizen_name,
+              denizen_bound_to_denizen_caller_supplied_thing,
+              substitutions,
+              perspective_region_t,
+              self.hinputs.get_instantiation_bound_args(b.abstract_prototype.id));
+        let abstract_template_args = IInstantiationNameT::try_from(b.abstract_prototype.id.local_name).unwrap().template_args();
+        let mut method_generic_values: IndexMap<i32, ITemplataI<'s, 'i>> = IndexMap::default();
+        for (i, method_generic_templata_t) in abstract_template_args.iter().enumerate() {
+          let templata_i = self.translate_templata(monouts, denizen_name, denizen_bound_to_denizen_caller_supplied_thing, substitutions, perspective_region_t, method_generic_templata_t);
+          method_generic_values.insert(i as i32, templata_i);
+        }
+        let override_prototype =
+            self.resolve_override_prototype(
+              monouts,
+              &concrete_impl_id_t,
+              &concrete_impl_id,
+              b.abstract_prototype,
+              &abstract_bound_args,
+              impl_bound_args,
+              &method_generic_values);
+        let args_ce: Vec<ExpressionIE<'s, 'i>> = args_it_ce.iter().map(|(_, ce)| *ce).collect();
+        ExpressionIE::FunctionCall(self.interner.alloc(FunctionCallIE {
+          range: b.range,
+          callable: override_prototype,
+          args: self.interner.bump().alloc_slice_fill_iter(args_ce.into_iter()),
+          result: result_it,
+          loci: LocI { path: self.interner.alloc_slice_from_vec(b.loct.path.to_vec()) },
+        }))
+      }
+      KindIT::InterfaceIT(_) => panic!("unimplemented: interface-receiver impl-bound dispatch"),
+      other => panic!("BoundFunctionCall receiver peeled to a non-citizen: {:?}", other),
     }
+  }
 
     pub fn translate_function_id(&self, monouts: &mut InstantiatedOutputsI<'s, 't, 'i>, denizen_name: &IdT<'s, 't>, denizen_bound_to_denizen_caller_supplied_thing: &DenizenBoundToDenizenCallerBoundArgI<'s, 't, 'i>, substitutions: &IndexMap<IdT<'s, 't>, ITemplataI<'s, 'i>>, perspective_region_t: &RegionT, full_name_t: &IdT<'s, 't>) -> IdI<'s, 'i> {
         let IdT { package_coord: module, init_steps: steps, local_name: last, .. } = *full_name_t;
