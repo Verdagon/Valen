@@ -13,6 +13,7 @@ use crate::typing::borrow_checker::check_usages_types::*;
 use crate::typing::borrow_checker::group_expr::{GroupChildStepG, GroupExprG, GroupPathG, GroupRootG};
 use crate::typing::borrow_checker::kind_g::*;
 use crate::typing::borrow_checker::templata_g::*;
+use crate::typing::names::names::IVarNameT;
 use crate::typing::templata::templata::*;
 use crate::typing::types::types::*;
 use crate::utils::range::RangeS;
@@ -26,19 +27,21 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_g_body: ExpressionGE<'s, 't, 'g>,
     func_declared_mut_effects: Vec<GroupPathG<'s, 't, 'g>>
   ) -> Result<(), ICompileErrorT<'s, 't>> {
-    let mut group_forest =
-        GroupForest {
-          name_to_tree: IndexMap::new(),
-        };
+    let mut pending_uses = PendingUseList { map: IndexMap::new() };
     let mut next_held_num = 0;
+    let mut churned_after_this_in_current_loop = Vec::new();
+    let mut revived_in_current_loop = Vec::new();
     self.check_expr(
       coutputs,
       function_s,
       arena,
       &func_declared_mut_effects,
-      &mut group_forest,
+      &mut pending_uses,
       function_g_body,
-      &mut next_held_num)?;
+      &mut next_held_num,
+      &mut churned_after_this_in_current_loop,
+      &mut revived_in_current_loop,
+    )?;
     Ok(())
   }
 
@@ -48,48 +51,61 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     function_s: &'s FunctionS<'s>,
     arena: &'g Bump,
     func_declared_mut_effects: &Vec<GroupPathG<'s, 't, 'g>>,
-    group_forest: &mut GroupForest<'s, 't>,
+    pending_uses: &mut PendingUseList<'s, 't, 'g>,
     expr: ExpressionGE<'s, 't, 'g>,
     next_held_num: &mut u32,
+    // As we encounter churns inside the loop, we add them to this list.
+    // Processing the start of a loop needs this information.
+    churned_after_this_in_current_loop: &mut Vec<(GroupPathG<'s, 't, 'g>, RangeS<'s>)>,
+    // As we (going backwards) encounter restackifies/mutates, and they're not inside
+    // churned_after_this, we put them in this list, to note that they'll be alive at the end of the
+    // loop.
+    // Processing the start of a loop needs this information.
+    // We never remove from this. Once something is added, we *know* it'll be live at loop end.
+    revived_in_current_loop: &mut Vec<RefKey<'s, 't>>
   ) -> Result<(), ICompileErrorT<'s, 't>> {
     match expr {
       ExpressionGE::Block(BlockGE { range, inner, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *inner, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::LetNormal(LetNormalGE { range, variable, expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
-        // self.insert_new_variable(group_tree, RefKey::Named(variable.name), variable.tyype);
+        let _old_value = pending_uses.map.swap_remove(&RefKey::Named(variable.name));
+        // Note, we dont do this: assert!(_old_value.is_some());
+        // because we might not ever have used it, therefore it might not be in the map.
+
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
+      }
+      ExpressionGE::Restackify(RestackifyGE { range, variable, source_expr, result }) => {
+        let _old_value = pending_uses.map.swap_remove(&RefKey::Named(variable.name));
+        // Note, we dont do this: assert!(_old_value.is_some());
+        // because we might not ever have used it, therefore it might not be in the map.
+
+        self.revive(churned_after_this_in_current_loop, revived_in_current_loop, &variable.name, source_expr);
+
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *source_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::LetAndLend(LetAndLendGE { range, loct, variable, expr, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
+        let _old_value = pending_uses.map.swap_remove(&RefKey::Named(variable.name));
+        // Note, we dont do this: assert!(_old_value.is_some());
+        // because we might not ever have used it, therefore it might not be in the map.
+
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::LocalLookup(LocalLookupGE { range, local_variable, result, .. }) => {
-        // self.check_variable_still_valid(group_tree, *range, RefKey::Named(local_variable.name), local_variable.tyype)?;
-
-        // if is_use_after_churn(group_tree, RefKey::Named(local_variable.name)) {
-        //   return Err(ICompileErrorT::BorrowCheckError {
-        //     range,
-        //     kind: BorrowErrorKind::UseAfterChurn { local: local_variable.name },
-        //   });
-        // }
-        // fn is_use_after_churn(node, key) -> bool {
-        //   node.locals.get(&key).is_some_and(|e| e.invalidated_by.is_some())
-        //       || node.locals_in_ellipsis.get(&key).is_some_and(|e| e.invalidated_by.is_some())
-        //       || node.name_to_child.values().any(|child| is_use_after_churn(child, key))
-        // }
+        self.note_pending_use(pending_uses, RefKey::Named(local_variable.name), *range, KindGT::BorrowRef(result));
       }
       ExpressionGE::Unlet(UnletGE { range, variable: local_variable, result, .. }) => {
         // Nothing needed
       }
       ExpressionGE::Discard(DiscardGE { range, expr: inner, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *inner, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::Return(ReturnGE { range, source_expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *source_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::Consecutor(ConsecutorGE { range, exprs, result: result_tt, .. }) => {
-        for expr in exprs.iter() {
-          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
+        for expr in exprs.iter().rev() {
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
         }
       }
       ExpressionGE::ConstantInt(ConstantIntGE { range, value, bits, .. }) => {
@@ -108,98 +124,147 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
         unimplemented!()
       }
       ExpressionGE::Deref(DerefGE { range, loct, inner: source_te, result: result_tt, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_te, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *source_te, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::FunctionCall(FunctionCallGE { loct, range, callable, args, result, mut_effects, .. }) => {
-        for arg in args.iter() {
+        // (Going backwards, remember)
+
+        // Result is born here
+
+        // Now the call happens, so handle the mut effects
+        for path in mut_effects.iter() {
+          churned_after_this_in_current_loop.push((*path, range[0]));
+        }
+        let mel = MutEffectLoc { loct: *loct, range: range[0] };
+        self.check_mut_effect(func_declared_mut_effects, pending_uses, mel, mut_effects)?;
+
+        // Now handle the arguments.
+        // Register the args, so that they're all pending uses, so that the next loop can check
+        // that they don't invalidate them while they're Held.
+        let mut held_keys = Vec::new();
+        for arg_ge in args.iter().rev() {
+          let new_held_key = RefKey::Held(*next_held_num);
+          *next_held_num += 1;
+          self.note_pending_use(pending_uses, new_held_key, arg_ge.range(), arg_ge.result());
+          held_keys.push(new_held_key);
+        }
+        // We've set our expectations of the past.
+        // Now we go through and "create" the held registers (which for us means unregistering their
+        // expectations).
+        for (arg_ge, held_key) in args.iter().rev().zip(held_keys.iter()) {
+          let old_value = pending_uses.map.swap_remove(held_key).unwrap();
           // Careful, this may cause some mut effects, that could invalidate other arguments.
           // We check the argument types again below, in case that happened.
-          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *arg, next_held_num)?;
-        }
-        // Check each argument again, just in case any of the arguments invalidated any of the
-        // other args.
-        for arg in args.iter() {
-          self.check_kind_still_valid(group_forest, arg.range(), arg.result())?;
-        }
-
-        // Conceptually, the call happens here
-
-        let mel = MutEffectLoc { loct: *loct, range: range[0] };
-
-        for mut_effect in mut_effects.iter() {
-          self.note_mut_effect(group_forest, mel, mut_effect.path);
-
-          // If the effect affects a parameter, make sure it doesn't violate the function's declared
-          // mut effects
-          match mut_effect.path.root {
-            GroupRootG::Rune(rune) => {
-              let allowed =
-                  func_declared_mut_effects.iter().any(|d| churn_matches_func_declared_mut_effect(d, &mut_effect.path));
-              if !allowed {
-                return Err(ICompileErrorT::BorrowCheckError { range: range[0], kind: BorrowErrorKind::UndeclaredChurn });
-              }
-            }
-            GroupRootG::Local(_) => {} // we don't care about mutations to these
-            GroupRootG::AmbientMulti() => unimplemented!(),
-            GroupRootG::ParamAnonymousGroup(_) => unimplemented!(),
-          }
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *arg_ge, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
         }
       }
       ExpressionGE::LockWeak(_) => unimplemented!(),
       ExpressionGE::BorrowToWeak(_) => unimplemented!(),
       ExpressionGE::If(IfGE { range, loct, condition: condition_ge, then_call: then_ge, else_call: else_ge, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *condition_ge, next_held_num)?;
-
         // TODO(optimize): possibly expensive clones here. i wonder if an arena would do well...
+        let mut pending_uses_for_then = pending_uses.clone();
+        let mut pending_uses_for_else = pending_uses.clone();
 
-        let mut group_tree_for_then = group_forest.clone();
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut group_tree_for_then, *then_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut pending_uses_for_else, *else_ge, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut pending_uses_for_then, *then_ge, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
 
-        let mut group_tree_for_else = group_forest.clone();
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, &mut group_tree_for_else, *else_ge, next_held_num)?;
+        // Now we're before the if, so let's merge the pending uses into the main one.
+
+        // TODO(optimize): we can do this without clearing, and without an above clone
+        pending_uses.map.clear();
 
         // Can be typed Never if a break or a return exited out of the branch, in which case,
         // don't incorporate its invalidations
         if !matches!(then_ge.result(), KindGT::Never(_)) {
-          merge_invalidations_into_from(group_forest, group_tree_for_then);
+          self.merge_pending_uses_into(pending_uses, pending_uses_for_then);
         }
         // Can be typed Never if a break or a return exited out of the branch, in which case,
         // don't incorporate its invalidations
         if !matches!(else_ge.result(), KindGT::Never(_)) {
-          merge_invalidations_into_from(group_forest, group_tree_for_else);
+          self.merge_pending_uses_into(pending_uses, pending_uses_for_else);
         }
+
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *condition_ge, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
-      ExpressionGE::While(WhileGE { range, loct, pre_iteration_loct, post_iteration_loct, block, result, mut_effects }) => {
-        // Before the loop, note all the mut effects that happen inside the loop.
-        let mel = MutEffectLoc { loct: *pre_iteration_loct, range: *range };
-        for mut_effect in mut_effects.iter() {
-          self.note_mut_effect(group_forest, mel, mut_effect.path);
-        }
+      ExpressionGE::While(WhileGE { range, loct, pre_iteration_loct, post_iteration_loct, block, result }) => {
+        let mut churned_in_this_loop = Vec::new();
+        let mut revived_in_this_loop = Vec::new();
 
         // Now do the body. "Past iterations"'s mutations were noted above, so we'll correctly
         // detect invalidations inside the loop.
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, block.inner, next_held_num)?;
+        self.check_expr(
+            coutputs,
+            function_s,
+            arena,
+            func_declared_mut_effects,
+            pending_uses,
+            block.inner,
+            next_held_num,
+            // This *isnt* churned_after_this_in_current_loop.
+            // This is just for *this* loop.
+            &mut churned_in_this_loop,
+            // This *isnt* revived_in_current_loop.
+            // This is just for *this* loop.
+            &mut revived_in_this_loop)?;
 
-        // After the loop, note all the mut effects that happen inside the loop.
-        let mel = MutEffectLoc { loct: *post_iteration_loct, range: *range };
-        for mut_effect in mut_effects.iter() {
-          self.note_mut_effect(group_forest, mel, mut_effect.path);
+        // Now we're at the beginning of the loop. We need to check for cases like this:
+        //     e = &arr[0];
+        //     while (cond) {
+        //       observe(e);   // <-- This is invalid...
+        //       mutate(&arr); // ...because this churned e "in the previous iteration".
+        //     }
+        // Of course, we don't do any checking on that `observe(e)` line. Instead we added an entry
+        // to `pending_uses`.
+        // That entry is an expectation of two things:
+        //  * `e` will be live *before* the loop.
+        //  * `e` will be live *at the end* of the loop.
+        // The former will be checked later like normal, we don't care about that.
+        // We care about the latter. So how do we answer that?
+        // We can use `revived_in_this_loop` and `churned_in_this_loop`.
+        // If it's in *neither*, then we're good.
+        // If it's in *both*, then we're good.
+        // If it's only in `churned_in_this_loop`, then it's an error.
+        for (ref_key, pending_use) in &pending_uses.map {
+          for (churn_path, churn_range) in churned_in_this_loop.iter() {
+            if self.mut_effect_invalidates_type(&[*churn_path], pending_use.kind) {
+              if revived_in_this_loop.contains(ref_key) {
+                // It was revived, so don't worry about it.
+              } else {
+                // It's a pending use, that was churned in this loop, and not revived.
+                // Give an error.
+                return Err(ICompileErrorT::BorrowCheckError {
+                  range: pending_use.earliest_use_range,
+                  kind: BorrowErrorKind::UseAfterChurn { local: *ref_key, churned_at: *churn_range },
+                })
+              }
+            }
+          }
         }
       }
       ExpressionGE::Mutate(MutateGE { range, loct, destination_expr, source_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *destination_expr, next_held_num)?;
+        let (dest_group, dest_inner_gt) =
+            match destination_expr.result() {
+              KindGT::BorrowRef(BorrowRefGT { inner, group }) => (group, inner),
+              _ => unimplemented!(),
+            };
 
-        match destination_expr.result() {
-          KindGT::BorrowRef(BorrowRefGT { inner, group }) => {
-            for path in group.group {
-              self.note_mut_effect(group_forest, MutEffectLoc { loct: *loct, range: *range }, *path);
-            }
+        match dest_group.group {
+          [GroupPathG { root: GroupRootG::Local(local_name), steps: [], ellipsis: false }] => {
+            // If we're setting a local, then mark it revived.
+            self.revive(churned_after_this_in_current_loop, revived_in_current_loop, local_name, source_expr);
+            // Don't mark destination churned, only unlet does that.
           }
-          _ => unimplemented!(),
+          _ => {
+            self.check_mut_effect(func_declared_mut_effects, pending_uses, MutEffectLoc { loct: *loct, range: *range }, dest_group.group)?;
+            for path in dest_group.group {
+              churned_after_this_in_current_loop.push((*path, *range));
+            }
+            self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *destination_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
+          }
         }
+
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *source_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
-      ExpressionGE::Restackify(_) => unimplemented!(),
       ExpressionGE::Break(_) => {
         // Do nothing
       }
@@ -220,148 +285,247 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
       ExpressionGE::ExternFunctionCall(_) => unimplemented!(),
       ExpressionGE::BoundFunctionCall(_) => unimplemented!(),
       ExpressionGE::Reinterpret(ReinterpretGE { range, expr: source_ge, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *source_ge, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *source_ge, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::Construct(ConstructGE { args, .. }) => {
-        for arg in args.iter() {
-          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *arg, next_held_num)?;
+        for arg in args.iter().rev() {
+          self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *arg, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
         }
       }
       ExpressionGE::NewRuntimeSizedArray(NewRuntimeSizedArrayGE { capacity_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *capacity_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *capacity_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::StaticArrayFromCallable(StaticArrayFromCallableGE { generator, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *generator, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *generator, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::DestroyStaticSizedArrayIntoFunction(DestroyStaticSizedArrayIntoFunctionGE { array_expr, consumer, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *consumer, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *consumer, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *array_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::DestroyStaticSizedArrayIntoLocals(DestroyStaticSizedArrayIntoLocalsGE { expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::DestroyRuntimeSizedArray(DestroyRuntimeSizedArrayGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *array_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::RuntimeSizedArrayCapacity(RuntimeSizedArrayCapacityGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *array_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::PushRuntimeSizedArray(PushRuntimeSizedArrayGE { array_expr, new_element_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *new_element_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *new_element_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *array_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::PopRuntimeSizedArray(PopRuntimeSizedArrayGE { array_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *array_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::InterfaceToInterfaceUpcast(InterfaceToInterfaceUpcastGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *inner_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::UpcastInterface(UpcastInterfaceGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *inner_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::UpcastGeneric(UpcastGenericGE { inner_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner_expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *inner_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::Destroy(DestroyGE { range, expr, struct_tt, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *expr, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::CopyPrim(CopyPrimGE { range, loct, inner, result }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *inner, next_held_num)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *inner, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::StaticSizedArrayLookup(_) => unimplemented!(),
       ExpressionGE::RuntimeSizedArrayLookup(RuntimeSizedArrayLookupGE { range, array_expr, array_type, index_expr, result, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *array_expr, next_held_num)?;
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *index_expr, next_held_num)?;
-
-        // Check the array is still valid
-        self.check_kind_still_valid(group_forest, array_expr.range(), array_expr.result())?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *index_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *array_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
       ExpressionGE::MemberLookup(MemberLookupGE { struct_expr, .. }) => {
-        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, group_forest, *struct_expr, next_held_num)?;
-
-        // Check the struct is still valid
-        self.check_kind_still_valid(group_forest, struct_expr.range(), struct_expr.result())?;
+        self.check_expr(coutputs, function_s, arena, func_declared_mut_effects, pending_uses, *struct_expr, next_held_num, churned_after_this_in_current_loop, revived_in_current_loop)?;
       }
     }
     Ok(())
   }
 
-  fn note_mut_effect<'g>(
+  fn revive<'g>(
     &self,
-    group_subtree: &mut GroupForest<'s, 't>,
-    effect_loc: MutEffectLoc<'s, 't>,
-    path: GroupPathG<'s, 't, 'g>,
+    churned_after_this_in_current_loop: &mut Vec<(GroupPathG<'s, 't, 'g>, RangeS<'s>)>,
+    revived_in_current_loop: &mut Vec<RefKey<'s, 't>>,
+    local_name: &IVarNameT<'s, 't>,
+    source_expr: &ExpressionGE<'s, 't, 'g>
   ) {
-    let child =
-        group_subtree.name_to_tree
-            .entry(path.root)
-            .or_insert_with(|| GroupTree {
-              last_mut_effect: None,
-              name_to_child: IndexMap::new(),
-            });
-      self.note_mut_effect_inner(child, effect_loc, path.steps);
-  }
-
-  fn note_mut_effect_inner<'g>(
-    &self,
-    group_subtree: &mut GroupTree<'s, 't>,
-    effect_loc: MutEffectLoc<'s, 't>,
-    remaining_steps: &'g [GroupChildStepG<'s>],
-  ) {
-    if remaining_steps.len() == 0 {
-      group_subtree.last_mut_effect = Some(effect_loc);
-    } else {
-      let next_step = remaining_steps[0];
-      let child =
-      group_subtree.name_to_child
-          .entry(next_step)
-          .or_insert_with(|| GroupTree {
-            last_mut_effect: None,
-            name_to_child: IndexMap::new(),
-          });
-      self.note_mut_effect_inner(child, effect_loc, &remaining_steps[1..]);
+    let mut invalidated_by_later_churn = false;
+    for (churn, churn_range) in churned_after_this_in_current_loop.iter() {
+      if self.mut_effect_invalidates_type(&[*churn], source_expr.result()) {
+        invalidated_by_later_churn = true;
+        break;
+      }
+    }
+    if !invalidated_by_later_churn {
+      revived_in_current_loop.push(RefKey::Named(*local_name));
     }
   }
 
-  // fn invalidate_descendant_groups_of<'g>(
-  //   &self,
-  //   group_subtree: &mut GroupForest<'s, 't>,
-  //   effect_range: RangeS<'s>
-  // ) {
-  //   // DON'T invalidate every local in this group. We don't invalidate references into this group,
-  //   // we invalidate references into descendant groups.
-  //
-  //   // Recurse
-  //   for (group_step, group_child_subtree) in &mut group_subtree.name_to_child {
-  //     match group_step {
-  //       // These aren't child groups, so keep looking for child groups in them...
-  //       GroupStep::Member { .. } => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
-  //       GroupStep::InlineElements => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
-  //       // These are actually child groups, so deep invalidate them.
-  //       GroupStep::ChildElements => self.deep_invalidate(group_child_subtree, effect_range),
-  //       GroupStep::Variant { .. } => self.deep_invalidate(group_child_subtree, effect_range),
-  //       // TODO: Not sure about these cases
-  //       GroupStep::Rune(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
-  //       GroupStep::ParamAnonymousGroup(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
-  //       GroupStep::Local(_) => self.invalidate_descendant_groups_of(group_child_subtree, effect_range),
-  //     }
-  //   }
-  // }
+  fn check_mut_effect<'g>(
+    &self,
+    func_declared_mut_effects: &Vec<GroupPathG<'s, 't, 'g>>,
+    pending_uses: &PendingUseList<'s, 't, 'g>,
+    effect_loc: MutEffectLoc<'s, 't>,
+    mut_effect_paths: GroupExprG<'s, 't, 'g>,
+  ) -> Result<(), ICompileErrorT<'s, 't>> {
+    for (ref_key, pending_use) in &pending_uses.map {
+      if self.mut_effect_invalidates_type(mut_effect_paths, pending_use.kind) {
+        return Err(ICompileErrorT::BorrowCheckError {
+          range: pending_use.earliest_use_range,
+          kind: BorrowErrorKind::UseAfterChurn { local: *ref_key, churned_at: effect_loc.range },
+        })
+      }
+    }
 
-  // fn deep_invalidate<'g>(
-  //   &self,
-  //   group_subtree: &mut GroupForest<'s, 't>,
-  //   effect_range: RangeS<'s>
-  // ) {
-  //   // Invalidate every local in this group
-  //   for (local_key, local) in &mut group_subtree.locals {
-  //     local.invalidated_by = Some(effect_range);
-  //   }
-  //   // Invalidate every local in every descendant group
-  //   for (group_step, group_child_subtree) in &mut group_subtree.name_to_child {
-  //     self.deep_invalidate(group_child_subtree, effect_range);
-  //   }
-  // }
+    // Also make sure that the current function's declared mut effects contain this mut path.
+    for churn_path in mut_effect_paths.iter() {
+      match churn_path.root {
+        // Skip any changes to locals
+        GroupRootG::Local(_) => continue,
+        GroupRootG::Rune(_) => {}
+        GroupRootG::ParamAnonymousGroup(_) => {}
+        GroupRootG::AmbientMulti() => {}
+      }
+      let mut mentioned_in_func_decl = false;
+      for func_declared_mut_effect in func_declared_mut_effects {
+        if func_declared_mut_path_contains_churn_path(func_declared_mut_effect, churn_path) {
+          mentioned_in_func_decl = true;
+        }
+      }
+      if !mentioned_in_func_decl {
+        return Err(ICompileErrorT::BorrowCheckError {
+          range: effect_loc.range,
+          kind: BorrowErrorKind::UndeclaredChurn,
+        });
+      }
+    }
+
+    Ok(())
+  }
+
+  fn mut_effect_invalidates_type<'g>(
+    &self,
+    mut_effect_paths: &[GroupPathG<'s, 't, 'g>],
+    kind_gt: KindGT<'s, 't, 'g>,
+  ) -> bool {
+    match kind_gt {
+      KindGT::Never(_) | KindGT::Void(_) | KindGT::Int(_) | KindGT::Bool(_) | KindGT::Str(_) | KindGT::Float(_) | KindGT::USize(_) | KindGT::OverloadSet(_) => {
+      }
+      KindGT::BorrowRef(BorrowRefGT { inner, group }) => {
+        if self.mut_effect_invalidates_used_paths(mut_effect_paths, group.group) {
+          return true;
+        }
+        if self.mut_effect_invalidates_type(mut_effect_paths, *inner) {
+          return true;
+        }
+      }
+      KindGT::OwnRef(_) => unimplemented!(),
+      KindGT::ShareRef(_) => unimplemented!(),
+      KindGT::WeakRef(_) => unimplemented!(),
+      KindGT::Struct(StructGT { id, template_args, .. }) => {
+        for templata in template_args.iter() {
+          if self.mut_effect_invalidates_templata(mut_effect_paths, *templata) {
+            return true;
+          }
+        }
+      }
+      KindGT::Interface(InterfaceGT { id, template_args, .. }) => {
+        for templata in template_args.iter() {
+          if self.mut_effect_invalidates_templata(mut_effect_paths, *templata) {
+            return true;
+          }
+        }
+      }
+      KindGT::StaticSizedArray(StaticSizedArrayGT { name, size, element_type }) => {
+        if self.mut_effect_invalidates_type(mut_effect_paths, *element_type) {
+          return true;
+        }
+        if self.mut_effect_invalidates_templata(mut_effect_paths, *size) {
+          return true;
+        }
+      }
+      KindGT::RuntimeSizedArray(RuntimeSizedArrayGT { name, element_type }) => {
+        if self.mut_effect_invalidates_type(mut_effect_paths, *element_type) {
+          return true;
+        }
+      }
+      KindGT::KindPlaceholder(_) => {}
+    }
+    false
+  }
+  fn mut_effect_invalidates_templata<'g>(
+    &self,
+    mut_effect_paths: &[GroupPathG<'s, 't, 'g>],
+    templata_gt: ITemplataG<'s, 't, 'g>,
+  ) -> bool {
+    match templata_gt {
+      ITemplataG::Group(GroupTemplataG { group, kind, .. }) => {
+        if self.mut_effect_invalidates_used_paths(mut_effect_paths, group) {
+          return true;
+        }
+      }
+      ITemplataG::Kind(KindTemplataG { kind }) => {
+        if self.mut_effect_invalidates_type(mut_effect_paths, kind) {
+          return true;
+        }
+      }
+      ITemplataG::Placeholder(_) => {}
+      ITemplataG::Integer(_) => unimplemented!(),
+      ITemplataG::Boolean(_) => unimplemented!(),
+      ITemplataG::String(_) => unimplemented!(),
+      ITemplataG::Prototype(_) => unimplemented!(),
+      ITemplataG::Isa(_) => unimplemented!(),
+      ITemplataG::CoordList(_) => unimplemented!(),
+      ITemplataG::RuntimeSizedArrayTemplate(_) => unimplemented!(),
+      ITemplataG::StaticSizedArrayTemplate(_) => unimplemented!(),
+      ITemplataG::Function(_) => unimplemented!(),
+      ITemplataG::StructDefinition(_) => unimplemented!(),
+      ITemplataG::InterfaceDefinition(_) => unimplemented!(),
+      ITemplataG::ImplDefinition(_) => unimplemented!(),
+      ITemplataG::ExternFunction(_) => unimplemented!(),
+    }
+    false
+  }
+
+  fn mut_effect_invalidates_used_paths<'g>(
+    &self,
+    churn_paths: &[GroupPathG<'s, 't, 'g>],
+    used_paths: GroupExprG<'s, 't, 'g>,
+  ) -> bool {
+    for churn_path in churn_paths {
+      for used_path in used_paths {
+        if used_path.ellipsis {
+          // If a reference is pointing at a thing "or anywhere inside", then it's invalidated
+          // by any mutation above or below it.
+          if path_is_prefix_of_path(churn_path, used_path) ||
+              path_is_prefix_of_path(used_path, churn_path) {
+            return true;
+          }
+        } else {
+          // "Are we churning the used path (or something above it)?"
+          if path_is_prefix_of_path(churn_path, used_path) &&
+              // "Are we're churning something above it?"
+              used_path.steps.len() > churn_path.steps.len() &&
+              // "Is used_path is an independent descendant group of the churned path?"
+              used_path.steps[churn_path.steps.len()..].iter().any(|step| {
+                match step {
+                  GroupChildStepG::Member { .. } => false,
+                  GroupChildStepG::ChildElements { .. } => true,
+                  GroupChildStepG::InlineElements { .. } => false,
+                  GroupChildStepG::Variant { .. } => true,
+                }
+              }) {
+            // Then yes, this churn path just invalidated the use path.
+            return true;
+          }
+        }
+      }
+    }
+    false
+  }
 
   fn collect_kind_mentioned_group_templatas<'g>(
     &self,
@@ -434,244 +598,78 @@ impl<'s, 'ctx, 't> Compiler<'s, 'ctx, 't> {
     }
   }
 
-  fn lookup_group_subtree<'g, 'x>(
+  fn note_pending_use<'g>(
     &self,
-    forest: &'x mut GroupForest<'s, 't>,
-    path: GroupPathG<'s, 't, 'g>,
-  ) -> &'x mut GroupTree<'s, 't> {
-    let tree =
-        forest.name_to_tree
-            .entry(path.root)
-            .or_insert_with(|| GroupTree {
-              last_mut_effect: None,
-              name_to_child: IndexMap::new(),
+    pending_uses: &mut PendingUseList<'s, 't, 'g>,
+    ref_key: RefKey<'s, 't>,
+    use_range: RangeS<'s>,
+    kind: KindGT<'s, 't, 'g>
+  ) {
+    let entry =
+        pending_uses.map
+            .entry(ref_key)
+            .or_insert_with(|| {
+              PendingUse { earliest_use_range: use_range, kind: kind, }
             });
-    self.lookup_group_subtree_inner(tree, &path.steps)
-  }
-
-  fn lookup_group_subtree_inner<'g, 'x>(
-    &self,
-    subtree: &'x mut GroupTree<'s, 't>,
-    remaining_path: &'g [GroupChildStepG<'s>]
-  ) -> &'x mut GroupTree<'s, 't> {
-    if remaining_path.len() == 0 {
-      subtree
-    } else {
-      let subroot =
-          subtree.name_to_child
-              .entry(remaining_path[0])
-              .or_insert_with(|| GroupTree {
-                last_mut_effect: None,
-                name_to_child: IndexMap::new(),
-              });
-      self.lookup_group_subtree_inner(subroot, &remaining_path[1..])
+    if use_range.begin.offset < entry.earliest_use_range.begin.offset {
+      entry.earliest_use_range = use_range;
     }
   }
 
-  fn check_kind_still_valid<'g>(
+  fn merge_pending_uses_into<'g>(
     &self,
-    group_forest: &mut GroupForest<'s, 't>,
-    use_range: RangeS<'s>,
-    kind_g: KindGT<'s, 't, 'g>
-  ) -> Result<(), ICompileErrorT<'s, 't>> {
-    let mut mentioned_group_templatas = Vec::new();
-    self.collect_kind_mentioned_group_templatas(&mut mentioned_group_templatas, kind_g);
-    for mentioned_group_templata in mentioned_group_templatas {
-      // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
-      // (Perhaps we should make it one)
-      self.check_templata_still_valid(
-        group_forest, use_range, mentioned_group_templata)?;
-    }
-    Ok(())
-  }
-
-  fn check_templata_still_valid<'g>(
-    &self,
-    group_forest: &mut GroupForest<'s, 't>,
-    use_range: RangeS<'s>,
-    group_templata: GroupTemplataG<'s, 't, 'g>
-  ) -> Result<(), ICompileErrorT<'s, 't>> {
-    for mentioned_group in group_templata.group {
-      // Note this *doesn't* look up the ellipsis part of the group, because ellipsis isn't a subtree.
-      // (Perhaps we should make it one)
-
-      // let subroot =
-      //     group_forest.name_to_tree
-      //         .entry(mentioned_group.root)
-      //         .or_insert_with(|| GroupTree {
-      //           last_mut_effect: None,
-      //           name_to_child: IndexMap::new(),
-      //         });
-      match mentioned_group.ellipsis {
-        false => {
-          self.check_target_group_invalidated_since(
-            group_forest, *mentioned_group, use_range, group_templata.born_at)?;
-        }
-        true => {
-          // Will detect any mutations to any ancestors
-          self.check_target_group_invalidated_since(
-            group_forest, *mentioned_group, use_range, group_templata.born_at)?;
-          // TODO: optimize, we're descending into the subtree twice
-          // Now detect any mutations to the target itself, plus its descendant groups
-          let subtree = self.lookup_group_subtree(group_forest, *mentioned_group);
-          if let Some(last_mut_effect_loc) = subtree.last_mut_effect {
-            if last_mut_effect_loc.loct.path > group_templata.born_at.path {
-              return Err(ICompileErrorT::BorrowCheckError {
-                range: use_range,
-                kind: BorrowErrorKind::UseAfterChurn { local: RefKey::Held(0), churned_at: last_mut_effect_loc.range }
-              });
-            }
-          }
-          // TODO: look for any changes to any descendants
-        }
-      }
-    }
-    Ok(())
-  }
-
-  // This function visits each group down to the target group
-  fn check_target_group_invalidated_since<'g>(
-    &self,
-    forest: &mut GroupForest<'s, 't>,
-    path: GroupPathG<'s, 't, 'g>,
-    use_range: RangeS<'s>,
-    target_group_invalidated_since: LocT<'t>,
-    // The bool is true iff the target group is an independent descendant of the current group.
-  ) -> Result<(), ICompileErrorT<'s, 't>> {
-    // TODO: we really need to get a better term than child group. "independent descendant group"?
-    let child_tree =
-        forest.name_to_tree
-            .entry(path.root)
-            .or_insert_with(|| GroupTree {
-              last_mut_effect: None,
-              name_to_child: IndexMap::new(),
-            });
-    let _ =
-        self.check_target_group_invalidated_since_inner(
-          child_tree, &path.steps, use_range, target_group_invalidated_since)?;
-    Ok(())
-  }
-
-  // This function visits each group down to the target group
-  fn check_target_group_invalidated_since_inner<'g>(
-    &self,
-    subtree: &mut GroupTree<'s, 't>,
-    remaining_path: &'g [GroupChildStepG<'s>],
-    use_range: RangeS<'s>,
-    target_group_invalidated_since: LocT<'t>,
-    // The bool is true iff the target group is an independent descendant of the current group.
-  ) -> Result<bool, ICompileErrorT<'s, 't>> {
-    match remaining_path.first() {
-      None => Ok(false),
-      Some(first) => {
-        let (child_is_independent) =
-            match first {
-              GroupChildStepG::Member { member_name } => false,
-              GroupChildStepG::ChildElements {} => true,
-              GroupChildStepG::InlineElements { .. } => false,
-              GroupChildStepG::Variant { variant_name } => true,
-            };
-
-        // TODO: we really need to get a better term than child group. "independent descendant group"?
-        let child_tree =
-            subtree.name_to_child
-                .entry(*first)
-                .or_insert_with(|| GroupTree {
-                  last_mut_effect: None,
-                  name_to_child: IndexMap::new(),
-                });
-        // First, check if anyone has mutated anything closer to the target group.
-        let target_is_independent_of_child =
-            self.check_target_group_invalidated_since_inner(
-              child_tree, &remaining_path[1..], use_range, target_group_invalidated_since)?;
-        let target_is_independent = child_is_independent || target_is_independent_of_child;
-
-        // If we get here, then there was no problem closer to the target group.
-        // Now let's check if our group was modified since then. If so, and the target group is a
-        // child group compared to us, throw an error pointing at the argument's own location.
-
-        if let Some(last_mut_effect_loc) = subtree.last_mut_effect {
-          if last_mut_effect_loc.loct.path > target_group_invalidated_since.path {
-            if target_is_independent {
-              return Err(ICompileErrorT::BorrowCheckError {
-                range: use_range,
-                kind: BorrowErrorKind::UseAfterChurn { local: RefKey::Held(0), churned_at: last_mut_effect_loc.range }
-              });
-            }
-          }
-        }
-
-        Ok(target_is_independent)
-      }
+    into: &mut PendingUseList<'s, 't, 'g>,
+    from: PendingUseList<'s, 't, 'g>,
+  ) {
+    for (ref_key, pending_use) in from.map {
+      self.note_pending_use(into, ref_key, pending_use.earliest_use_range, pending_use.kind);
     }
   }
 }
 
-fn merge_invalidations_into_from<'s, 't>(
-  into: &mut GroupForest<'s, 't>,
-  from: GroupForest<'s, 't>,
-) {
-  for (step, from_child) in from.name_to_tree {
-    let into_child =
-        into.name_to_tree
-        .entry(step)
-        .or_insert_with(|| GroupTree {
-            last_mut_effect: None,
-            name_to_child: IndexMap::new(),
-        });
-    merge_invalidations_into_from_inner(into_child, from_child);
-  }
-}
-
-fn merge_invalidations_into_from_inner<'s, 't>(
-  into: &mut GroupTree<'s, 't>,
-  from: GroupTree<'s, 't>,
-) {
-  match (into.last_mut_effect, from.last_mut_effect) {
-    (Some(into_mel), Some(from_mel)) => {
-      if from_mel.loct.path > into_mel.loct.path {
-        into.last_mut_effect = Some(from_mel);
-      }
-    }
-    (None, Some(from_mel)) => {
-      into.last_mut_effect = Some(from_mel);
-    }
-    (Some(_), None) | (None, None) => {}
-  }
-  for (step, from_child) in from.name_to_child {
-    let into_child =
-        into.name_to_child
-            .entry(step)
-            .or_insert_with(|| GroupTree {
-              last_mut_effect: None,
-              name_to_child: IndexMap::new(),
-            });
-    merge_invalidations_into_from_inner(into_child, from_child);
-  }
-}
-
-
-fn churn_matches_func_declared_mut_effect<'s, 't, 'g>(
+// This checks whether the given churn is declared in the function.
+// In other words, it checks whether the function's declared mut effects contain this churn path.
+// It returns true if declared *contains* churn_path.
+fn func_declared_mut_path_contains_churn_path<'s, 't, 'g>(
   declared: &GroupPathG<'s, 't, 'g>,
   churn_path: &GroupPathG<'s, 't, 'g>,
 ) -> bool {
-  match (declared.root, churn_path.root) {
-    (GroupRootG::Rune(declared_rune), GroupRootG::Rune(churn_rune)) => {
-      if declared_rune != churn_rune {
+  path_is_prefix_of_path(declared, churn_path)
+}
+
+// Returns true if prefix_path is in the front of longer_path.
+// Also returns true if they're equal.
+fn path_is_prefix_of_path<'s, 't, 'g>(
+  prefix_path: &GroupPathG<'s, 't, 'g>,
+  longer_path: &GroupPathG<'s, 't, 'g>,
+) -> bool {
+  match (prefix_path.root, longer_path.root) {
+    (GroupRootG::Rune(prefix_root_rune), GroupRootG::Rune(longer_root_rune)) => {
+      if prefix_root_rune != longer_root_rune {
         return false;
       }
     },
-    (GroupRootG::Local(declared_local), _) => return false, // Func mut declarations cant start with local
-    _ => unimplemented!(),
+    (GroupRootG::Local(prefix_root_local), GroupRootG::Local(longer_root_local)) => {
+      if prefix_root_local != longer_root_local {
+        return false;
+      }
+    }
+    (GroupRootG::ParamAnonymousGroup(prefix_root_local), GroupRootG::ParamAnonymousGroup(longer_root_local)) => {
+      if prefix_root_local != longer_root_local {
+        return false;
+      }
+    },
+    (GroupRootG::AmbientMulti(), GroupRootG::AmbientMulti()) => unimplemented!(),
+    _ => return false,
   }
-  if churn_path.steps.len() < declared.steps.len() {
+  if longer_path.steps.len() < prefix_path.steps.len() {
     return false;
   }
-  let num_steps = churn_path.steps.len().min(declared.steps.len());
+  let num_steps = longer_path.steps.len().min(prefix_path.steps.len());
   for i in 0..num_steps {
-    let declared_step = declared.steps[i];
-    let churn_step = churn_path.steps[i];
-    match (declared_step, churn_step) {
+    let churn_path_step = prefix_path.steps[i];
+    let churn_step = longer_path.steps[i];
+    match (churn_path_step, churn_step) {
       (GroupChildStepG::Member { member_name: a }, GroupChildStepG::Member { member_name: b }) => {
         if a != b {
           return false;
