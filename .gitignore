@@ -8,11 +8,8 @@ project
 .idea/
 .vscode/
 build/
-testbuild/
 rust_defs.txt
 rust_externs.h
-stdout.txt
-test_output/
 
 guardian_port.txt
 .guardian-build.lock
