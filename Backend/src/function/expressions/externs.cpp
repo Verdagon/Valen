@@ -680,6 +680,11 @@ Ref buildExternCall(
     auto intLE = checkValidInternalReference(FL(), globalState, functionState, builder, true, prototype->params[0], args[0]);
     assert(args.size() == 1);
     return toRef(globalState->getRegion(prototype->returnType), prototype->returnType, intLE);
+  } else if (prototype->name->name == "__vbi_USizeToI32") {
+    auto usizeLE = checkValidInternalReference(FL(), globalState, functionState, builder, true, prototype->params[0], args[0]);
+    assert(args.size() == 1);
+    auto result = LLVMBuildTrunc(builder, usizeLE, LLVMInt32TypeInContext(globalState->context), "");
+    return toRef(globalState->getRegion(prototype->returnType), prototype->returnType, result);
   } else {
     auto valeReturnRef = buildCallOrSideCall(globalState, functionState, builder, prototype, args);
     return buildResultOrEarlyReturnOfNever(globalState, functionState, builder, prototype, valeReturnRef);

@@ -66,6 +66,9 @@ pub struct BuildArgs {
   borrow_check: bool,
 
   #[arg(long, default_value_t = false)]
+  check_only: bool,
+
+  #[arg(long, default_value_t = false)]
   no_std: bool,
 
   #[arg(long, default_value_t = false)]
@@ -251,6 +254,7 @@ pub fn build_stuff(compiler_dir: &Path, args: BuildArgs) {
     args.benchmark,
     args.sanity_check,
     args.borrow_check,
+    args.check_only,
     args.verbose,
     args.debug_output,
     args.include_builtins,

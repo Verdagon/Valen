@@ -47,3 +47,19 @@ exported func main() int {
     run.rustc_exit, run.process_exit, run.firings
   );
 }
+
+#[test]
+fn bifrost_passes_a_rust_str_literal() {
+  let run = drive_and_run("rust_str", r#"
+import mycrate.str_len;
+exported func main() int {
+  return str_len(rs"hello");
+}
+"#);
+  assert_eq!(
+    run.process_exit,
+    Some(5),
+    "the driven rust-str bin did not exit 5 (rustc_exit={}, process_exit={:?}); firings: {:?}",
+    run.rustc_exit, run.process_exit, run.firings
+  );
+}

@@ -391,6 +391,7 @@ where
       call_location,
       IInDenizenEnvironmentT::from(dispatcher_outer_env),
       origin_function_templata,
+      dispatcher_placeholders.len(),
       &{
         let mut args: Vec<Option<KindT<'s, 't>>> =
           abstract_function_prototype.param_types().iter().map(|_| None).collect();
@@ -498,7 +499,7 @@ where
           coutputs,
           impl_placeholder_templata,
           IInDenizenEnvironmentT::from(dispatcher_inner_env),
-          index as i32,
+          (all_dispatcher_placeholders.len() + index) as i32,
           case_rune,
         );
         (impl_rune, impl_placeholder_id, case_placeholder)

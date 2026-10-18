@@ -665,14 +665,32 @@ where
     }))
   }
 
+  // Given an impl (a struct + interface) and an abstract function, this function will
+  // **reshape the abstract function prototype** to be more like the impl.
+  // For example, if we had:
+  //     interface Store<V> { func put(virtual self &Store<V>, value V) void; }
+  //     impl Store<int> for IntStore;
+  // or `put` in other words,
+  //     func put<V>(virtual self &Store<V>, value V) void;
+  // then we want to reshape that `put` prototype to this:
+  //     func put(virtual self &Store<int>, value int) void;
+  // In other words, we'll be filling in all of the generic params that are known to the impl.
+  //
+  // VCOORD: update all these comments to line up with @DKOGPZ.
   pub fn evaluate_generic_virtual_dispatcher_function_for_prototype_solving(
     &self,
+    // `near_env.function` is the abstract function, not the override.
     near_env: &'t BuildingFunctionEnvironmentWithClosuredsT<'s, 't>,
     coutputs: &mut CompilerOutputs<'s, 't>,
     calling_env: IInDenizenEnvironmentT<'s, 't>,
     call_range: &[RangeS<'s>],
     call_location: LocationInDenizen<'s>,
-    args: &[Option<KindT<'s, 't>>],
+    // The number of generic params coming from the interface.
+    // In the `put` example, this would be zero.
+    num_dispatcher_placeholders: usize,
+    // For the `put` example, this would contain:
+    //     [Some(&Store<int>), None]
+    params_interface_maybes: &[Option<KindT<'s, 't>>],
   ) -> Result<IDefineFunctionResult<'s, 't>, ICompileErrorT<'s, 't>> {
     let function = near_env.function;
     self.check_closure_concerns_handled(near_env);
@@ -696,116 +714,215 @@ where
       IndexMap::default(),
     )?;
 
-    let initial_sends = self.old_assemble_initial_sends_from_args(call_range[0], function, args);
+    let initial_sends: Vec<InitialSend<'s, 't>> = function
+      .params
+      .iter()
+      .map(|p| p.value_type_rune)
+      .zip(params_interface_maybes.iter())
+      .enumerate()
+      .flat_map(|(arg_index, (param_full_type_rune, arg_maybe))| {
+        match arg_maybe {
+          None => None,
+          Some(unpeeled_arg) => {
+            // We feed in the peeled arg to the `value_type_rune`, then later on after
+            // the solve we sort out the cloning/auto-ref'ing.
+            let peeled_arg = peel_all_references(*unpeeled_arg);
+            let sender_rune = RuneUsage {
+              range: call_range[0],
+              rune: self.scout_arena.intern_rune(IRuneValS::ArgumentRune(ArgumentRuneS {
+                arg_index: arg_index as i32,
+              })),
+            };
+            Some(InitialSend {
+              sender_rune,
+              receiver_rune: param_full_type_rune,
+              send_templata: ITemplataT::Kind(KindTemplataT { kind: peeled_arg }),
+            })
+          }
+        }
+      })
+      .collect();
 
-    let preliminary_envs = InferEnv {
+    let function_name_local: INameT<'s, 't> = match self.translate_generic_function_name(function.name) {
+      IFunctionTemplateNameT::FunctionTemplate(r) => INameT::FunctionTemplate(r),
+      IFunctionTemplateNameT::ForwarderFunctionTemplate(r) => INameT::ForwarderFunctionTemplate(r),
+      IFunctionTemplateNameT::ConstructorTemplate(r) => INameT::ConstructorTemplate(r),
+      IFunctionTemplateNameT::AnonymousSubstructConstructorTemplate(r) => {
+        INameT::AnonymousSubstructConstructorTemplate(r)
+      }
+      IFunctionTemplateNameT::LambdaCallFunctionTemplate(r) => {
+        INameT::LambdaCallFunctionTemplate(r)
+      }
+      IFunctionTemplateNameT::OverrideDispatcherTemplate(r) => {
+        INameT::OverrideDispatcherTemplate(r)
+      }
+      IFunctionTemplateNameT::ExternFunction(r) => INameT::ExternFunction(r),
+      IFunctionTemplateNameT::FunctionBoundTemplate(r) => INameT::FunctionBoundTemplate(r),
+      IFunctionTemplateNameT::PredictedFunctionTemplate(r) => INameT::PredictedFunctionTemplate(r),
+    };
+    let function_template_id =
+      near_env.parent_env.id().add_step(self.typing_interner, function_name_local);
+
+    let mut solve_rules = function_definition_rules.clone();
+    let mut solve_rune_to_type = function_rune_to_type.clone();
+    let mut send_initial_knowns = Vec::new();
+    for initial_send in initial_sends {
+      send_initial_knowns.push(InitialKnown {
+        rune: initial_send.sender_rune,
+        templata: initial_send.send_templata,
+      });
+      // VCOORD: see if we can simplify away this rule? can we not just feed it directly?
+      solve_rules.push(IRulexSR::Equals(EqualsSR {
+        range: initial_send.sender_rune.range,
+        left: initial_send.sender_rune,
+        right: initial_send.receiver_rune,
+      }));
+      solve_rune_to_type.insert(
+        initial_send.sender_rune.rune,
+        ITemplataType::KindTemplataType(KindTemplataType {}),
+      );
+    }
+
+    let ranges = {
+      let mut ranges = vec![function.range];
+      ranges.extend_from_slice(call_range);
+      ranges
+    };
+    let envs = InferEnv {
       original_calling_env: calling_env,
       parent_ranges: self.typing_interner.alloc_slice_copy(call_range),
       call_location,
       self_env: IEnvironmentT::BuildingWithClosureds(near_env),
       context_region: RegionT::Default,
     };
-    let mut preliminary_solve_initial_knowns = Vec::new();
-    let mut preliminary_rules = function_definition_rules.clone();
-    let mut preliminary_rune_to_type = function_rune_to_type.clone();
-    for initial_send in initial_sends {
-      preliminary_solve_initial_knowns.push(InitialKnown {
-        rune: initial_send.sender_rune,
-        templata: initial_send.send_templata,
-      });
-      // VCOORD: see if we can simplify away this rule? can we not just feed it directly?
-      preliminary_rules.push(IRulexSR::Equals(EqualsSR {
-        range: initial_send.sender_rune.range,
-        left: initial_send.sender_rune,
-        right: initial_send.receiver_rune,
-      }));
-      preliminary_rune_to_type.insert(
-        initial_send.sender_rune.rune,
-        ITemplataType::KindTemplataType(KindTemplataType {}),
-      );
-    }
-    let mut preliminary_solver_state = self.make_solver_state(
-      preliminary_envs,
-      coutputs,
-      &preliminary_rules,
-      &preliminary_rune_to_type,
-      &{
-        let mut ranges = vec![function.range];
-        ranges.extend_from_slice(call_range);
-        ranges
-      },
-      &preliminary_solve_initial_knowns,
-    );
-    match self.r#continue(preliminary_envs, coutputs, &mut preliminary_solver_state) {
-      Ok(()) => {}
-      Err(_f) => {
-        panic!("implement: TypingPassSolverError from preliminary continue");
+    let near_env_as_in_denizen = IInDenizenEnvironmentT::BuildingWithClosureds(near_env);
+
+    let mut param_and_return_runes: Vec<IRuneS<'s>> = Vec::new();
+    {
+      let mut seen = HashSet::default();
+      for param in function.params.iter() {
+        if seen.insert(param.value_type_rune.rune) {
+          param_and_return_runes.push(param.value_type_rune.rune);
+        }
+      }
+      if let Some(ret_coord_rune) = function.maybe_ret_kind_rune {
+        if seen.insert(ret_coord_rune.rune) {
+          param_and_return_runes.push(ret_coord_rune.rune);
+        }
       }
     }
 
-    let preliminary_inferences: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>> =
-      preliminary_solver_state.userify_conclusions().into_iter().collect();
 
-    let placeholder_initial_knowns_from_function: Vec<InitialKnown<'s, 't>> = function
-      .generic_params
-      .iter()
-      .enumerate()
-      .flat_map(|(index, generic_param)| {
-        match preliminary_inferences.get(&generic_param.rune.rune) {
-          Some(&x) => Some(InitialKnown { rune: generic_param.rune, templata: x }),
-          // Per @BCHATZ, fill group generic parameters with `GroupTemplataT{}`.
-          None => match function_rune_to_type.get(&generic_param.rune.rune) {
-            Some(ITemplataType::GroupTemplataType(_)) => Some(InitialKnown {
-              rune: generic_param.rune,
-              templata: ITemplataT::Group(GroupTemplataT {}),
-            }),
-            _ => panic!("implement: create placeholder for missing preliminary inference"),
-          },
-        }
-      })
-      .collect();
-
-    let CompleteDefineSolve { conclusions: inferences, rune_to_bound: instantiation_bound_params } =
-      match self.solve_for_defining(
-        InferEnv {
-          original_calling_env: calling_env,
-          parent_ranges: self.typing_interner.alloc_slice_copy(call_range),
-          call_location,
-          self_env: IEnvironmentT::BuildingWithClosureds(near_env),
-          context_region: RegionT::Default,
-        },
-        coutputs,
-        &function_definition_rules,
-        function.impl_bounds,
-        &function_rune_to_type,
-        &{
-          let mut ranges = vec![function.range];
-          ranges.extend_from_slice(call_range);
-          ranges
-        },
-        call_location,
-        &placeholder_initial_knowns_from_function,
-        &{
-          let mut runes: Vec<IRuneS<'s>> =
-            function.params.iter().map(|p| p.value_type_rune.rune).collect();
-          if let Some(r) = function.maybe_ret_kind_rune {
-            runes.push(r.rune);
-          }
-          runes
-        },
-      ) {
+    // We'll do two solves below because we want a first solve to figure out everything
+    // we can from the substruct (like the V = `int` below).
+    // In:
+    //     interface Store<V> {
+    //       func put<Q>(virtual self &Store<V>, query &Q, value V) bool;
+    //     }
+    //     struct IntStore { }
+    //     impl Store<int> for IntStore;
+    //     func put<Q>(self &IntStore, query &Q, value int) bool { ... }
+    // We're trying to figure out IntStore's vtable for Store.
+    // In doing that, we're compiling a `put` for that impl.
+    // The dispatcher function looks like this:
+    //     func put<V, Q>(self &Store<V>, query &Q, value V) bool {
+    //       match self {
+    //         IntStore => {
+    //           // Then right here, we know that V = `int`, so value is `int`.
+    //           // So, look for a:
+    //           //     put<Q>(self &IntStore, query &Q, value int)
+    //         }
+    //       }
+    //     }
+    // After that first solve, we conjure a placeholder for the Q, and then compile 
+    let mut solver = self.make_solver_state(
+      envs,
+      coutputs,
+      &solve_rules,
+      &solve_rune_to_type,
+      &ranges,
+      &send_initial_knowns,
+    );
+    match self.r#continue(envs, coutputs, &mut solver) {
+      Ok(()) => {}
+      Err(f) => {
+        return Err(ICompileErrorT::TypingPassSolverError {
+          range: self.typing_interner.alloc_slice_from_vec(ranges.clone()),
+          failed_solve: f,
+        })
+      }
+    }
+    let mut placeholder_conclusions: IndexMap<IRuneS<'s>, ITemplataT<'s, 't>> = IndexMap::default();
+    for (index, generic_param) in function.generic_params.iter().enumerate() {
+      if solver.get_conclusion(&generic_param.rune.rune).is_none() {
+        let templata = self.create_placeholder(
+          coutputs,
+          near_env_as_in_denizen,
+          *function_template_id,
+          generic_param,
+          // These new placeholders might not be the first ones for this function.
+          // Some might have come from the abstract function or its `self`.
+          // Offset the new ones so we don't conflict.
+          (num_dispatcher_placeholders + index) as i32,
+          &solve_rune_to_type,
+          None,
+          false,
+        );
+        placeholder_conclusions.insert(generic_param.rune.rune, templata);
+      }
+    }
+    if !placeholder_conclusions.is_empty() {
+      solver
+        .commit_step::<()>(false, vec![], placeholder_conclusions, vec![], IndexSet::default())
+        .unwrap();
+      match self.r#continue(envs, coutputs, &mut solver) {
+        Ok(()) => {}
         Err(f) => {
-          return Err(ICompileErrorT::TypingPassDefiningError {
-            range: self.typing_interner.alloc_slice_copy(&{
-              let mut ranges = vec![function.range];
-              ranges.extend_from_slice(call_range);
-              ranges
-            }),
-            inner: f,
-          });
+          return Err(ICompileErrorT::TypingPassSolverError {
+            range: self.typing_interner.alloc_slice_from_vec(ranges.clone()),
+            failed_solve: f,
+          })
         }
-        Ok(c) => c,
-      };
+      }
+    }
+
+    let mut inferences = match self.interpret_results(&solve_rune_to_type, &mut solver) {
+      Err(e) => {
+        return Err(ICompileErrorT::TypingPassSolverError {
+          range: self.typing_interner.alloc_slice_from_vec(ranges.clone()),
+          failed_solve: e,
+        })
+      }
+      Ok(conclusions) => conclusions,
+    };
+
+    self.conjure_impl_bounds_for_defining(envs, function.impl_bounds, &mut inferences);
+
+    let instantiation_bound_params = match self.check_defining_conclusions_and_resolve(
+      envs,
+      coutputs,
+      &ranges,
+      call_location,
+      &function_definition_rules,
+      &param_and_return_runes,
+      &inferences,
+    ) {
+      Err(f) => match f {
+        IConclusionResolveError::CouldntFindFunctionForConclusionResolve { .. } => {
+          panic!("TypingPassDefiningError: CouldntFindFunctionForConclusionResolve")
+        }
+        IConclusionResolveError::ReturnTypeConflictInConclusionResolve { .. } => {
+          panic!("TypingPassDefiningError: ReturnTypeConflictInConclusionResolve")
+        }
+        IConclusionResolveError::CouldntFindImplForConclusionResolve { .. } => {
+          panic!("TypingPassDefiningError: CouldntFindImplForConclusionResolve")
+        }
+        IConclusionResolveError::CouldntFindKindForConclusionResolve(_) => {
+          panic!("TypingPassDefiningError: CouldntFindKindForConclusionResolve")
+        }
+      },
+      Ok(c) => c,
+    };
     let reachable_bounds: Vec<PrototypeTemplataT<'s, 't>> = instantiation_bound_params
       .rune_to_citizen_rune_to_reachable_prototype
       .values()
@@ -1057,53 +1174,14 @@ where
         .typing_interner
         .intern_impl_bound_name(ImplBoundNameValT { template, template_args: &[] });
       let impl_name = *envs
-        .original_calling_env
-        .denizen_id()
+        .self_env
+        .id()
         .add_step(self.typing_interner, INameT::ImplBound(bound_name));
       let isa =
         IsaTemplataT { declaration_range: impl_bound.range, impl_name, sub_kind, super_kind };
       conclusions
         .insert(impl_bound.result_rune.rune, ITemplataT::Isa(self.typing_interner.alloc(isa)));
     }
-  }
-
-  // VCOORD: delete this
-  pub fn old_assemble_initial_sends_from_args(
-    &self,
-    call_range: RangeS<'s>,
-    function: &FunctionS<'s>,
-    args: &[Option<KindT<'s, 't>>],
-  ) -> Vec<InitialSend<'s, 't>> {
-    function
-      .params
-      .iter()
-      .map(|p| p.value_type_rune)
-      .zip(args.iter())
-      .enumerate()
-      .flat_map(|(arg_index, (param_full_type_rune, arg_maybe))| {
-        match arg_maybe {
-          None => None,
-          Some(unpeeled_arg) => {
-            // We feed in the peeled arg to the `value_type_rune`, then later on after
-            // the solve we sort out the cloning/auto-ref'ing.
-            let peeled_arg = peel_all_references(*unpeeled_arg);
-            let sender_rune = RuneUsage {
-              range: call_range,
-              rune: self.scout_arena.intern_rune(IRuneValS::ArgumentRune(ArgumentRuneS {
-                arg_index: arg_index as i32,
-              })),
-            };
-            Some(InitialSend {
-              sender_rune,
-              receiver_rune: param_full_type_rune,
-              send_templata: ITemplataT::Kind(
-                KindTemplataT { kind: peeled_arg },
-              ),
-            })
-          }
-        }
-      })
-      .collect()
   }
 
   pub fn assemble_initial_sends_from_args(

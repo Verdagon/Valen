@@ -20,16 +20,9 @@ use std::any::Any;
 use std::marker::PhantomData;
 use crate::postparsing::names::IRuneS;
 use crate::typing::ast::expressions::ExpressionTE;
+use crate::typing::borrow_checker::group_expr::{GroupExprG, GroupPathG};
 use crate::typing::borrow_checker::kind_g::{BorrowRefGT, ISuperKindGT, InterfaceGT, KindGT, RuntimeSizedArrayGT, ShareRefGT, StaticSizedArrayGT, StructGT, WeakRefGT};
 use crate::typing::borrow_checker::templata_g::ITemplataG;
-
-// A specific mutation to a specific group (as opposed to GroupExprG which an expression for expressing the group(s) a ref might point at).
-#[derive(Debug)]
-pub struct MutEffectPath<'s, 't, 'g> {
-  pub effecting_node_loc: LocT<'t>, // Which expr had this mut effect (e.g. loc of `level.tiles.clear()`)
-  pub range: RangeS<'s>, // That expr's source range, so a use-after-churn can name the churn.
-  pub steps: &'g [GroupStep<'s, 't>], // What group the effect mutated (e.g. ["level", "tiles"])
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum GroupStep<'s, 't> {
@@ -197,12 +190,13 @@ where
   pub range: RangeS<'s>,
   pub loct: LocT<'t>,
   // Before the loop, we issue all the contained mutations, at this location.
+  // VCOORD: remove
   pub pre_iteration_loct: LocT<'t>,
   // After the loop, we issue all the contained mutations, at this location.
+  // VCOORD: remove
   pub post_iteration_loct: LocT<'t>,
   pub block: BlockGE<'s, 't, 'g>,
   pub result: KindGT<'s, 't, 'g>,
-  pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
 }
 
 #[derive(Debug)]
@@ -446,7 +440,7 @@ where
   pub virtual_param_index: i32,
   pub result: KindGT<'s, 't, 'g>,
   pub args: &'g [ExpressionGE<'s, 't, 'g>],
-  pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
+  pub mut_effects: GroupExprG<'s, 't, 'g>,
 }
 
 #[derive(Debug)]
@@ -460,7 +454,7 @@ where
   pub virtual_param_index: usize,
   pub result: KindGT<'s, 't, 'g>,
   pub args: &'g [ExpressionGE<'s, 't, 'g>],
-  pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
+  pub mut_effects: GroupExprG<'s, 't, 'g>,
 }
 
 
@@ -478,7 +472,7 @@ where
   pub prototype2: &'t PrototypeT<'s, 't>,
   pub args: &'g [ExpressionGE<'s, 't, 'g>],
   pub result: KindGT<'s, 't, 'g>,
-  pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
+  pub mut_effects: GroupExprG<'s, 't, 'g>,
 }
 
 #[derive(Debug)]
@@ -492,7 +486,7 @@ where
   pub args: &'g [ExpressionGE<'s, 't, 'g>],
   // VCOORD: rename to return_type
   pub result: KindGT<'s, 't, 'g>,
-  pub mut_effects: &'g [&'g MutEffectPath<'s, 't, 'g>],
+  pub mut_effects: GroupExprG<'s, 't, 'g>,
 }
 
 #[derive(Debug)]

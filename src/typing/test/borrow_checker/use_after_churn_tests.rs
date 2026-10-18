@@ -459,5 +459,333 @@ Invalidated at test:0.vale:7:3:
   );
 }
 
+#[test]
+fn test_set_statement_invalidates_inner_element_ref_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+#!DeriveStructDrop
+struct Vec<T> { data []T; }
+func drop<T>(v Vec<T>) where func drop(T)void {
+  [data] = ^v;
+  drop(^data);
+}
+func new<T>() Vec<T> { return Vec<T>(Array<T>(8)); }
+struct Entity { hp int; }
+struct World { entities Vec<Entity>; }
+func observe<T>(x &T) { }
+exported func main() int {
+  world = World(Vec<Entity>.new());
+  first_ref = &world.entities.data[0];
+  set world.entities = Vec<Entity>.new();
+  observe(first_ref);
+  return 0;
+}
+"#,
+    r#"At test:0.vale:18:11:
+  observe(first_ref);
+          ^^^^^^^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:17:7:
+  set world.entities = Vec<Entity>.new();
+      ^^^^^^^^^^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_member_lookup_on_invalidated_ref_rejected() {
+  assert_borrow_check_gives_error(
+    &[],
+    r#"
+struct Entity { hp int; }
+func churn<r'>(a &[]Entity in r) mut(r) { }
+exported func peek<r'>(a &[]Entity in r) int mut(r) {
+  ref = &a[0];
+  churn(a);
+  return __copy_prim(&ref.hp);
+}
+"#,
+    r#"At test:0.vale:7:23:
+  return __copy_prim(&ref.hp);
+                      ^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:6:3:
+  churn(a);
+  ^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_array_lookup_on_invalidated_ref_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[][]int in r) mut(r) { }
+exported func main() int {
+  outer = Array<[]int>(3);
+  inner_ref = &outer[0];
+  churn(&outer);
+  return __copy_prim(&inner_ref[0]);
+}
+"#,
+    r#"At test:0.vale:9:23:
+  return __copy_prim(&inner_ref[0]);
+                      ^^^^^^^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:8:3:
+  churn(&outer);
+  ^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_reinitialize_moved_local_inside_while_is_clean() {
+  assert_borrow_check_passes(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.drop.*;
+struct Marine { ammo int; }
+exported func main() int {
+  m = Marine(7);
+  while (false) {
+    drop(^m);
+    set m = Marine(8);
+  }
+  return 42;
+}
+"#,
+  );
+}
+
+#[test]
+fn test_use_at_loop_top_after_body_churn_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[]int in r) mut(r) { }
+func observe<T>(x &T) { }
+exported func main() int {
+  arr = Array<int>(3);
+  ref = &arr[0];
+  while (false) {
+    observe(ref);
+    churn(&arr);
+  }
+  return 0;
+}
+"#,
+    r#"At test:0.vale:10:13:
+    observe(ref);
+            ^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:11:5:
+    churn(&arr);
+    ^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_fresh_element_each_iteration_is_clean() {
+  assert_borrow_check_passes(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[]int in r) mut(r) { }
+func observe<T>(x &T) { }
+exported func main() int {
+  arr = Array<int>(3);
+  while (false) {
+    ref = &arr[0];
+    observe(ref);
+    churn(&arr);
+  }
+  return 0;
+}
+"#,
+  );
+}
+
+#[test]
+fn test_pre_loop_churn_caught_before_in_body_reinit_rejected() {
+  // This one is tricky because it shows a use-after-free that only happens on the *first* iteration
+  // of a loop, but wouldn't happen on subsequent iterations.
+  // Note how the reviving `set e` happens *after* the `observe(e)`.
+  // The error should happen because in the first iteration, the revival of `e` didn't happen.
+  // This test shows us that any particular statement needs to check against multiple possible
+  // pasts (one pre-loop, and one where prior iterations happened), because their states might be
+  // truly different.
+  // Or, another mindset might be that we need to rethink what state we track, so that the states
+  // *aren't* different.
+  // V2 helps with this.
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[]int in r) mut(r) { }
+func observe<T>(x &T) { }
+exported func main() int {
+  arr = Array<int>(3);
+  e = &arr[0];
+  churn(&arr);
+  while (false) {
+    observe(e);
+    set e = &arr[0];
+  }
+  return 0;
+}
+"#,
+    r#"At test:0.vale:11:13:
+    observe(e);
+            ^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:3:
+  churn(&arr);
+  ^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_reassigned_borrow_survives_loop_back_edge() {
+  // This one's particularly hard for V1 because of the `set e` that revives `e`.
+  // Groupify needs to record enough information such that check_usages can check that `observe(e)`
+  // is fine for both possible pasts (pre-loop, and a 2nd+ iteration) see
+  // test_pre_loop_churn_caught_before_in_body_reinit_rejected for more on this. Solutions to that
+  // could cause complications for this case, because the `observe(e)` needs to check whether the
+  // pre-loop `e` is still valid and also needs to check whether the 2nd+ iteration's `e` is still
+  // valid.
+  assert_borrow_check_passes(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[]int in r) mut(r) { }
+func observe<T>(x &T) { }
+exported func main() int {
+  arr = Array<int>(3);
+  e = &arr[0];
+  while (false) {
+    observe(e);
+    churn(&arr);
+    set e = &arr[0];
+  }
+  return 0;
+}
+"#,
+  );
+}
+
+#[test]
+fn test_use_at_loop_top_after_body_set_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+#!DeriveStructDrop
+struct Vec<T> { data []T; }
+func drop<T>(v Vec<T>) where func drop(T)void {
+  [data] = ^v;
+  drop(^data);
+}
+func new<T>() Vec<T> { return Vec<T>(Array<T>(8)); }
+struct Entity { hp int; }
+struct World { entities Vec<Entity>; }
+func observe<T>(x &T) { }
+exported func main() int {
+  world = World(Vec<Entity>.new());
+  first_ref = &world.entities.data[0];
+  while (false) {
+    observe(first_ref);
+    set world.entities = Vec<Entity>.new();
+  }
+  return 0;
+}
+"#,
+    r#"At test:0.vale:18:13:
+    observe(first_ref);
+            ^^^^^^^^^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:19:9:
+    set world.entities = Vec<Entity>.new();
+        ^^^^^^^^^^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_pre_loop_churn_caught_after_loop_when_reinit_may_not_run_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[]int in r) mut(r) { }
+func observe<T>(x &T) { }
+exported func main() int {
+  arr = Array<int>(3);
+  e = &arr[0];
+  churn(&arr);
+  while (false) {
+    set e = &arr[0];
+  }
+  observe(e);
+  return 0;
+}
+"#,
+    r#"At test:0.vale:13:11:
+  observe(e);
+          ^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:3:
+  churn(&arr);
+  ^^^^^
+"#,
+  );
+}
+
+#[test]
+fn test_pre_if_churn_with_reinit_in_one_branch_rejected() {
+  assert_borrow_check_gives_error(
+    &["arrays", "arith", "drop", "implicit_clone"],
+    r#"
+import v.builtins.arrays.*;
+import v.builtins.drop.*;
+func churn<r'>(a &[]int in r) mut(r) { }
+func observe<T>(x &T) { }
+exported func main() int {
+  arr = Array<int>(3);
+  e = &arr[0];
+  churn(&arr);
+  if (true) {
+    set e = &arr[0];
+  }
+  observe(e);
+  return 0;
+}
+"#,
+    r#"At test:0.vale:13:11:
+  observe(e);
+          ^
+Used a borrow after invalidated.
+Invalidated at test:0.vale:9:3:
+  churn(&arr);
+  ^^^^^
+"#,
+  );
+}
+
 
 

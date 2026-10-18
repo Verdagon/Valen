@@ -204,6 +204,7 @@ where
     call_location: LocationInDenizen<'s>,
     calling_env: IInDenizenEnvironmentT<'s, 't>,
     function_templata: FunctionTemplataT<'s, 't>,
+    num_dispatcher_placeholders: usize,
     args: &[Option<KindT<'s, 't>>],
   ) -> Result<IDefineFunctionResult<'s, 't>, ICompileErrorT<'s, 't>> {
     let FunctionTemplataT { outer_env, function_template_id: function_id } = function_templata;
@@ -217,6 +218,7 @@ where
       call_range,
       call_location,
       function,
+      num_dispatcher_placeholders,
       args,
     )
   }

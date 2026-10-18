@@ -48,7 +48,6 @@ pub struct KindTemplataG<'s, 't, 'g> {
 pub struct GroupTemplataG<'s, 't, 'g> {
   pub group: GroupExprG<'s, 't, 'g>,
   pub kind: KindGT<'s, 't, 'g>, // this could be redundant since the type is on the group
-  pub born_at: LocT<'t>,
 }
 
 
