@@ -1,4 +1,0 @@
-[env]
-RUST_BACKTRACE = "1"
-# 16MB stack for #[test] threads. Default is 2MB, too small for debug-mode runs.
-RUST_MIN_STACK = "16777216"
